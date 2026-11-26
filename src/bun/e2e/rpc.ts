@@ -2,9 +2,11 @@
 // page may ask of the core, and what asks the person first. A script in the page, an XSS in what a message draws, can
 // ask whatever the page can, and so read and write while it lasts. But the core takes the commands of its contract
 // alone, and approving a device, making an identity, changing the keys or taking a device off the account takes a yes
-// in the system's own box, whose text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
-// the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time, so nothing runs between a
-// question and the command it answers. A worker that stops is started again, with the database it had open.
+// in the system's own box, whose text Bun writes (confirm.ts). A new device's attempt to be approved shows its own core's
+// fingerprints in a box of Bun's too, outside the page (#557). The page asks in the main window's `e2e` message alone
+// (index.ts): the pop-out's and the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time,
+// so nothing runs between a question and the command it answers. A worker that stops is started again, with the
+// database it had open.
 import {
 	ATTACHMENT_PART,
 	E2E_OPS,
@@ -19,13 +21,17 @@ import {
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 import {
 	approvalQuestion,
+	newDeviceNotice,
 	newKeysQuestion,
+	qrBytes,
 	removalQuestion,
 	readCommitment,
 	rotationQuestion,
 	verifyQuestion,
 	type Confirm,
+	type Notice,
 	type Question,
+	type Show,
 } from "./confirm";
 import { CoreStopped, type CoreFailure, type CoreWorker, type WorkerReply } from "./core";
 
@@ -104,6 +110,8 @@ export const CONFIRMED: ReadonlySet<string> = new Set([
 	"verify_user",
 ]);
 
+/** What gives this device its identity, which ends any attempt of its to be approved. */
+const SET_UP: ReadonlySet<string> = new Set(["approval_receive", "recover", "create_identity", "reset_identity"]);
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
 const STANDALONE: ReadonlySet<string> = new Set(STANDALONE_OPS);
 /** A commitment's base64 at most: the core makes them of about 240 characters, and Bun reads none longer. */
@@ -119,6 +127,8 @@ export interface BoundaryDeps {
 	start: (() => CoreWorker) | null;
 	/** The person's answer, outside the page (confirm.ts). */
 	confirm: Confirm;
+	/** What Bun shows the person outside the page that asks nothing (confirm.ts): a new device's fingerprints. */
+	show: Show;
 	/** Sends the page a reply: the main window's `e2eReply` message. */
 	reply: (reply: E2eReply) => void;
 }
@@ -186,7 +196,7 @@ function devices(value: unknown, field = "remove"): string[] {
  * Bun's half of the boundary: the handler of the main window's `e2e` message. It answers each request with `reply`, in
  * the order they came, and never throws: a throw in the app's worker would end it, and the app with it.
  */
-export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: unknown) => void {
+export function e2eBoundary({ start, confirm, show, reply }: BoundaryDeps): (message: unknown) => void {
 	let worker: CoreWorker | null = null;
 	/** The core's instance: one more each time its worker stops, which the page is told. */
 	let instance = 1;
@@ -213,6 +223,28 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			}
 		}
 	};
+
+	/** A notice, or none: one that can't be shown is no reason to fail the op. */
+	const notify = (notice: Notice | null) => {
+		try {
+			show(notice);
+		} catch (error) {
+			console.error("[e2e] a notice couldn't be shown:", error);
+		}
+	};
+
+	/**
+	 * A new device's attempt, as its own core made it: its fingerprints in Bun's box, which a script in this page can't
+	 * draw on, and which the approving device's words say to compare with (#557). What Bun can't read, it names nothing
+	 * of: the box of an attempt before it goes too.
+	 */
+	async function showAttempt(begun: unknown) {
+		const { commitment, qr } = isRecord(begun) ? begun : {};
+		const made = typeof commitment === "string" ? readCommitment(commitment) : null;
+		const scanned = typeof qr === "string" ? qrBytes(qr) : null;
+		if (!made || !scanned) return notify(null);
+		notify(newDeviceNotice({ code: await approvalFingerprint(made.bytes), scan: await approvalFingerprint(scanned) }));
+	}
 
 	/**
 	 * One op in the core's worker, started for it if there's none, after closing what a stopped one left open. An op
@@ -323,6 +355,9 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 		const result = await core("handle", { command: runs });
 		if (cmd === "approval_offer" && "ok" in result) underWay = offered;
 		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
+		if (cmd === "approval_begin" && "ok" in result) await showAttempt(result.ok);
+		// This device has its identity, by the transfer or another way: nothing of an attempt is compared any more.
+		if (SET_UP.has(cmd) && "ok" in result) notify(null);
 		return unwrap(result);
 	}
 
@@ -336,6 +371,7 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
 				if (!start) return { state: "unsupported" };
 				// The core's handle stays in Bun.
 				const { handle, ...opening } = unwrap(await core("open", { userId }));
@@ -347,6 +383,7 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
 				if (worker) unwrap(await core("close"));
 				opened = null;
 				return {};
@@ -355,6 +392,7 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
 				const destroyed = await core("destroy", { userId });
 				opened = null;
 				return unwrap(destroyed);

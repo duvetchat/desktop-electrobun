@@ -94,7 +94,11 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
      QR) has the Windows app ask «Is this device yours?»; after It's mine, and the new device's yes to the code, Confirm
      opens Windows' dialog, which names the fingerprint the new device shows;
    - **changing keys:** Settings → Devices → Change security keys;
-   - **starting over:** a new device's setup, Start over.
+   - **starting over:** a new device's setup, Start over;
+   - **being approved:** with the Windows app as alice's new device (her web set up first), its Set up opens Windows'
+     own box, «Set up this device», with a fingerprint for a code and one for a phone's scan. The web's «Is this device
+     yours?» shows the first. The box asks nothing: the window takes the code while it's open, and it goes once the
+     device is set up (desktop-electrobun#557).
 4. **The window keeps up while a large history is shared.** In a DM with a few hundred messages, Share history with a
    member's new device, and pick «the conversation's history». While it goes, drag the window by its title bar, snap it
    with Win+Left and Win+Right, and type in another chat: none of it should stall.

@@ -36,9 +36,13 @@ type ShowMessageBox = (options: {
 	cancelId?: number;
 }) => Promise<{ response: number }>;
 
+const WM_CLOSE = 0x10;
+
 const openUser32 = () =>
 	dlopen("user32.dll", {
 		MessageBoxW: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+		FindWindowW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+		PostMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64], returns: FFIType.i32 },
 	}).symbols;
 let user32: ReturnType<typeof openUser32> | null = null;
 /** A NUL-terminated UTF-16 string, as the W calls read one. */
@@ -85,9 +89,99 @@ export function nativeConfirm(deps: {
 	};
 }
 
+/** A notice's box while it shows. */
+export interface NoticeBox {
+	close(): void;
+}
+
 /**
- * Approving a device: what the core will certify, by the fingerprint of the commitment it takes (approvalFingerprint),
- * which the new device's screen shows of its own. The ID is the commitment's writer's to choose: it's shown, not compared.
+ * The system's box for what asks nothing, one at a time: a notice replaces the box shown. It mustn't hold the window or
+ * Bun's thread, as a confirmation's does: the person keeps it open while Duvet goes on. Only Windows has the core (38,
+ * 39), and so begins an approval: elsewhere nothing shows, and an approving device's words say to compare with a box.
+ */
+export function nativeNotice(deps: { platform: string; open?: (notice: Notice) => NoticeBox }): Show {
+	const open = deps.open ?? (deps.platform === "win32" ? windowsNotice : null);
+	let shown: NoticeBox | null = null;
+	return (notice) => {
+		try {
+			shown?.close();
+		} catch (error) {
+			console.error("[e2e] a notice couldn't be closed:", error);
+		}
+		shown = null;
+		if (!notice || !open) return;
+		try {
+			shown = open(notice);
+		} catch (error) {
+			console.error("[e2e] a notice couldn't be shown:", error);
+		}
+	};
+}
+
+/** How long a notice's box being closed is looked for, as its worker may not have shown it yet: 50 times, 0.1 s apart. */
+const CLOSE_TRIES = 50;
+
+/**
+ * A notice on Windows: MessageBoxW in a worker of its own, with no owner, so the window and Bun's thread go on while it
+ * shows. Closing it finds it by its title, which names its fingerprint, and sends it WM_CLOSE.
+ */
+function windowsNotice(notice: Notice): NoticeBox {
+	const url = URL.createObjectURL(
+		new Blob([`(${noticeWorker.toString()})(${JSON.stringify(notice)});`], { type: "application/javascript" }),
+	);
+	const worker = new Worker(url);
+	let up = true;
+	const ended = () => {
+		up = false;
+		worker.terminate();
+		URL.revokeObjectURL(url);
+	};
+	worker.addEventListener("message", ended);
+	worker.addEventListener("error", ended);
+	return {
+		close() {
+			const symbols = (user32 ??= openUser32());
+			let tries = 0;
+			const look = () => {
+				if (!up) return;
+				const box = symbols.FindWindowW(wide("#32770"), wide(notice.title));
+				if (box) symbols.PostMessageW(box, WM_CLOSE, 0, 0);
+				else if (++tries < CLOSE_TRIES) setTimeout(look, 100);
+			};
+			look();
+		},
+	};
+}
+
+/**
+ * A notice's worker, run from its own source (windowsNotice), as core.ts runs the core's: every name it uses is in it,
+ * or a global. It shows the box, then says it closed.
+ */
+export function noticeWorker({ title, message }: Notice): void {
+	void (async () => {
+		try {
+			const ffi = await import("bun:ffi");
+			const { ptr, i32, u32 } = ffi.FFIType;
+			const utf16 = (text: string) => {
+				const units = new Uint16Array(text.length + 1);
+				for (let at = 0; at < text.length; at++) units[at] = text.charCodeAt(at);
+				return units;
+			};
+			const { MessageBoxW } = ffi.dlopen("user32.dll", {
+				MessageBoxW: { args: [ptr, ptr, ptr, u32], returns: i32 },
+			}).symbols;
+			// MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST: above the window, which stays usable.
+			MessageBoxW(null, utf16(message), utf16(title), 0x40 | 0x10000 | 0x40000);
+		} finally {
+			postMessage("closed");
+		}
+	})();
+}
+
+/**
+ * Approving a device: what the core will certify, by the fingerprint of the commitment it takes (approvalFingerprint).
+ * A new device of the Duvet app shows its own in a box of Bun's (newDeviceNotice), where nothing in its page can change
+ * it (#557). The ID is the commitment's writer's to choose: it's shown, not compared.
  */
 export function approvalQuestion({ device, fingerprint }: { device: string; fingerprint: string }): Question {
 	return {
@@ -95,9 +189,42 @@ export function approvalQuestion({ device, fingerprint }: { device: string; fing
 		message:
 			"A new device will be added to your account, and it will read your encrypted conversations." +
 			`\n\nFingerprint: ${fingerprint}` +
-			"\n\nApprove it only if it's the device you're setting up now, and its screen shows the same 16 characters." +
+			`\n\n${COMPARE_WITH_THE_BOX}` +
 			`\n\nIts ID: ${device}`,
 		yes: "Approve",
+	};
+}
+
+/**
+ * What an approving device says of the new device's fingerprint, the Android app's too (mobile#363): a computer's is in
+ * a box of the Duvet app's own, not in its window, which a script there could draw on.
+ */
+export const COMPARE_WITH_THE_BOX =
+	"Approve it only if it's the device you're setting up now, and it shows the same 16 characters. The Duvet app on a " +
+	"computer shows them in a box of its own, outside its window.";
+
+/** What Bun shows the person, outside the page, that asks nothing. */
+export interface Notice {
+	title: string;
+	message: string;
+}
+
+/** Shows a notice in place of the one shown, or takes it away (null), without waiting for the person. */
+export type Show = (notice: Notice | null) => void;
+
+/**
+ * A new device's attempt to be approved (approval_begin), as its own core made it: the fingerprints an approving device
+ * shows of it (Ruling 35), in a box the page can't draw on (#557). A phone that scans the QR shows the QR's own, as its
+ * bytes aren't the commitment's; an approval by the code shows the commitment's.
+ */
+export function newDeviceNotice({ code, scan }: { code: string; scan: string }): Notice {
+	return {
+		title: `Set up this device (${code})`,
+		message:
+			"Approve this device on another of yours only if that one shows the same 16 characters as here." +
+			`\n\nWith a code:\n${code}` +
+			`\n\nScanning its QR code with your phone:\n${scan}` +
+			"\n\nCompare them with this box, not with Duvet's window, and keep it open until this device is set up.",
 	};
 }
 
@@ -182,6 +309,11 @@ export function newKeysQuestion(finishing: boolean): Question {
 }
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/** A QR's bytes, from the text approval_begin gives (standard base64): what a phone that scans it fingerprints. */
+export function qrBytes(base64: string): Uint8Array | null {
+	return BASE64.test(base64) ? new Uint8Array(Buffer.from(base64, "base64")) : null;
+}
 /** The CBOR heads of what a commitment holds, as the core writes them: a 16-byte ID, a 32-byte key. */
 const BYTES_16 = [0x50];
 const BYTES_32 = [0x58, 0x20];

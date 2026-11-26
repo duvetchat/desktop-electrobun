@@ -5,7 +5,17 @@ import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
-import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, rotationQuestion, type Question } from "./confirm";
+import {
+	IDOK,
+	MB_DEFBUTTON2,
+	MB_OKCANCEL,
+	nativeConfirm,
+	nativeNotice,
+	newDeviceNotice,
+	rotationQuestion,
+	type Notice,
+	type Question,
+} from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 
 // Some of its cases run real cores, which a machine busy with other work takes past Bun's 5 s (#547), as fake-api's
@@ -158,6 +168,7 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 	const send = e2eBoundary({
 		start: null,
 		confirm: async () => false,
+		show: () => {},
 		...deps,
 		reply: (reply: E2eReply) => {
 			replies.push(reply);
@@ -329,6 +340,49 @@ describe("what asks the person first, outside the page", () => {
 		expect(await broken(question)).toBe(false);
 	});
 
+	test("a notice replaces the one shown, and none takes it away; without the core's platform nothing shows", () => {
+		const boxes: { title: string; closed: boolean }[] = [];
+		const show = nativeNotice({
+			platform: "win32",
+			open: ({ title }) => {
+				const box = { title, closed: false };
+				boxes.push(box);
+				return { close: () => (box.closed = true) };
+			},
+		});
+		show({ title: "one", message: "1" });
+		show({ title: "two", message: "2" });
+		expect(boxes).toEqual([
+			{ title: "one", closed: true },
+			{ title: "two", closed: false },
+		]);
+		show(null);
+		expect(boxes.at(-1)?.closed).toBe(true);
+		expect(() => nativeNotice({ platform: "linux" })({ title: "three", message: "3" })).not.toThrow();
+	});
+
+	// The real box, on Windows alone: it shows while Bun goes on (its loop below runs meanwhile), and closing takes it
+	// away. It shows over the screen for a moment.
+	test.skipIf(process.platform !== "win32")(
+		"on Windows a notice is the system's box, which holds nothing",
+		async () => {
+			const { dlopen, FFIType } = await import("bun:ffi");
+			const { FindWindowW } = dlopen("user32.dll", {
+				FindWindowW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+			}).symbols;
+			const wide = (text: string) => new Uint16Array([...Array.from(text, (char) => char.charCodeAt(0)), 0]);
+			const notice = newDeviceNotice({ code: "0000 1111 2222 3333", scan: "4444 5555 6666 7777" });
+			const up = () => Boolean(FindWindowW(wide("#32770"), wide(notice.title)));
+			const show = nativeNotice({ platform: "win32" });
+			show(notice);
+			for (let tries = 0; !up() && tries < 50; tries++) await Bun.sleep(100);
+			expect(up()).toBe(true);
+			show(null);
+			for (let tries = 0; up() && tries < 50; tries++) await Bun.sleep(100);
+			expect(up()).toBe(false);
+		},
+	);
+
 	// Round 3: the yes runs Bun's own verify_user, by the QR of the number its box showed, never the page's command; and
 	// what the page sends while the box is open waits for it, as every request waits for the one before.
 	test("after the yes, the core gets Bun's verify_user, by the QR of the number it showed, and nothing runs meanwhile", async () => {
@@ -434,7 +488,7 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		// What the person compares with the new device's screen: the fingerprint of what the core certifies.
 		expect(asked[1].message).toContain(await fingerprintOf(two.commitment));
 		expect(asked[1].message).not.toContain(await fingerprintOf(one.commitment));
-		expect(asked[1].message).toContain("its screen shows the same 16 characters");
+		expect(asked[1].message).toContain("it shows the same 16 characters");
 		expect((await approver.run({ cmd: "status" })).ok.device_list).toBe(before);
 
 		expect((await approver.run({ cmd: "approval_confirm", code })).ok).toHaveProperty("transfer");
@@ -458,6 +512,57 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		expect(asked[1].message).toContain(NEW_A);
 		expect(asked[1].message).toContain(await fingerprintOf(forged));
 		expect(asked[1].message).not.toContain(await fingerprintOf(device.commitment));
+	});
+
+	// #557: a script in the new device's page sends an attempt of its own, and draws its fingerprint where the page shows
+	// the core's. Bun shows the fingerprints of its own core's attempt in a box of its own, which the approver's box
+	// tells the person to compare with.
+	test("the new device's own box names its core's fingerprints, never those of an attempt its page sends", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		const begun = (await device.run({ cmd: "approval_begin" })).ok;
+		// The script's attempt: another core's keys and hash, under this device's ID.
+		const script = await newDevice(NEW_B);
+		const forged = withDevice(script.commitment, NEW_A);
+		const { asked, confirm } = person(true, false);
+		const approver = await approverOf(confirm);
+		const { code } = await reveal(approver, script, forged);
+		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
+
+		const own = notices.at(-1)?.message ?? "";
+		expect(own).toContain(await fingerprintOf(begun.commitment));
+		// The QR's bytes aren't the commitment's: a phone that scans it names the QR's own fingerprint.
+		expect(own).toContain(await fingerprintOf(begun.qr));
+		expect(own).not.toContain(await fingerprintOf(forged));
+		const approving = asked[1]?.message ?? "";
+		expect(approving).toContain(await fingerprintOf(forged));
+		expect(approving).not.toContain(await fingerprintOf(begun.commitment));
+		expect(approving).toContain("in a box of its own, outside its window");
+	});
+
+	test("the new device's box goes with its attempt: the next one replaces it, and its transfer taken closes it", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		const first = (await device.run({ cmd: "approval_begin" })).ok;
+		expect(notices.at(-1)?.message).toContain(await fingerprintOf(first.commitment));
+		const second = (await device.run({ cmd: "approval_begin" })).ok;
+		expect(notices.at(-1)?.message).toContain(await fingerprintOf(second.commitment));
+		expect(notices.at(-1)?.message).not.toContain(await fingerprintOf(first.commitment));
+
+		// The honest way through, by the code: the box stays while the approver confirms, and goes with the transfer.
+		const approver = await approverOf(person(true, true).confirm);
+		const { offer } = (await approver.run({ cmd: "approval_offer", commitment: second.commitment })).ok;
+		const { reveal: revealed } = (await device.run({ cmd: "approval_reveal", offer })).ok;
+		const { code } = (await approver.run({ cmd: "approval_check", reveal: revealed })).ok;
+		expect((await device.run({ cmd: "approval_accept", code })).ok).toEqual({});
+		const { transfer } = (await approver.run({ cmd: "approval_confirm", code })).ok;
+		expect(notices.at(-1)).not.toBeNull();
+		expect((await device.run({ cmd: "approval_receive", transfer })).ok).toHaveProperty("identity_key");
+		expect(notices.at(-1)).toBeNull();
 	});
 
 	test("an offer the core takes and Bun can't read leaves nothing to approve", async () => {
@@ -966,6 +1071,7 @@ describe("a reply Bun can't send", () => {
 			const send = e2eBoundary({
 				start: null,
 				confirm: async () => false,
+				show: () => {},
 				reply: (reply) => {
 					if (first) {
 						first = false;

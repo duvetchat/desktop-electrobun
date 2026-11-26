@@ -43,7 +43,7 @@ import { nativeLibraryPath } from "./native-library";
 import { coreLibraryPath } from "./e2e/library";
 import { startCore } from "./e2e/core";
 import { e2eBoundary } from "./e2e/rpc";
-import { nativeConfirm } from "./e2e/confirm";
+import { nativeConfirm, nativeNotice } from "./e2e/confirm";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -258,6 +258,7 @@ const e2e = e2eBoundary({
 				})
 		: null,
 	confirm: nativeConfirm({ platform: process.platform, owner: () => win.ptr, showMessageBox: Utils.showMessageBox }),
+	show: nativeNotice({ platform: process.platform }),
 	reply: (reply) => rpc.send.e2eReply(reply),
 });
 
