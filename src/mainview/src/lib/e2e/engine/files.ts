@@ -6,9 +6,15 @@
 // sender writes of a file is theirs: its name is cleaned, its type only says how it's waited for (its bytes say what it
 // is), its size bounds what's downloaded, and a dimension, a duration or a waveform that doesn't read as one goes.
 import { MAX_REQUEST_BYTES } from "$lib/api/api";
-import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
-import { cleanName, SNIFF_PREFIX, sniffType, WAVEFORM_SAMPLES, type EnvelopeFile } from "../conventions";
+import {
+	canonicalBytes,
+	cleanName,
+	SNIFF_PREFIX,
+	sniffType,
+	WAVEFORM_SAMPLES,
+	type EnvelopeFile,
+} from "../conventions";
 import { CoreError } from "../errors";
 import { ATTACHMENT_PART, PART_TAG, type CoreHost } from "../host";
 import { uuidv7 } from "../uuid";
@@ -200,14 +206,9 @@ function fileRef(value: unknown): FileRef | undefined {
 	return typeof size === "number" && size >= 0 ? { id, key, sha256, size } : undefined;
 }
 
-/** The bytes a base64 field holds, or null for one that doesn't read. */
+/** The bytes a base64 field holds, in the form the core writes it, or null for one that doesn't read. */
 function decoded(value: unknown): Uint8Array | null {
-	if (typeof value !== "string") return null;
-	try {
-		return base64Bytes(value);
-	} catch {
-		return null;
-	}
+	return typeof value === "string" ? canonicalBytes(value) : null;
 }
 
 /**

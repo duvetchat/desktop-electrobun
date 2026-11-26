@@ -3,6 +3,7 @@ import { base64Bytes } from "$lib/activity-thumbnail";
 import {
 	approvalFingerprint,
 	approvalFrameMessage,
+	canonicalBytes,
 	cleanName,
 	drawnAs,
 	messageEnvelope,
@@ -83,16 +84,55 @@ describe("the conventions between clients", () => {
 // What step 5's fuzzing found (PLAN-E2E-CLIENTES.md, «Lo que el paso 5 revisa»), which e2e-fuzz-corpus.json keeps too.
 describe("what the fuzzers found", () => {
 	// A surrogate's halves kept apart by a zero-width space: once it goes, they'd be U+E0001, a hidden tag character.
-	const apart = "\uDB40​\uDC01";
+	const apart = "\uDB40\u200B\uDC01";
 
 	test("a hidden character between a surrogate's halves leaves no hidden character of their own", () => {
-		expect(cleanName(`invoice${apart}.pdf`)).toBe("invoice��.pdf");
+		expect(cleanName(`invoice${apart}.pdf`)).toBe("invoice\uFFFD\uFFFD.pdf");
 	});
 
 	test("nor in a device's name, whose frame reads back as it was read", () => {
 		const frame = { duvet: "approval", step: "offer", data: "b2Y=", name: `Ana${apart}` } as const;
 		const read = readApprovalFrame(approvalFrameMessage(frame));
-		expect(read).toEqual({ ...frame, name: "Ana��" });
+		expect(read).toEqual({ ...frame, name: "Ana\uFFFD\uFFFD" });
 		expect(readApprovalFrame(approvalFrameMessage(read!))).toEqual(read);
+	});
+
+	describe("base64 is read only in the form the API and the core write it", () => {
+		const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		// Its last character before the padding with a bit set past the bytes, which a writer leaves at zero.
+		const stray = (base64: string) => {
+			const at = base64.replace(/=+$/, "").length - 1;
+			return base64.slice(0, at) + ALPHABET[ALPHABET.indexOf(base64[at]!) | 1] + base64.slice(at + 1);
+		};
+		// The same bytes without their padding, with a space or a line break in, and with a stray bit.
+		const others = (base64: string) => [
+			base64.replace(/=+$/, ""),
+			` ${base64}`,
+			`${base64.slice(0, 4)}\n${base64.slice(4)}`,
+			stray(base64),
+		];
+
+		test("of text alone: a value that isn't, as the server's JSON can give one, reads as none and throws nothing", () => {
+			// What JSON.parse makes of {"toString": 1}: an object that can't become text.
+			const odd = JSON.parse('{"toString": 1}');
+			expect(canonicalBytes(odd)).toBeNull();
+			expect(readApprovalFrame(odd)).toBeNull();
+		});
+
+		test("an approval frame's, and its data's", () => {
+			const frame = { duvet: "approval", step: "offer", data: "b2Y=" } as const;
+			const message = approvalFrameMessage(frame);
+			expect(readApprovalFrame(message)).toEqual(frame);
+			for (const other of others(message)) expect(readApprovalFrame(other)).toBeNull();
+			expect(readApprovalFrame(approvalFrameMessage({ ...frame, data: stray(frame.data) }))).toBeNull();
+		});
+
+		test("a voice note's waveform", () => {
+			const note = (waveform: string) =>
+				drawnAs({ text: null, attachments: [{ type: "audio/ogg", duration_ms: 1200, waveform }] }, false);
+			const waveform = btoa(String.fromCharCode(...new Array(64).fill(7)));
+			expect(note(waveform)).toBe("voice_note");
+			expect(note(stray(waveform))).toBe("message");
+		});
 	});
 });

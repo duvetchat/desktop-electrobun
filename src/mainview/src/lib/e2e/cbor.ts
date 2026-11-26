@@ -1,7 +1,7 @@
 // The CBOR the core writes its signed objects in (PLAN-E2E-API.md, its formats): read here only to tell which device a
 // certificate is for, as the inbox names a sender by it, and which devices a list names, which the device list's own
 // changes leave out or keep (engine/devices.ts); the core checks every signature. The fake API reads it too.
-import { base64Bytes } from "$lib/activity-thumbnail";
+import { canonicalBytes } from "./conventions";
 
 export type Cbor = number | string | boolean | null | Uint8Array | Cbor[] | Map<string, Cbor>;
 
@@ -72,34 +72,21 @@ export const asUuid = (value: Cbor | null | undefined) => {
 
 /** The device a certificate names (its signed object in base64: `{body, sig}`, its body's `device`), or null. */
 export function certificateDevice(certificate: string): string | null {
-	let signed: Uint8Array;
-	try {
-		signed = base64Bytes(certificate);
-	} catch {
-		return null;
-	}
-	const body = asBytes(asMap(cbor(signed))?.get("body"));
+	const signed = canonicalBytes(certificate);
+	const body = signed && asBytes(asMap(cbor(signed))?.get("body"));
 	return body ? asUuid(asMap(cbor(body))?.get("device")) : null;
 }
 
 /** The device an approval's commitment asks to have approved (its CBOR map in base64, its `device`), or null. */
 export function commitmentDevice(commitment: string): string | null {
-	try {
-		return asUuid(asMap(cbor(base64Bytes(commitment)))?.get("device"));
-	} catch {
-		return null;
-	}
+	const bytes = canonicalBytes(commitment);
+	return bytes && asUuid(asMap(cbor(bytes))?.get("device"));
 }
 
 /** The devices a device list names (its signed object in base64: `{body, sig}`, its body's `devices`), or null. */
 export function listDevices(list: string): string[] | null {
-	let signed: Uint8Array;
-	try {
-		signed = base64Bytes(list);
-	} catch {
-		return null;
-	}
-	const body = asBytes(asMap(cbor(signed))?.get("body"));
+	const signed = canonicalBytes(list);
+	const body = signed && asBytes(asMap(cbor(signed))?.get("body"));
 	const devices = body ? asMap(cbor(body))?.get("devices") : null;
 	if (!Array.isArray(devices)) return null;
 	const ids = devices.map(asUuid).filter((id) => id !== null);

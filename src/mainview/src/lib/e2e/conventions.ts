@@ -65,8 +65,7 @@ export function drawnAs(
 		file.type.startsWith("audio/") &&
 		typeof file.duration_ms === "number" &&
 		typeof file.waveform === "string" &&
-		BASE64.test(file.waveform) &&
-		base64Bytes(file.waveform).length === WAVEFORM_SAMPLES;
+		canonicalBytes(file.waveform)?.length === WAVEFORM_SAMPLES;
 	return voice ? "voice_note" : "message";
 }
 
@@ -240,6 +239,20 @@ const isStep = (value: unknown): value is ApprovalStep => typeof value === "stri
 const FRAME_FIELDS: readonly string[] = ["duvet", "step", "data", "name"];
 // Standard base64, padded, as the core writes binaries.
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * The bytes base64 holds, read only in the form the core and the API write it: standard, padded, and with no bit set
+ * past its bytes. atob takes spaces, a missing padding and stray bits as well, which the mobile app's base64Decode
+ * refuses, as that takes the URL's alphabet and an escaped padding, which atob refuses: in its one form, both read the
+ * same bytes of the same text. Null for any other text, and for what isn't text: the server's JSON can give anything
+ * in its place, {"toString": 1} too, which a regular expression throws on as it makes it text.
+ */
+export function canonicalBytes(text: string): Uint8Array<ArrayBuffer> | null {
+	if (typeof text !== "string" || !BASE64.test(text)) return null;
+	const bytes = base64Bytes(text);
+	return bytesBase64(bytes) === text ? bytes : null;
+}
+
 /** The most characters a device's name has, counted by code point. */
 export const MAX_DEVICE_NAME = 64;
 
@@ -255,10 +268,12 @@ export function approvalFrameMessage({ step, data, name }: ApprovalFrame): strin
  * any, and nothing else.
  */
 export function readApprovalFrame(message: string): ApprovalFrame | null {
+	const bytes = canonicalBytes(message);
+	if (!bytes) return null;
 	let value: unknown;
 	try {
-		// A byte order mark stays for JSON to refuse, as Dart's utf8.decode keeps it in the mobile app.
-		value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(base64Bytes(message)));
+		// A byte order mark stays for JSON to refuse, as the mobile app refuses one before Dart's utf8.decode drops it.
+		value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
 	} catch {
 		return null;
 	}
@@ -266,7 +281,7 @@ export function readApprovalFrame(message: string): ApprovalFrame | null {
 	if (Object.keys(value).some((key) => !FRAME_FIELDS.includes(key))) return null;
 	const [duvet, step, data, name]: unknown[] = FRAME_FIELDS.map((field) => Reflect.get(value, field));
 	if (duvet !== "approval" || !isStep(step)) return null;
-	if (typeof data !== "string" || !data || !BASE64.test(data)) return null;
+	if (typeof data !== "string" || !data || !canonicalBytes(data)) return null;
 	// The approving device shows the name: it loses what doesn't show, as a file's name does.
 	const shown = typeof name === "string" ? visible(name).trim() : name;
 	if (shown !== undefined && (typeof shown !== "string" || !shown || Array.from(shown).length > MAX_DEVICE_NAME)) {

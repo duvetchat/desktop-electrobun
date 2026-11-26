@@ -791,3 +791,24 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 		SLOW,
 	);
 });
+
+// What step 5's fuzzing found (PLAN-E2E-CLIENTES.md, «Lo que el paso 5 revisa»), which e2e-fuzz-corpus.json keeps too.
+describe("what the fuzzers found", () => {
+	test("a file's waveform and thumbnail are kept only as base64 in the form the core writes it", () => {
+		const file = {
+			id: "0193a4b2-0000-7000-8000-0000000000c3",
+			key: "a2V5",
+			sha256: "c2hh",
+			name: "a.ogg",
+			type: "audio/ogg",
+			size: 3,
+		};
+		const waveform = bytesBase64(new Uint8Array(64).fill(7));
+		const thumbnail = bytesBase64(new Uint8Array(100).fill(9));
+		expect(shownFile({ ...file, waveform, thumbnail })).toMatchObject({ waveform, thumbnail });
+		// Without its padding, and with a space in front: neither is kept.
+		const shown = shownFile({ ...file, waveform: waveform.replace(/=+$/, ""), thumbnail: ` ${thumbnail}` });
+		expect(shown).not.toHaveProperty("waveform");
+		expect(shown).not.toHaveProperty("thumbnail");
+	});
+});
