@@ -20,7 +20,8 @@
 		type FriendRequest,
 		type Friend,
 	} from "$lib/api/friends";
-	import { getConversations, createDM, createGroup } from "$lib/api/conversations";
+	import { getConversations } from "$lib/api/conversations";
+	import { createDM, createGroup } from "$lib/e2e/engine.svelte";
 	import {
 		UserPlus,
 		UserCheck,

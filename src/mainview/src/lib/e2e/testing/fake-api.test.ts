@@ -899,6 +899,105 @@ describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
 		expect(addedAgain).toMatchObject({ status: 201, body: added.body });
 	});
 
+	test("a leave's statement has the API propose its leaves' removals, which a member's commit makes", async () => {
+		const { fake, ana, bo, a, b, conversation } = await dmWithGroup("group");
+		const members = `${CONVERSATIONS}/${conversation}/members`;
+		// Bo leaves with his statement: he's off the list at once, the members hear it, and the API proposes his leaf's
+		// removal as the group's external sender, with the statement.
+		const { statement } = await b.host.handle<{ statement: string }>({ cmd: "leave", conversation_id: conversation });
+		expect((await call(fake, b.token, "DELETE", `${members}/@me`, { statement })).status).toBe(204);
+		expect((await conversationOf(fake, a, conversation)).members.map((m: { user_id: string }) => m.user_id)).toEqual([
+			ana,
+		]);
+		const proposal = a.heard.findLast((event) => event.type === "MLS_PROPOSAL");
+		expect(proposal?.data).toMatchObject({ conversation_id: conversation, generation: 0, epoch: 1 });
+		expect(proposal?.data.entry).toMatchObject({ seq: 3, kind: "proposal", statement });
+		// Sent again, the leave is a 403: he isn't a member any more.
+		expect((await call(fake, b.token, "DELETE", `${members}/@me`, { statement })).status).toBe(403);
+
+		// Ana's core takes the proposal, signed by the API's key, and its statement: a commit is due, which takes Bo out.
+		// She still reads his identity, as his leaf was in the group.
+		expect((await call(fake, a.token, "GET", `/api/users/${bo}/identity`)).status).toBe(200);
+		// Her core has its creation's commit; the queue from there brings Bo's welcome, then the proposal.
+		const after = await call(fake, a.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=1`);
+		expect(after.body.entries.at(-1)).toEqual(proposal!.data.entry);
+		const applied = await a.host.handle<{ results: { kind: string; result: string }[]; commit_due: boolean }>({
+			...{ cmd: "apply", conversation_id: conversation, entries: after.body.entries },
+			external_sender: fake.externalSender,
+		});
+		expect(applied.results.at(-1)).toMatchObject({ kind: "proposal", result: "applied" });
+		expect(applied.commit_due).toBe(true);
+		const made = await a.host.handle<{ commit: string; group_info: string }>({
+			...{ cmd: "commit_pending", conversation_id: conversation },
+		});
+		const taken = await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/mls/commits`, {
+			...{ generation: 0, epoch: 1, ...made },
+		});
+		expect(taken).toMatchObject({ status: 201, body: { seq: 4, epoch: 2 } });
+		await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: 4 });
+		const held = await a.host.handle<{ members: { user_id: string }[]; devices: unknown[] }>({
+			...{ cmd: "group", conversation_id: conversation },
+		});
+		expect({ members: held.members.map((m) => m.user_id), devices: held.devices.length }).toEqual({
+			members: [ana],
+			devices: 1,
+		});
+		// His leaf is out: nothing more is proposed.
+		const queue = await call(fake, a.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=4`);
+		expect(queue.body.entries).toEqual([]);
+	}, 30_000);
+
+	test("a removal still pending is proposed again in the epoch the next commit makes", async () => {
+		const { fake, a, b, conversation } = await dmWithGroup("group");
+		const { statement } = await b.host.handle<{ statement: string }>({ cmd: "leave", conversation_id: conversation });
+		await call(fake, b.token, "DELETE", `${CONVERSATIONS}/${conversation}/members/@me`, { statement });
+		// Ana renews her leaf without taking Bo out: the removal goes again, in the epoch her commit made.
+		const made = await a.host.handle<{ commit: string; group_info: string }>({
+			...{ cmd: "refresh", conversation_id: conversation },
+		});
+		await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/mls/commits`, {
+			...{ generation: 0, epoch: 1, ...made },
+		});
+		const proposals = a.heard.filter((event) => event.type === "MLS_PROPOSAL").map((event) => event.data.epoch);
+		expect(proposals).toEqual([1, 2]);
+	}, 30_000);
+
+	test("a conversation is made as the API makes one: a DM once, a group of 20 at most", async () => {
+		const fake = new FakeApi();
+		const [ana, bo] = [fake.addUser(), fake.addUser()];
+		const a = await device(fake, ana);
+		const b = await device(fake, bo);
+		// A DM: new, with no group, and its members hear of it; asked again, it's the same one.
+		const dm = await call(fake, a.token, "POST", CONVERSATIONS, { type: 1, user_id: bo });
+		expect(dm).toMatchObject({ status: 201, body: { type: 1, owner_id: ana, mls: null } });
+		expect(b.heard.findLast((event) => event.type === "CONVERSATION_CREATE")?.data.id).toBe(dm.body.id);
+		expect((await call(fake, b.token, "POST", CONVERSATIONS, { type: 1, user_id: ana })).body.id).toBe(dm.body.id);
+		// A group: its owner first, then those it names, 20 with the owner at most.
+		const others = Array.from({ length: 19 }, () => fake.addUser());
+		const group = await call(fake, a.token, "POST", CONVERSATIONS, { type: 2, name: "all", user_ids: others });
+		expect(group.body.members.map((m: { user_id: string }) => m.user_id)).toEqual([ana, ...others]);
+		const past = await call(fake, a.token, "POST", CONVERSATIONS, { type: 2, user_ids: [...others, bo] });
+		expect(past).toMatchObject({ status: 400, body: { error: "a group can have 20 members at most" } });
+	}, 30_000);
+
+	test("a friend's key packages can be claimed, and an identity says whether its user is active", async () => {
+		const fake = new FakeApi();
+		const [ana, bo] = [fake.addUser(), fake.addUser()];
+		const a = await device(fake, ana);
+		const b = await device(fake, bo);
+		await publishIdentity(fake, a);
+		await publishIdentity(fake, b);
+		await uploadKeyPackages(fake, b);
+		const claim = () => call(fake, a.token, "POST", `/api/users/${bo}/key-packages/claim`);
+		expect((await claim()).status).toBe(403);
+		fake.befriend(ana, bo);
+		expect((await claim()).body.key_packages.map((kp: { device_id: string }) => kp.device_id)).toEqual([b.id]);
+		const read = async () => (await call(fake, a.token, "GET", `/api/users/identities?ids=${bo}`)).body[0];
+		expect(await read()).toMatchObject({ user_id: bo, active: true });
+		fake.setActive(bo, false);
+		expect(await read()).toMatchObject({ user_id: bo, active: false });
+	}, 30_000);
+
 	test("a client without encryption is told to update, but for the configuration and the list", async () => {
 		const fake = new FakeApi();
 		const { token } = fake.signIn(fake.addUser());

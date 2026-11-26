@@ -57,6 +57,12 @@ export const NOTICES = {
 	file_play: "Play video",
 	file_show: "Show picture",
 	file_named: "{name}: {status}",
+	// A conversation's members (task 22).
+	group_full: "A group can have 20 members at most.",
+	restart_leaves_out: "Restarting leaves out {names}, who are no longer in this conversation.",
+	restart_refused: "Encryption can't restart here yet.",
+	members_now: "Members now: {names}",
+	change_unanswered: "No answer came yet: Duvet tries again on its own.",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

@@ -9,9 +9,12 @@ import { tags } from "../server-render";
 // the group goes on; else why it can't, in the notices' words, and what the person can do about it.
 const { default: ConversationState } = await import("./ConversationState.svelte");
 
+const NAMES: Record<string, string> = { bo: "Bo", cy: "Cy" };
 const props = (state: State | null) => ({
 	conversationState: state,
 	ownerName: "Ana",
+	memberNames: ["Ana", "Bo", "Cy"],
+	memberName: (userId: string) => NAMES[userId] ?? userId,
 	onRestart: async () => {},
 	onAccept: async () => {},
 });
@@ -46,10 +49,17 @@ describe("a conversation's state", () => {
 		expect(drawn({ name: "wait_rejoin" })).toContain(NOTICES.wait_rejoin);
 	});
 
-	test("members that changed since the device last saw them, and the person's yes", () => {
+	test("members that changed since the device last saw them, who they are now, and the person's yes", () => {
 		const changed = drawn({ name: "members_changed" });
 		expect(changed).toContain(NOTICES.members_changed);
+		expect(changed).toContain(notice("members_now", { names: "Ana, Bo, and Cy" }));
 		expect(changed).toMatch(/<button [^>]*>\s*Open with these members\s*<\/button>/);
+	});
+
+	test("the members who can't receive what's sent yet, named, with nothing to tap", async () => {
+		const state: State = { name: "no_device", users: ["bo", "cy"] };
+		expect(drawn(state)).toContain(notice("no_device", { name: "Bo and Cy" }));
+		expect(await buttons(state)).toEqual([]);
 	});
 
 	test("says it in the notices' words", () => {
@@ -60,5 +70,7 @@ describe("a conversation's state", () => {
 		expect(en.e2e_wait_rejoin).toBe(NOTICES.wait_rejoin);
 		expect(en.e2e_members_changed).toBe(NOTICES.members_changed);
 		expect(en.e2e_members_accept).toBe(NOTICES.members_accept);
+		expect(en.e2e_members_now).toBe(NOTICES.members_now);
+		expect(en.e2e_no_device).toBe(NOTICES.no_device);
 	});
 });

@@ -6,8 +6,9 @@
 // awaited it runs first, and each is its data as it was when the request sent it; holdEvents gives any other order. It
 // reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the API does, but runs no validator: a
 // commit is taken by its generation and epoch alone, and of what it changes the fake knows only the devices its welcome
-// brings and the one an external commit adds.
-import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
+// brings and the one an external commit adds. As the groups' external sender it proposes the removal of the leaves of
+// who left, which it finds in the ratchet tree of the group's latest group info.
+import { createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
 import { asBytes, asMap, asUuid, cbor, type Cbor } from "../cbor";
@@ -162,24 +163,90 @@ const PRIVATE = 2;
 const WELCOME = 3;
 const GROUP_INFO = 4;
 
+/** A reader of MLS's TLS encoding (RFC 9420, its section 2.1): it throws past its bytes' end. */
+function tlsReader(bytes: Uint8Array) {
+	let at = 0;
+	const take = (n: number) => {
+		if (at + n > bytes.length) throw new Error("cut short");
+		return bytes.subarray(at, (at += n));
+	};
+	const uint = (n: number) => take(n).reduce((value, byte) => value * 256 + byte, 0);
+	// A vector's length takes 1, 2 or 4 bytes, as its first two bits say.
+	const vector = () => {
+		const first = uint(1);
+		const more = [0, 1, 3][first >> 6];
+		if (more === undefined) throw new Error("a length MLS never takes");
+		return take(more ? (first & 0x3f) * 256 ** more + uint(more) : first);
+	};
+	return { uint, vector, left: () => bytes.length - at };
+}
+
+/** A number in `bytes` bytes, big-endian, as TLS writes one. */
+const tlsUint = (n: number, bytes: number) =>
+	Array.from({ length: bytes }, (_, i) => Math.floor(n / 256 ** (bytes - 1 - i)) % 256);
+/** A vector as TLS writes it in MLS: its length in 1, 2 or 4 bytes, then its bytes. */
+function tlsVector(bytes: Uint8Array | number[]): number[] {
+	const n = bytes.length;
+	const length =
+		n < 0x40 ? [n] : n < 0x4000 ? [0x40 | (n >> 8), n & 0xff] : tlsUint(n, 4).map((b, i) => (i ? b : b | 0x80));
+	return [...length, ...bytes];
+}
+
+/**
+ * The devices with a leaf in the group a group info is of (RFC 9420's GroupInfo, its ratchet_tree extension), by their
+ * leaf index, each read from its credential, the device's certificate; with the group's ID and epoch. Null for anything
+ * that isn't a group info with its tree.
+ */
+function groupInfoLeaves(data: Uint8Array): { groupId: Uint8Array; epoch: number; leaves: Map<number, string> } | null {
+	try {
+		const r = tlsReader(data);
+		if (r.uint(2) !== 1 || r.uint(2) !== GROUP_INFO) return null;
+		r.uint(4); // the context's version and cipher suite
+		const groupId = r.vector();
+		const epoch = r.uint(8);
+		for (let skipped = 0; skipped < 3; skipped++) r.vector(); // the tree hash, the transcript hash, the extensions
+		const extensions = tlsReader(r.vector());
+		let tree: Uint8Array | null = null;
+		while (extensions.left() > 0) {
+			const type = extensions.uint(2);
+			const value = extensions.vector();
+			if (type === 2) tree = value;
+		}
+		if (!tree) return null;
+		// The extension's data is the tree, a vector of optional nodes.
+		const nodes = tlsReader(tlsReader(tree).vector());
+		const leaves = new Map<number, string>();
+		for (let index = 0; nodes.left() > 0; index++) {
+			if (nodes.uint(1) === 0) continue; // a blank node
+			const kind = nodes.uint(1);
+			if (kind === 2) {
+				for (let field = 0; field < 3; field++) nodes.vector(); // a parent: its key, parent hash and unmerged leaves
+				continue;
+			}
+			if (kind !== 1) return null;
+			nodes.vector(); // its encryption key
+			nodes.vector(); // its signature key
+			const identity = nodes.uint(2) === 1 ? nodes.vector() : (nodes.vector(), null);
+			for (let field = 0; field < 5; field++) nodes.vector(); // its capabilities
+			const source = nodes.uint(1);
+			if (source === 1)
+				nodes.uint(16); // a key package's lifetime
+			else if (source === 3) nodes.vector(); // a commit's parent hash
+			nodes.vector(); // its extensions
+			nodes.vector(); // its signature
+			const device =
+				identity && asUuid(asMap(cbor(asBytes(asMap(cbor(identity))?.get("body")) ?? identity))?.get("device"));
+			if (device) leaves.set(index / 2, device);
+		}
+		return { groupId, epoch, leaves };
+	} catch {
+		return null;
+	}
+}
+
 /** What the API reads of an MLS message (RFC 9420): its wire format, and its group, epoch and sender or content. */
 function framing(data: Uint8Array): Framing | null {
-	const reader = (bytes: Uint8Array) => {
-		let at = 0;
-		const take = (n: number) => {
-			if (at + n > bytes.length) throw new Error("cut short");
-			return bytes.subarray(at, (at += n));
-		};
-		const uint = (n: number) => take(n).reduce((value, byte) => value * 256 + byte, 0);
-		// A vector's length takes 1, 2 or 4 bytes, as its first two bits say.
-		const vector = () => {
-			const first = uint(1);
-			const more = [0, 1, 3][first >> 6];
-			if (more === undefined) throw new Error("a length MLS never takes");
-			return take(more ? (first & 0x3f) * 256 ** more + uint(more) : first);
-		};
-		return { uint, vector, left: () => bytes.length - at };
-	};
+	const reader = tlsReader;
 	try {
 		const r = reader(data);
 		if (r.uint(2) !== 1) return null;
@@ -428,6 +495,10 @@ interface Conversation {
 	leaves: Map<string, number>;
 	/** What each commit taken answered, by its bytes: the same commit again gets it. */
 	commits: Map<string, { seq: number; generation: number; epoch: number; welcome_seq?: number }>;
+	/** Who left its group, by their leave statement, while a leaf of theirs is in it: their removals are proposed. */
+	leavers: Map<string, string>;
+	/** The removals proposed, by generation, epoch and leaf: one an epoch. */
+	proposed: Set<string>;
 }
 
 interface Segment {
@@ -540,10 +611,20 @@ export class FakeApi {
 	#gates: { match: RouteMatch; count: number; waiting: (() => void)[] }[] = [];
 	#routes: Route[];
 	#lastId = "";
+	/** The external sender's own key, which signs its proposals. */
+	readonly #senderKey: KeyObject;
+	/** Pairs of friends, each as its two IDs in order. */
+	#friends = new Set<string>();
+	/** Users none of whose listed devices connected lately (setActive). */
+	#inactive = new Set<string>();
+	/** Users from whom the API keeps leave statements (hideStatements). */
+	#hidden = new Set<string>();
 
 	constructor() {
-		const key = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!;
+		const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+		const key = publicKey.export({ format: "jwk" }).x!;
 		this.externalSender = bytesBase64(base64Bytes(key.replace(/-/g, "+").replace(/_/g, "/").padEnd(44, "=")));
+		this.#senderKey = privateKey;
 		this.#routes = this.#table();
 	}
 
@@ -597,8 +678,39 @@ export class FakeApi {
 				updated_at: at,
 			})),
 			...{ entries: [], messages: [], deleted: new Set(), leaves: new Map(), commits: new Map() },
+			...{ leavers: new Map(), proposed: new Set() },
 		});
 		return id;
+	}
+
+	/** Two users become friends: each may claim the other's key packages and read their identity, as the API allows. */
+	befriend(a: string, b: string) {
+		this.#friends.add([a, b].sort().join(":"));
+	}
+
+	/** Whether any listed device of the user's connected lately, as their identity's `active` says (decision 14). */
+	setActive(user: string, active: boolean) {
+		if (active) this.#inactive.delete(user);
+		else this.#inactive.add(user);
+	}
+
+	/**
+	 * The API keeps leave statements from the user from now on: the proposals they hear and read come without them, as
+	 * a server that would have their devices miss someone's leaving.
+	 */
+	hideStatements(user: string) {
+		this.#hidden.add(user);
+	}
+
+	/**
+	 * The conversation's members change as the server alone changes them: these users are taken out of it, with no
+	 * commit and no statement, as a server that skips its rules would.
+	 */
+	dropMembers(conversationId: string, users: string[]) {
+		const conv = this.#conversations.get(conversationId);
+		if (!conv) throw new Error(`no conversation ${conversationId}`);
+		conv.members = conv.members.filter((m) => !users.includes(m.user_id));
+		if (users.includes(conv.owner_id) && conv.members[0]) conv.owner_id = conv.members[0].user_id;
 	}
 
 	/**
@@ -907,6 +1019,7 @@ export class FakeApi {
 				({ session, device }) => ok(this.#conversationsOf(session.user).map((c) => this.#view(c, device))),
 				true,
 			),
+			route("POST", `${me}/conversations`, "session", (ctx) => this.#createConversation(ctx)),
 			route("GET", `${conv}/mls/group-info`, "listed", (ctx) => {
 				const { group } = this.#memberOf(ctx);
 				if (!group) throw fail(404, "no group yet");
@@ -916,7 +1029,9 @@ export class FakeApi {
 				const answer = this.#commit(this.#memberOf(ctx), ctx, "commits");
 				return ok(answer, 201);
 			}),
-			route("GET", `${conv}/mls/queue`, "device", (ctx) => this.#queue(this.#memberOf(ctx), ctx.query)),
+			route("GET", `${conv}/mls/queue`, "device", (ctx) =>
+				this.#queue(this.#memberOf(ctx), ctx.query, ctx.session.user),
+			),
 			route("POST", `${conv}/members`, "listed", (ctx) => this.#addMember(ctx)),
 			route("DELETE", `${conv}/members/@me`, "listed", (ctx) => this.#leave(ctx)),
 			route("DELETE", `${conv}/members/(?<user>${UUID_PATH})`, "listed", (ctx) => this.#removeMember(ctx)),
@@ -1096,9 +1211,19 @@ export class FakeApi {
 	// -------------------------------------------------------------------------------------------------------------
 	// Identities and device lists.
 
-	/** Who may read a user's identity: themselves and whoever shares a conversation with them. */
+	/**
+	 * Who may read a user's identity, as the API's GetIdentities: themselves, a friend, whoever shares a conversation
+	 * with them, and the members of a conversation where a device of theirs has had a leaf, who may have left it.
+	 */
 	#mayRead(viewer: string, user: string) {
-		return viewer === user || this.#shareConversation(viewer, user);
+		const hadLeaf = this.#conversationsOf(viewer).some((conv) =>
+			[...conv.leaves.keys()].some((id) => this.#devices.get(id)?.user === user),
+		);
+		return viewer === user || this.#friendsWith(viewer, user) || this.#shareConversation(viewer, user) || hadLeaf;
+	}
+
+	#friendsWith(a: string, b: string) {
+		return this.#friends.has([a, b].sort().join(":"));
 	}
 
 	#identityView(user: string) {
@@ -1114,8 +1239,9 @@ export class FakeApi {
 				identity_key: bytesBase64(identity.identityKey),
 				device_list: bytesBase64(identity.deviceList),
 			},
-			// shortcut: every user is active, as if a listed device connected lately; a test of deviceless members sets it.
-			...{ device_list_version: identity.version, certificates, active: true, changed_at: identity.changed_at },
+			// A user is active, as if a listed device connected lately, unless a test of deviceless members says not.
+			...{ device_list_version: identity.version, certificates, changed_at: identity.changed_at },
+			active: !this.#inactive.has(user),
 		};
 	}
 
@@ -1288,7 +1414,11 @@ export class FakeApi {
 	#claimKeyPackages({ session, device, params }: Context): Answer {
 		const user = params.user!;
 		if (!this.#users.has(user)) throw fail(404, "user not found");
-		if (user !== session.user && !this.#shareConversation(session.user, user)) {
+		if (
+			user !== session.user &&
+			!this.#friendsWith(session.user, user) &&
+			!this.#shareConversation(session.user, user)
+		) {
 			throw fail(
 				403,
 				"only your own key packages, a friend's, or those of someone you share a conversation with can be claimed",
@@ -1400,6 +1530,14 @@ export class FakeApi {
 		return added;
 	}
 
+	/** An entry as the user sees it: a proposal without its statement for one the API keeps statements from. */
+	#shownTo(user: string, entry: Entry): Entry {
+		if (!this.#hidden.has(user) || entry.statement === undefined) return entry;
+		const shown = { ...entry };
+		delete shown.statement;
+		return shown;
+	}
+
 	/** An entry as an event carries it: without its data past 16 KiB, or when the switch says so. */
 	#forEvent(entry: Entry) {
 		const { data, ...rest } = entry;
@@ -1423,7 +1561,7 @@ export class FakeApi {
 		};
 	}
 
-	#queue(conv: Conversation, query: URLSearchParams): Answer {
+	#queue(conv: Conversation, query: URLSearchParams, viewer: string): Answer {
 		// As the API binds them (its MlsQueueQuery): a number from 0, and from 1 to 500 of them.
 		const after = query.has("after") ? Number(query.get("after")) : 0;
 		const limit = query.has("limit") ? Number(query.get("limit")) : 200;
@@ -1443,7 +1581,8 @@ export class FakeApi {
 			entries.push(entry);
 		}
 		const { generation, epoch } = conv.group;
-		return ok({ entries, last_seq: conv.seq, floor_seq: conv.floor, generation, epoch });
+		const shown = entries.map((entry) => this.#shownTo(viewer, entry));
+		return ok({ entries: shown, last_seq: conv.seq, floor_seq: conv.floor, generation, epoch });
 	}
 
 	/**
@@ -1475,8 +1614,9 @@ export class FakeApi {
 		const welcomed = welcome && framing(welcome);
 		if (welcome && welcomed?.wire !== WELCOME) throw fail(400, "the welcome isn't an MLS welcome");
 		if (route === "commits" && welcome && !create) throw fail(400, "a welcome only comes with a group's creation");
-		if (route === "add" && (!welcome || create)) throw fail(400, "an addition brings its welcome");
-		if (route === "remove" && (welcome || create)) throw fail(400, "a removal brings no welcome");
+		// An addition's welcome brings the user's devices: one with none has none (they join later).
+		if (route !== "commits" && create) throw fail(400, "the members routes change a group that exists");
+		if (route === "remove" && welcome) throw fail(400, "a removal brings no welcome");
 
 		const sent = conv.commits.get(body.commit);
 		if (sent) return sent;
@@ -1537,7 +1677,89 @@ export class FakeApi {
 			};
 			this.#emit(user, "MLS_WELCOME", data);
 		}
+		// The removals still pending go again in the epoch it makes, as an epoch's proposals end with it.
+		this.#proposeRemovals(conv);
 		return answer;
+	}
+
+	/**
+	 * The API's proposals, as the groups' external sender, of the removal of each leaf that who left still has in the
+	 * group, with their statement (PLAN-E2E-API.md, «Rutas», F): in its epoch now, once each, to its members. A leaver
+	 * whose leaves are all out is forgotten.
+	 */
+	#proposeRemovals(conv: Conversation) {
+		const { group } = conv;
+		const held = group && groupInfoLeaves(base64Bytes(group.group_info));
+		if (!group || !held || !conv.leavers.size) return;
+		for (const [user, statement] of conv.leavers) {
+			const leaves = [...held.leaves].filter(([, device]) => this.#devices.get(device)?.user === user);
+			if (!leaves.length) conv.leavers.delete(user);
+			for (const [leaf] of leaves) {
+				const key = `${group.generation}:${group.epoch}:${leaf}`;
+				if (conv.proposed.has(key)) continue;
+				conv.proposed.add(key);
+				const data = this.#removalProposal(held.groupId, held.epoch, leaf);
+				const entry = this.#addEntry(conv, {
+					...{ kind: "proposal", data, generation: group.generation, epoch: group.epoch },
+					statement,
+				});
+				const proposal = { conversation_id: conv.id, generation: group.generation, epoch: group.epoch };
+				for (const member of conv.members) {
+					const shown = this.#forEvent(this.#shownTo(member.user_id, entry));
+					this.#emit(member.user_id, "MLS_PROPOSAL", { ...proposal, entry: shown });
+				}
+			}
+		}
+	}
+
+	/**
+	 * An external sender's proposal to remove a leaf (RFC 9420, its PublicMessage), as the API's validator makes one
+	 * (OpenMLS's ExternalProposal::new_remove): the group's first external sender, signed with its key over the content
+	 * alone, as an external sender's signature covers no group context.
+	 */
+	#removalProposal(groupId: Uint8Array, epoch: number, leaf: number): string {
+		const content = [
+			...[...tlsVector(groupId), ...tlsUint(epoch, 8)],
+			...[2, ...tlsUint(0, 4)], // the sender: external, the group's first
+			...tlsVector([]), // no authenticated data
+			...[2, ...tlsUint(3, 2), ...tlsUint(leaf, 4)], // a proposal: a Remove of the leaf
+		];
+		const framed = [...tlsUint(1, 2), ...tlsUint(PUBLIC, 2), ...content];
+		const label = new TextEncoder().encode("MLS 1.0 FramedContentTBS");
+		const signature = sign(null, new Uint8Array([...tlsVector(label), ...tlsVector(framed)]), this.#senderKey);
+		return bytesBase64(new Uint8Array([...framed, ...tlsVector([...signature])]));
+	}
+
+	/**
+	 * A new conversation, as the API's CreateConversation makes it: a DM with another user (the one they have, if they
+	 * have one: 201 with its group), or a group of the session's user, its owner, and those it names, 20 at most with
+	 * the owner; its members hear CONVERSATION_CREATE of a new one. It has no group yet.
+	 */
+	#createConversation({ session, device, body }: Context): Answer {
+		// shortcut: no friendship is asked, as the fake keeps none for conversations.
+		const users = (ids: string[]) => {
+			for (const id of ids) if (!this.#users.has(id)) throw fail(404, "user not found");
+			return ids;
+		};
+		let id: string;
+		if (body?.type === 1) {
+			const other = users([uuidIn(body.user_id, "user_id")])[0]!;
+			if (other === session.user) throw fail(400, "cannot create a DM with yourself");
+			const had = this.#conversationsOf(session.user).find(
+				(conv) => conv.type === 1 && conv.members.some((m) => m.user_id === other),
+			);
+			if (had) return ok(this.#view(had, device), 201);
+			id = this.addConversation({ type: "dm", members: [session.user, other] });
+		} else if (body?.type === 2) {
+			if (!Array.isArray(body.user_ids) || !body.user_ids.length) throw fail(400, "user_ids is required for groups");
+			const named = users(body.user_ids.map((user: unknown) => uuidIn(user, "user_ids")));
+			const members = [...new Set([session.user, ...named])];
+			if (members.length > LIMITS.group_members) throw fail(400, "a group can have 20 members at most");
+			id = this.addConversation({ type: "group", members, owner: session.user });
+		} else throw fail(400, "invalid conversation type (1=DM, 2=group)");
+		const made = this.#conversations.get(id)!;
+		for (const member of made.members) this.#emit(member.user_id, "CONVERSATION_CREATE", this.#view(made, null));
+		return ok(this.#view(made, device), 201);
 	}
 
 	/**
@@ -1581,14 +1803,17 @@ export class FakeApi {
 	}
 
 	/**
-	 * Leaving: the user's statement, signed by the session's device, of this conversation's generation and an epoch it
-	 * has reached; without a group, none. The owner passes to the member who came first.
+	 * Leaving: the user's statement, signed by the session's device, which has a leaf in the group, of this
+	 * conversation's generation and an epoch it has reached; without a group, none. A DM has no leaving. The owner passes
+	 * to the member who came first, and each leaf of the user's has its removal proposed, with the statement.
 	 */
 	#leave(ctx: Context): Answer {
 		const conv = this.#memberOf(ctx);
 		const { session, device, body } = ctx;
+		if (conv.type === 1) throw fail(400, "cannot remove members from a DM");
+		const statement = conv.group ? base64In(body?.statement, "statement", 1024) : null;
 		if (conv.group) {
-			const said = signedBody(LABEL.leave, bytesIn(body?.statement, "statement", 1024), device!.signatureKey);
+			const said = signedBody(LABEL.leave, base64Bytes(statement!), device!.signatureKey);
 			const epoch = said?.get("epoch");
 			const fits =
 				asUuid(said?.get("user")) === session.user &&
@@ -1598,10 +1823,20 @@ export class FakeApi {
 				typeof epoch === "number" &&
 				epoch <= conv.group.epoch;
 			if (!fits) throw fail(400, "the statement doesn't verify");
+			if (!conv.leaves.has(device!.id)) throw fail(403, "this device isn't in the group");
 		}
-		// shortcut: the API's proposals to remove the leaves of who left take its validator; none goes in the queue here.
+		const before = conv.members.map((m) => m.user_id);
 		conv.members = conv.members.filter((m) => m.user_id !== session.user);
-		if (conv.owner_id === session.user && conv.members[0]) conv.owner_id = conv.members[0].user_id;
+		const handed = conv.owner_id === session.user && conv.members[0];
+		if (handed) conv.owner_id = conv.members[0]!.user_id;
+		for (const user of before) {
+			this.#emit(user, "CONVERSATION_MEMBER_REMOVE", { conversation_id: conv.id, user_id: session.user });
+			if (handed) this.#emit(user, "CONVERSATION_UPDATE", { id: conv.id, name: null, owner_id: conv.owner_id });
+		}
+		if (statement) {
+			conv.leavers.set(session.user, statement);
+			this.#proposeRemovals(conv);
+		}
 		return NO_CONTENT;
 	}
 
@@ -1850,7 +2085,8 @@ export class FakeApi {
 		if (body?.kind !== "share" && body?.kind !== "catch_up") throw fail(400, "a share's kind is share or catch_up");
 		const parts = numberIn(body?.parts, "parts");
 		if (parts < 1 || parts > LIMITS.history_share_parts) throw fail(400, "a share has 1 to 64 parts");
-		if (this.#shares.has(params.share!)) throw fail(409, "share id in use");
+		// As the API's CheckShare: a catch-up has no range.
+		if (body.kind === "catch_up" && body.range) throw fail(400, "a catch-up has no range");
 		const share: Share = {
 			...{
 				id: params.share!,
@@ -1859,9 +2095,16 @@ export class FakeApi {
 				from_device_id: device!.id,
 				to_user_id: to,
 			},
-			...{ kind: body.kind, range: String(body.range), starts_at: timeIn(body.starts_at, "starts_at"), parts },
+			...{ kind: body.kind, range: String(body.range ?? ""), starts_at: timeIn(body.starts_at, "starts_at"), parts },
 			...{ size: numberIn(body.size, "size"), uploaded: new Map(), completed: false, acked: new Set() },
 		};
+		// The same package again is the one there, as the API answers it; another under its ID is a 409.
+		const there = this.#shares.get(share.id);
+		if (there) {
+			const same = (s: Share) => JSON.stringify(this.#shareView(s)) + s.from_device_id + s.to_user_id;
+			if (same(there) !== same(share)) throw fail(409, "history share id in use");
+			return ok(this.#shareView(there), 201);
+		}
 		this.#shares.set(share.id, share);
 		return ok(this.#shareView(share), 201);
 	}

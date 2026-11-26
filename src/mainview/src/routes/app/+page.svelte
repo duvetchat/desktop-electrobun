@@ -13,7 +13,6 @@
 	import SpaceEdge from "$lib/components/SpaceEdge.svelte";
 	import SpaceNav from "$lib/components/SpaceNav.svelte";
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
-	import { createDM } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { firstTextRoom, type OpenChats } from "$lib/nav";
@@ -83,7 +82,15 @@
 	import { startSystemNotifications } from "$lib/system-notifications";
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
-	import { encryption, keySaved, makeIdentity, startEngine, startOver, uploadLater } from "$lib/e2e/engine.svelte";
+	import {
+		createDM,
+		encryption,
+		keySaved,
+		makeIdentity,
+		startEngine,
+		startOver,
+		uploadLater,
+	} from "$lib/e2e/engine.svelte";
 	import type { Channel, PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";

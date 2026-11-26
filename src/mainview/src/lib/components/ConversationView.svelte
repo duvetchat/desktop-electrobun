@@ -74,10 +74,7 @@
 		sendConversationTyping,
 		sendConversationRecording,
 		deleteDirectMessage,
-		addConversationMember,
-		removeConversationMember,
 		updateConversation,
-		leaveConversation,
 		ackConversation,
 		type Conversation,
 		type ConversationMember,
@@ -133,16 +130,22 @@
 	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
 	import {
 		acceptMembers,
+		addMember,
 		deleteEncrypted,
 		discardEncrypted,
 		editEncrypted,
 		encryption,
 		heldBeforeEncrypted,
+		leaveConversation,
 		openConversation,
 		pendingEncrypted,
+		removeMember as removeGroupMember,
 		restartGroup,
 		sendEncrypted,
 	} from "$lib/e2e/engine.svelte";
+	import { MAX_MEMBERS } from "$lib/e2e/engine/members";
+	import { getBotUser } from "$lib/api/developer";
+	import { formatList } from "$lib/i18n/format";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -279,25 +282,74 @@
 		return friend.sender_id === user?.id ? friend.recipient_id : friend.sender_id;
 	}
 
+	// A group has 20 members at most, its owner among them (decision 17): a full one takes no one, which the sheet says
+	// before anything is asked.
+	const groupFull = $derived(conversation.members.length >= MAX_MEMBERS);
+
 	function openAddMemberModal() {
 		const memberIds = new Set(conversation.members.map((m) => m.user_id));
 		eligibleFriends = get(friends).filter((f) => !memberIds.has(getFriendOtherId(f)));
 		showAddMemberModal = true;
-		addMemberError = "";
+		addMemberError = groupFull ? t("e2e_group_full") : "";
 	}
 
+	// The owner's addition, one commit of exactly that user through the encryption engine (PLAN-E2E-CLIENTES.md, Task
+	// 22), whose devices come in by its welcome.
 	async function handleAddMember(userId: string) {
 		addMemberLoading = true;
 		addMemberError = "";
 		try {
-			const newMember = await addConversationMember(conversation.id, userId);
+			const newMember = await addMember(conversation.id, userId);
 			onMemberAdded?.(newMember);
 			showAddMemberModal = false;
 		} catch (err) {
-			addMemberError = getApiError(err, "Failed to add member");
+			addMemberError = membersRefusal(err, "Failed to add member");
 		} finally {
 			addMemberLoading = false;
 		}
+	}
+
+	// What the person reads of a change of the members that didn't go: the engine's own words, else the API's.
+	function membersRefusal(err: unknown, fallback: string): string {
+		if (err instanceof CoreError && err.code === "too_many_members") return t("e2e_group_full");
+		if (err instanceof CoreError && err.code === "unanswered") return t("e2e_change_unanswered");
+		if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");
+		return getApiError(err, fallback);
+	}
+
+	// A user's name as the app shows it: a member's; one who left, as the API has them, or their ID without that.
+	async function nameOf(userId: string): Promise<string> {
+		const member = conversation.members.find((m) => m.user_id === userId)?.user;
+		if (member) return member.alias ?? member.username;
+		const user = await getBotUser(userId).catch(() => null);
+		return user?.alias ?? user?.username ?? userId;
+	}
+
+	// Restart encryption (#46's client rule): whom it leaves out, those the group holds that the conversation no longer
+	// has, are named first, and it goes only on the person's yes; with nobody left out it goes at once. A restart this
+	// device can't make yet (a successor's, without a leave statement it needs) leaves the group blocked, and says so.
+	async function restartEncryption() {
+		const convId = conversation.id;
+		const restart = (confirmed: string[] = []) =>
+			restartGroup(convId, confirmed).catch((err: unknown) => {
+				if (err instanceof CoreError && err.code === "rule_violation") {
+					throw new Error(t("e2e_restart_refused"), { cause: err });
+				}
+				throw err;
+			});
+		let out: string[];
+		try {
+			out = await restart();
+		} catch (err) {
+			toast(getApiError(err, t("e2e_restart_refused")), "error");
+			return;
+		}
+		if (!out.length) return;
+		const names = formatList(await Promise.all(out.map(nameOf)));
+		await confirmAction(t("e2e_restart_leaves_out", { names }), t("e2e_blocked_restart"), async () => {
+			// Someone else left meanwhile: the person is asked again, from their next tap.
+			if ((await restart(out)).length) throw new Error(t("e2e_members_changed"));
+		});
 	}
 
 	async function renameGroup() {
@@ -923,8 +975,13 @@
 		return picked;
 	}
 
+	// The owner's removal, one commit that takes the member's devices out with them. A refusal shows in its dialog.
 	async function handleRemoveMember(userId: string) {
-		await removeConversationMember(conversation.id, userId);
+		try {
+			await removeGroupMember(conversation.id, userId);
+		} catch (err) {
+			throw new Error(membersRefusal(err, "Couldn't remove them from the group"), { cause: err });
+		}
 	}
 	// A group's owner takes members out of it, from their profile and their menu (#423).
 	const removeMember = $derived(conversation.type === 2 && isOwner ? handleRemoveMember : undefined);
@@ -1152,7 +1209,12 @@
 	<ConversationState
 		conversationState={groupState}
 		{ownerName}
-		onRestart={() => restartGroup(conversation.id)}
+		memberNames={conversation.members.map((member) => member.user.alias ?? member.user.username)}
+		memberName={(userId) => {
+			const member = conversation.members.find((m) => m.user_id === userId)?.user;
+			return member?.alias ?? member?.username ?? userId;
+		}}
+		onRestart={restartEncryption}
 		onAccept={() => acceptMembers(conversation.id)}
 	/>
 {/snippet}
@@ -1445,7 +1507,7 @@
 					type="button"
 					class="hover:bg-duvet-hover focus-visible:outline-duvet-accent flex items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition-colors focus-visible:outline-2 disabled:opacity-45 motion-reduce:transition-none"
 					onclick={() => handleAddMember(uid)}
-					disabled={addMemberLoading}
+					disabled={addMemberLoading || groupFull}
 				>
 					<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
 					<span class="flex min-w-0 flex-col">
