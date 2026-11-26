@@ -13,8 +13,16 @@ export const KEPT_LATER = "later";
 export const PENDING_SENDS = "pending_sends";
 /** The person's edits and deletions not answered yet, by conversation and message (send.ts): never their text. */
 export const PENDING_CHANGES = "pending_changes";
+/** The devices a change of keys under way takes off the list (devices.ts), which it runs again with, until it's uploaded. */
+export const KEPT_ROTATION = "rotation";
 /** What a new device of this installation starts without. */
-export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER, PENDING_SENDS, PENDING_CHANGES];
+export const DEVICE_RECORD = [
+	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION],
+];
+/** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
+export const TOLD_INACTIVE = "told_inactive";
+export const TOLD_ADDED = "told_added";
 /** The API's external sender as this installation first saw it (Ruling 32), which a new device of it keeps. */
 export const EXTERNAL_SENDER = "external_sender";
 

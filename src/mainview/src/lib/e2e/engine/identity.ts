@@ -56,7 +56,7 @@ export async function withIdentities<T>(parts: EngineParts, run: () => Promise<T
 
 /** observe_user of the user's own identity, as served: what the core made of it (`not_own_identity`, an identity this
  * device doesn't hold). */
-async function observeOwn({ host, user }: EngineParts, served: Identity): Promise<string | undefined> {
+export async function observeOwn({ host, user }: EngineParts, served: Identity): Promise<string | undefined> {
 	const { identity_key, device_list, certificates } = served;
 	const seen = await host.handle<{ state: string; reason?: string }>({
 		cmd: "observe_user",

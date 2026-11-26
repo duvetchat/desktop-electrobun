@@ -11,6 +11,7 @@ export const SETTINGS_SECTIONS = [
 	"activity",
 	"buckets",
 	"developer",
+	"devices",
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

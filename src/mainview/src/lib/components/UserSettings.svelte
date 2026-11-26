@@ -8,6 +8,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
+	import { changeKeys, encryption, removeDevice, removeThisDevice } from "$lib/e2e/engine.svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { whenIdle } from "$lib/lazy";
 	import { currentShell } from "$lib/platform";
@@ -26,6 +27,8 @@
 	} = $props();
 
 	const inWindow = isElectrobunWindow() && currentShell().settingsInWindows;
+	// The page's encryption engine, for Settings → Devices: a sheet of this page has it, a window of its own doesn't.
+	const e2e = { encryption, removeDevice, changeKeys, removeThisDevice };
 	let Screen = $state.raw(screen.value);
 
 	function show() {
@@ -62,5 +65,5 @@
 </script>
 
 {#if !inWindow && Screen}
-	<Screen bind:open mobileOnly={$ownMobileOnly} />
+	<Screen bind:open mobileOnly={$ownMobileOnly} {e2e} />
 {/if}

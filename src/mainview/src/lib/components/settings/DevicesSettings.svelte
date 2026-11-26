@@ -1,0 +1,219 @@
+<script module lang="ts">
+	import type { Device } from "$lib/api/e2e";
+	import { onlyDevice } from "$lib/e2e/engine/devices";
+	import type { EngineState } from "$lib/e2e/engine/engine";
+	import { t } from "$lib/i18n";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
+
+	/**
+	 * What Settings takes of the page's encryption engine (lib/e2e/engine.svelte.ts), which only the app's own page has:
+	 * the page that mounts Settings as a sheet hands it in, and a window of its own has none (nor its devices).
+	 */
+	export interface DevicesEngine {
+		readonly encryption: { readonly state: EngineState };
+		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
+		changeKeys(): Promise<void>;
+		removeThisDevice(): Promise<void>;
+	}
+
+	/**
+	 * Asks before this device's data goes (decision 13), saying what's lost: on the user's only listed device, what only
+	 * the recovery key brings back; on one listed beside others, that it stays on that list until another takes it off.
+	 * Without the list, it asks the most careful way.
+	 */
+	export function askToDeleteThisDevice(devices: readonly Device[] | null, run: () => Promise<void>): Promise<void> {
+		const own = devices?.find(({ current }) => current);
+		const key =
+			!devices || onlyDevice(devices)
+				? "e2e_delete_only_device_confirm"
+				: own?.listed
+					? "e2e_delete_listed_device_confirm"
+					: "e2e_delete_device_confirm";
+		return confirmAction(t(key), t("e2e_delete_device"), run);
+	}
+</script>
+
+<script lang="ts">
+	import {
+		KeyRound as KeyIcon,
+		MonitorSmartphone as DeviceIcon,
+		Trash2 as TrashIcon,
+		TriangleAlert as WarningIcon,
+	} from "@lucide/svelte";
+	import { getApiError } from "$lib/api/api";
+	import Button from "$lib/components/ui/Button.svelte";
+	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
+	import { formatDate } from "$lib/i18n/format";
+	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
+	import SettingsGroup from "./SettingsGroup.svelte";
+	import SettingsRow from "./SettingsRow.svelte";
+
+	// Settings → Devices (PLAN-E2E-CLIENTES.md, Task 24; decisions 13 and 52): the user's devices, as the API lists them,
+	// each one's client and when it was last seen, this one and those not seen in 45 days marked. On a device that's
+	// ready, another one can be taken off the account, with new keys for one that was lost, and the keys changed; this
+	// one's data can be deleted wherever it has some. Each act asks first; on the desktop, Bun asks again in its own box.
+	let {
+		devices,
+		failed = false,
+		encryption,
+		web,
+		storageKept = null,
+		now = Date.now(),
+		onReload,
+		onRemove,
+		onChangeKeys,
+		onRemoveThis,
+	}: {
+		/** The user's devices, null until they're read. */
+		devices: Device[] | null;
+		/** The list couldn't be read. */
+		failed?: boolean;
+		encryption: EngineState;
+		/** The web app, whose browser may not keep this device's data. */
+		web: boolean;
+		/** Whether the browser agreed to keep this device's data (navigator.storage.persisted), null untold. */
+		storageKept?: boolean | null;
+		now?: number;
+		onReload: () => void;
+		onRemove: (deviceId: string, changeKeys: boolean) => Promise<void>;
+		onChangeKeys: () => Promise<void>;
+		onRemoveThis: () => Promise<void>;
+	} = $props();
+
+	// A list, or new keys, only from a device with the user's identity, and not while new keys wait to be saved.
+	const ready = $derived(encryption.name === "ready" && !encryption.rotation);
+	const hasData = $derived(hasDeviceData(encryption));
+
+	let removing = $state<Device | null>(null);
+	let lost = $state(false);
+	let busy = $state(false);
+	let failure = $state<string | null>(null);
+
+	function askToRemove(device: Device) {
+		removing = device;
+		lost = false;
+		failure = null;
+	}
+
+	async function remove() {
+		const device = removing;
+		if (!device || busy) return;
+		busy = true;
+		failure = null;
+		try {
+			await onRemove(device.id, lost && device.listed);
+			removing = null;
+		} catch (error) {
+			failure = getApiError(error, t("e2e_device_action_failed"));
+		} finally {
+			busy = false;
+		}
+	}
+</script>
+
+{#if encryption.name === "unsupported"}
+	<p class={calloutClass("info")}>{web ? t("e2e_unsupported_browser") : t("e2e_no_e2e_here")}</p>
+{:else}
+	<p class={NOTE}>{t("e2e_devices_lead")}</p>
+	{#if web && storageKept === false}
+		<div class="{calloutClass('warn')} items-center">
+			<WarningIcon size={18} class="shrink-0" aria-hidden="true" />
+			<p>{t("e2e_storage_not_kept")}</p>
+		</div>
+	{/if}
+
+	<SettingsGroup title={t("e2e_devices")}>
+		{#if devices}
+			{#each devices as device (device.id)}
+				<div class={rowClass()}>
+					<span class={ROW_TILE} aria-hidden="true"><DeviceIcon size={18} /></span>
+					<div class="min-w-0 flex-1">
+						<p class="text-duvet-ink flex flex-wrap items-center gap-1.5 text-[14.5px] leading-[1.35] font-medium">
+							<span class="min-w-0 truncate">{device.name}</span>
+							{#if device.current}
+								<span class="{TAG} bg-duvet-accent-tint text-duvet-ink">{t("e2e_this_device")}</span>
+							{/if}
+							{#if !device.listed}
+								<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">{t("e2e_device_not_set_up")}</span>
+							{/if}
+							{#if !device.current && inactiveDevice(device, now)}
+								<span class="{TAG} bg-duvet-warn/10 text-duvet-warn">{t("e2e_inactive_device")}</span>
+							{/if}
+						</p>
+						<p class="text-duvet-ink2 mt-1 text-[13px] leading-[1.45]">
+							{t("e2e_device_seen", {
+								client: device.client,
+								date: formatDate(Date.parse(device.last_seen_at), { dateStyle: "medium" }),
+							})}
+						</p>
+					</div>
+					{#if ready && !device.current}
+						<Button variant="secondary" size="sm" onclick={() => askToRemove(device)}>{t("e2e_device_remove")}</Button>
+					{/if}
+				</div>
+			{/each}
+		{:else if failed}
+			<div class={rowClass()}>
+				<p class="text-duvet-ink2 min-w-0 flex-1 text-[13.5px]" role="alert">{t("e2e_devices_failed")}</p>
+				<Button variant="secondary" size="sm" onclick={onReload}>{t("e2e_try_again")}</Button>
+			</div>
+		{:else}
+			<div class={rowClass()}>
+				<p class="text-duvet-ink2 text-[13.5px]">{t("e2e_devices_loading")}</p>
+			</div>
+		{/if}
+	</SettingsGroup>
+
+	{#if ready || hasData}
+		<SettingsGroup>
+			{#if ready}
+				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_change_keys_line")} icon={KeyIcon}>
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={() => confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys)}
+					>
+						{t("e2e_change_keys")}
+					</Button>
+				</SettingsRow>
+			{/if}
+			{#if hasData}
+				<SettingsRow label={t("e2e_delete_device")} line={t("e2e_delete_device_line")} icon={TrashIcon}>
+					<Button variant="danger" size="sm" onclick={() => askToDeleteThisDevice(devices, onRemoveThis)}>
+						{t("e2e_delete_device")}
+					</Button>
+				</SettingsRow>
+			{/if}
+		</SettingsGroup>
+	{/if}
+{/if}
+
+<Dialog
+	open={removing !== null}
+	onOpenChange={(open) => {
+		if (!open && !busy) removing = null;
+	}}
+	title={removing ? t("e2e_device_remove_title", { name: removing.name }) : ""}
+	escapeKeydownBehavior={busy ? "ignore" : "close"}
+>
+	{t("e2e_device_remove_text")}
+	{#snippet body()}
+		{#if removing?.listed}
+			<label class="text-duvet-ink flex items-start gap-2.5 text-[13.5px] leading-[1.45]">
+				<input type="checkbox" bind:checked={lost} disabled={busy} class="{CHECKBOX} mt-0.5" />
+				<span>
+					{t("e2e_device_lost")}
+					<span class="text-duvet-ink2 block">{t("e2e_device_lost_note")}</span>
+				</span>
+			</label>
+		{/if}
+		{#if failure}
+			<p class="text-duvet-danger text-[13px]" role="alert">{failure}</p>
+		{/if}
+	{/snippet}
+	{#snippet actions()}
+		<Button variant="quiet" disabled={busy} onclick={() => (removing = null)}>{t("e2e_cancel")}</Button>
+		<Button variant="danger" disabled={busy} onclick={() => void remove()}>{t("e2e_device_remove")}</Button>
+	{/snippet}
+</Dialog>

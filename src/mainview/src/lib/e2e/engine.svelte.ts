@@ -7,7 +7,7 @@
 // load with the engine's start, never with a page.
 import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
-import { onSignOut } from "$lib/api/auth";
+import { logout, onSignOut } from "$lib/api/auth";
 import type { DirectMessage } from "$lib/api/conversations";
 import { e2eApi } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
@@ -22,6 +22,7 @@ import {
 	E2EEngine,
 	systemClock,
 	type ConversationState,
+	type DeviceNotice,
 	type EngineState,
 	type Outgoing,
 	type Pending,
@@ -121,6 +122,7 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 	made.onChangeRefused((_conversationId, _messageId, kind) => {
 		toast(t(kind === "edit" ? "e2e_edit_refused" : "e2e_delete_refused"), "error");
 	});
+	made.onDevice(tellOfDevice);
 	for (const conversationId of toOpen) {
 		made.openConversation(conversationId).catch((error: unknown) => {
 			console.error("[e2e] The conversation's group didn't open:", error);
@@ -128,6 +130,16 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 	}
 	toOpen.clear();
 	return made;
+}
+
+/** What the engine tells of the user's devices, each once (decisions 13 and 52): a toast, in the notices' words. */
+function tellOfDevice({ kind, device }: DeviceNotice) {
+	const { name } = device;
+	toast(
+		kind === "added" ? t("e2e_device_added", { name }) : t("e2e_inactive_warning", { device: name }),
+		"info",
+		10_000,
+	);
 }
 
 /**
@@ -196,6 +208,9 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			search: (request: DeviceSearch) => live().search(request),
 			heldBefore: ({ conversationId, seq }: MessageParams) => live().heldBefore(conversationId, seq ?? 0),
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
+			removeDevice: ({ deviceId, changeKeys }: DeviceParams) => live().removeDevice(deviceId, { changeKeys }),
+			changeKeys: () => live().changeKeys(),
+			removeThisDevice: () => live().removeThisDevice(),
 		},
 		lead: async () => {
 			engine = engineFor(userId, await platform.webHost(), platform);
@@ -320,4 +335,28 @@ export async function stopEngine(): Promise<void> {
 	await stopping?.stop();
 	tabs?.close();
 	tabs = null;
+}
+
+/** What a tab asks of the leader's engine about the user's devices. */
+interface DeviceParams {
+	deviceId: string;
+	changeKeys: boolean;
+}
+
+/** The person's act on their devices, by this page's engine or the tab that leads: the state it leaves, shown. */
+function onDevices(method: string, params: unknown, run: (made: E2EEngine) => Promise<void>): Promise<void> {
+	if (tabs) return tabs.call<void>(method, params).finally(follow);
+	return engine ? run(engine) : Promise.reject(new Error("encrypted conversations aren't ready on this device"));
+}
+
+/** Another device of the person's, taken off their account; with new keys for one that was lost (Settings → Devices). */
+export const removeDevice = (deviceId: string, changeKeys = false) =>
+	onDevices("removeDevice", { deviceId, changeKeys }, (made) => made.removeDevice(deviceId, { changeKeys }));
+/** Change security keys, or Finish a change made before the app closed: its new recovery key shows next. */
+export const changeKeys = () => onDevices("changeKeys", undefined, (made) => made.changeKeys());
+
+/** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */
+export async function removeThisDevice(): Promise<void> {
+	await onDevices("removeThisDevice", undefined, (made) => made.removeThisDevice());
+	await logout();
 }

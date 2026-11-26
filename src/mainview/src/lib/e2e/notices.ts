@@ -39,6 +39,8 @@ export const NOTICES = {
 	not_ready: "Encrypted conversations aren't ready on this device",
 	search_split:
 		"In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
+	// The mobile app's push, when a message can't be read in time (its task 21): this app doesn't show it.
+	new_message: "New message",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

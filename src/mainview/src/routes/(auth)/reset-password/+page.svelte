@@ -18,6 +18,8 @@
 	let password = $state("");
 	let confirmPassword = $state("");
 	let showPassword = $state(false);
+	// For an account someone else may have used: every device goes with the new password (decision 13).
+	let removeDevices = $state(false);
 
 	const passwordsMatch = $derived(password === confirmPassword);
 	const canSubmit = $derived(canResetPassword(password, confirmPassword));
@@ -36,7 +38,7 @@
 		if (!canSubmit) return;
 		status = "loading";
 		try {
-			await resetPassword(token, password);
+			await resetPassword(token, password, removeDevices);
 			status = "success";
 		} catch (err) {
 			status = "error";
@@ -96,6 +98,14 @@
 				error={confirmPassword && !passwordsMatch ? t("auth_passwords_differ") : undefined}
 				{...onSecret}
 			/>
+
+			<label class="text-duvet-ink flex items-start gap-2.5 text-[13.5px] leading-[1.45]">
+				<input type="checkbox" bind:checked={removeDevices} class="accent-duvet-accent mt-0.5 size-4 shrink-0" />
+				<span>
+					{t("auth_reset_remove_devices")}
+					<span class="text-duvet-ink2 block">{t("auth_reset_remove_devices_note")}</span>
+				</span>
+			</label>
 
 			<AuthSubmit disabled={!canSubmit} class="mt-2">{t("auth_reset_submit")}</AuthSubmit>
 		</form>

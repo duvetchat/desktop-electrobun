@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { base64Bytes } from "$lib/activity-thumbnail";
+import { sessionApi } from "$lib/api/api";
+import { e2eApi } from "$lib/api/e2e";
 import type { EnginePlatform } from "./engine.svelte";
-import { toEngine } from "./events";
+import { toEngine, type EngineEvent } from "./events";
 import type { CoreHost } from "./host";
-import { firstDevice, groupOf, shownKey, testDevice, testHost, until, useFake } from "./testing/engines";
+import { notice } from "./notices";
+import { firstDevice, groupOf, rejection, shownKey, testDevice, testHost, until, useFake } from "./testing/engines";
 import { FakeApi } from "./testing/fake-api";
 import { FakeHub, FakeLocks } from "./testing/fake-tabs";
-import { coreLibrary } from "./testing/host-bun";
+import { BunCoreHost, coreLibrary } from "./testing/host-bun";
 import { BrowserTabs, lockName } from "./web/tabs";
 
 // The engine's module and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
@@ -13,6 +17,7 @@ import { BrowserTabs, lockName } from "./web/tabs";
 Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("./engine.svelte");
 const { logout } = await import("$lib/api/auth");
+const { toastStore } = await import("$lib/stores/toast.svelte");
 
 // The page's engine (lib/e2e/engine.svelte.ts): one for the page on the desktop's one host, and on the web the engine of
 // the tab that leads, which the user's other tabs show and ask (Ruling 16), on task 8's tabs with a test's locks and
@@ -45,6 +50,34 @@ function signedIn(fake: FakeApi): string {
 	const user = fake.addUser();
 	localStorage.setItem("duvet_session_token", fake.signIn(user).token);
 	return user;
+}
+
+/** Runs `go` with the page's window, there's none outside a browser: where the page went. */
+async function withWindow(go: () => Promise<unknown>): Promise<string> {
+	const location = { href: "" };
+	Object.defineProperty(globalThis, "window", { value: { location }, configurable: true });
+	try {
+		await go();
+	} finally {
+		Reflect.deleteProperty(globalThis, "window");
+	}
+	return location.href;
+}
+
+/** The page's engine on the desktop, on `host`, through the first device's flow: ready. */
+async function readyOnDesktop(user: string, host: BunCoreHost) {
+	await page.startEngine(user, platform({ desktop: true, desktopHost: async () => host }));
+	await page.makeIdentity();
+	await page.keySaved();
+	expect(page.encryption.state).toEqual({ name: "ready" });
+	return host.handle<{ device_id: string; identity_key: string }>({ cmd: "status" });
+}
+
+/** The core's database in the host's folder, opened again with its key: what's left there. */
+async function reopened(host: BunCoreHost, user: string) {
+	const again = testHost({ folder: host.folder, key: base64Bytes(host.key) });
+	await again.open(user);
+	return { host: again, status: await again.handle<Record<string, unknown>>({ cmd: "status" }) };
 }
 
 afterEach(() => page.stopEngine());
@@ -180,6 +213,85 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			const listed = (await b.api.conversations()).find((conv) => conv.id === conversation);
 			expect(listed?.mls).toMatchObject({ generation: 0 });
 			await until(async () => (await groupOf(b, conversation)) !== null);
+		},
+		SLOW,
+	);
+
+	// Decision 13: deleting a device's data is an act of its own, beside signing out.
+	test(
+		"removing this device deletes its data and signs out",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const token = localStorage.getItem("duvet_session_token")!;
+			const host = testHost();
+			await readyOnDesktop(ana, host);
+
+			const went = await withWindow(() => page.removeThisDevice());
+			// Signed out: the page went to sign in, and the API ended its session.
+			expect(went).toContain("sign-in");
+			expect(localStorage.getItem("duvet_session_token")).toBeNull();
+			const ended = e2eApi(sessionApi({ token, sessionToken: null })).devices();
+			expect(await rejection(ended)).toMatchObject({ response: { status: 401 } });
+			// Its data is gone: its folder holds a new database, of no device.
+			const left = await reopened(host, ana);
+			expect(left.status).not.toHaveProperty("device_id");
+			await left.host.close();
+		},
+		SLOW,
+	);
+
+	test(
+		"signing out leaves the device and its database",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const host = testHost();
+			const { device_id, identity_key } = await readyOnDesktop(ana, host);
+
+			await withWindow(logout);
+			// The session ended, nothing else: the database opens with its device and its identity…
+			const left = await reopened(host, ana);
+			expect(left.status).toMatchObject({ device_id, identity_key, has_identity: true });
+			// …and the API keeps the device on the list: the next sign-in on this core binds it again, and it's ready.
+			const next = testDevice(fake, ana, { host: left.host });
+			await next.engine.start();
+			expect(next.engine.state).toEqual({ name: "ready" });
+			expect(next.registered).toEqual([device_id]);
+			expect(await next.api.devices()).toMatchObject([{ id: device_id, listed: true, current: true }]);
+			await next.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"what the engine tells of the user's devices shows in the notices' words",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			// The page's gateway connection, which hands the engine what it hears (connection.ts does it in the app).
+			const token = localStorage.getItem("duvet_session_token")!;
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's events are the API's, as the gateway hands them on
+			fake.connect(token, null, (event) => toEngine(event as EngineEvent));
+			const host = testHost();
+			await readyOnDesktop(ana, host);
+			const shown = (text: string) => toastStore.items.some(({ message }) => message === text);
+
+			// Another device of the user's registers.
+			const other = testDevice(fake, ana);
+			await other.engine.start();
+			await other.engine.stop();
+			const name = "Duvet for Windows";
+			await until(() => shown(notice("device_added", { name })));
+
+			// Not seen in 45 days: the page's next engine warns of it.
+			fake.lastSeen(other.registered[0]!, new Date(Date.now() - 46 * 24 * 3600 * 1000).toISOString());
+			await page.stopEngine();
+			await page.startEngine(ana, platform({ desktop: true, desktopHost: async () => host }));
+			await until(() => shown(notice("inactive_warning", { device: name })));
 		},
 		SLOW,
 	);

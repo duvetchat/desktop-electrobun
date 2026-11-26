@@ -11,9 +11,10 @@
 
 	// What the app says of its encrypted conversations by the engine's state (PLAN-E2E-CLIENTES.md, «El motor», its
 	// states): nothing while it starts or once it's ready. A first device's recovery key, once made, is a dialog only
-	// "I saved it" and its upload close (decision 23, Ruling 13). Every other state is a bar at the bottom with what the
-	// person can do, which its × hides until the state changes: the rest of the app, Spaces among it, goes on. The page
-	// stacks the bar with the app's other bottom bars. What deletes the device's data asks first.
+	// "I saved it" and its upload close (decision 23, Ruling 13), and so is the new one of a change of keys (Task 24),
+	// which, made before the app closed, is a bar whose Finish brings it back. Every other state is a bar at the bottom
+	// with what the person can do, which its × hides until the state changes: the rest of the app, Spaces among it, goes
+	// on. The page stacks the bar with the app's other bottom bars. What deletes the device's data asks first.
 	let {
 		encryption,
 		web,
@@ -21,6 +22,7 @@
 		onKeySaved,
 		onLater,
 		onStartOver,
+		onFinishKeys,
 	}: {
 		encryption: EngineState;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
@@ -30,6 +32,8 @@
 		/** The key's sheet closed after its upload failed: its upload waits for Finish. */
 		onLater: () => Promise<void>;
 		onStartOver: () => Promise<void>;
+		/** A change of keys made before the app closed, its key shown again to be saved. */
+		onFinishKeys: () => Promise<void>;
 	} = $props();
 
 	let hiddenFor = $state<string | null>(null);
@@ -38,8 +42,21 @@
 	// Starting over deletes the database: the person says yes to that first.
 	const confirmed = (label: string) => () => confirmAction(t("e2e_start_over_confirm"), label, onStartOver);
 
+	// The recovery key the person saves before anything goes up: a first device's, or a change of keys'.
+	const shownKey = $derived(
+		encryption.name === "first_device"
+			? encryption.recoveryKey
+			: encryption.name === "ready"
+				? (encryption.rotation?.recoveryKey ?? null)
+				: null,
+	);
+
 	const bar = $derived.by((): { text: string; label?: string; run?: () => Promise<void> } | null => {
 		switch (encryption.name) {
+			case "ready":
+				return encryption.rotation && !encryption.rotation.recoveryKey
+					? { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys }
+					: null;
 			case "first_device":
 				return encryption.finishing
 					? { text: t("e2e_first_device_finish"), label: t("e2e_finish"), run: onMakeIdentity }
@@ -73,15 +90,11 @@
 	}
 </script>
 
-{#if encryption.name === "first_device" && encryption.recoveryKey}
+{#if shownKey}
 	<Dialog open title={t("e2e_recovery_title")} escapeKeydownBehavior="ignore">
-		{t("e2e_recovery_why")}
+		{encryption.name === "ready" ? t("e2e_rotation_why") : t("e2e_recovery_why")}
 		{#snippet body()}
-			<RecoveryKeySheet
-				recoveryKey={encryption.name === "first_device" ? (encryption.recoveryKey ?? "") : ""}
-				onContinue={onKeySaved}
-				{onLater}
-			/>
+			<RecoveryKeySheet recoveryKey={shownKey ?? ""} onContinue={onKeySaved} {onLater} />
 		{/snippet}
 	</Dialog>
 {:else if hiddenFor !== encryption.name && (bar || encryption.name === "update")}

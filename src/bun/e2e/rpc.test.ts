@@ -251,8 +251,14 @@ describe("what the page may ask", () => {
 });
 
 describe("what asks the person first, outside the page", () => {
-	test("four commands: create_identity, which the core runs as reset_identity, and no QR on the desktop", () => {
-		expect([...CONFIRMED].sort()).toEqual(["approval_confirm", "create_identity", "reset_identity", "rotate_keys"]);
+	test("five commands: create_identity, which the core runs as reset_identity, and no QR on the desktop", () => {
+		expect([...CONFIRMED].sort()).toEqual([
+			"approval_confirm",
+			"create_identity",
+			"reset_identity",
+			"rotate_keys",
+			"sign_device_list",
+		]);
 	});
 
 	test("a commitment no core makes, longer or not a text, is refused before anything reads it", async () => {
@@ -447,6 +453,34 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		// What Bun can't name, it doesn't ask about.
 		for (const remove of [undefined, "x", [7], ["not a device"], Array.from({ length: 21 }, () => NEW_A)]) {
 			expect((await approver.run({ cmd: "rotate_keys", remove })).error).toMatchObject({
+				code: "bad_command",
+				field: "remove",
+			});
+		}
+		expect(asked).toHaveLength(4);
+	});
+
+	// Task 24: a script in the page can't take the user's devices off their account.
+	test("sign_device_list names the devices it removes, and runs on a yes alone", async () => {
+		const { asked, confirm } = person(true, true, false, true);
+		const approver = await approverOf(confirm);
+		// A device of Ana's on her list, approved by its code: the list to take it off.
+		const device = await newDevice(NEW_A);
+		const { code } = await reveal(approver, device, device.commitment);
+		expect((await approver.run({ cmd: "approval_confirm", code })).ok).toHaveProperty("transfer");
+		const before = (await approver.run({ cmd: "status" })).ok.device_list;
+
+		expect((await approver.run({ cmd: "sign_device_list", remove: [NEW_A] })).error).toMatchObject({
+			code: "refused",
+		});
+		expect(asked[2].message).toContain(NEW_A);
+		expect((await approver.run({ cmd: "status" })).ok.device_list).toBe(before);
+		expect((await approver.run({ cmd: "sign_device_list", remove: [NEW_A] })).ok).toHaveProperty("device_list");
+		expect((await approver.run({ cmd: "status" })).ok.device_list).not.toBe(before);
+
+		// What Bun can't name, it doesn't ask about.
+		for (const remove of [undefined, "x", [7], ["not a device"], Array.from({ length: 21 }, () => NEW_A)]) {
+			expect((await approver.run({ cmd: "sign_device_list", remove })).error).toMatchObject({
 				code: "bad_command",
 				field: "remove",
 			});

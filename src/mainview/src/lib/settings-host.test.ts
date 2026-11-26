@@ -106,6 +106,7 @@ describe("the section Settings opens on", () => {
 			"activity",
 			"buckets",
 			"developer",
+			"devices",
 		]);
 	});
 });

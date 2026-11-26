@@ -101,6 +101,18 @@ export function approvalQuestion({ device, fingerprint }: { device: string; fing
 	};
 }
 
+/** Taking devices off the account (sign_device_list): each one by its ID, which is all Bun can tell of it. */
+export function removalQuestion(remove: string[]): Question {
+	const one = remove.length === 1;
+	return {
+		title: one ? "Remove a device from your account?" : "Remove devices from your account?",
+		message:
+			`${one ? "This device" : "These devices"} will be removed from your account, and won't read your encrypted ` +
+			`conversations from now on:\n${remove.join("\n")}\n\nRemove ${one ? "it" : "them"} only if you asked for it.`,
+		yes: "Remove",
+	};
+}
+
 /** Changing the keys (rotate_keys), with the devices it takes off the list; `finishing`, a rotation already made. */
 export function rotationQuestion(remove: string[], finishing: boolean): Question {
 	const devices = remove.length > 0 ? `\n\nThese devices will be removed from your account:\n${remove.join("\n")}` : "";

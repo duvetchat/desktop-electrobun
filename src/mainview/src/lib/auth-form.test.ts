@@ -67,6 +67,16 @@ describe("sign-in", () => {
 	});
 });
 
+// Task 24 (decision 13): for an account someone else may have used, the new password can take every device with it.
+describe("a new password", () => {
+	test("its page offers to remove every device, and sends what the person picked", async () => {
+		const page = await Bun.file(new URL("../routes/(auth)/reset-password/+page.svelte", import.meta.url)).text();
+		expect(page).toMatch(/<input[^>]*type="checkbox"[^>]*bind:checked=\{removeDevices\}/);
+		expect(page).toContain('t("auth_reset_remove_devices")');
+		expect(page).toContain("await resetPassword(token, password, removeDevices);");
+	});
+});
+
 describe("sign-up", () => {
 	test("each step shows once the one before it reads right", () => {
 		expect(signUpSteps({ username: "", email: "", password: "" })).toBe(1);
