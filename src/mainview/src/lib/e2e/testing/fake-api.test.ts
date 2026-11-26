@@ -1028,7 +1028,7 @@ describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
 	});
 
 	test("a reset keeps each device's joined_seq, and a message of the generation before is stale", async () => {
-		const { fake, bo, a, b, conversation } = await dmWithGroup();
+		const { fake, ana, bo, a, b, conversation } = await dmWithGroup();
 		const old = await a.host.handle<{ ciphertext: string }>({
 			...{
 				cmd: "encrypt",
@@ -1039,7 +1039,7 @@ describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
 		});
 		const claimed = await call(fake, a.token, "POST", `/api/users/${bo}/key-packages/claim`);
 		const reset = await a.host.handle<Record<string, any>>({
-			...{ cmd: "reset_group", conversation_id: conversation },
+			...{ cmd: "reset_group", conversation_id: conversation, members: [ana, bo] },
 			key_packages: { [bo]: claimed.body.key_packages.map((kp: { data: string }) => kp.data) },
 		});
 		const { generation, commit, group_info, initial_group_info, welcome } = reset;

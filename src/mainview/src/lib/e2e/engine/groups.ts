@@ -62,11 +62,19 @@ export async function makeGroup(
 	return founding(made);
 }
 
-/** The blocked group's next generation (reset_group), with the members it has and every device's key packages. */
+/**
+ * The blocked group's next generation (reset_group), with the members and the owner the API has, in its order, as a
+ * creation takes them, and every device's key packages: the core takes them only as a restart may found its group
+ * (#46), else a rule_violation.
+ */
 export async function restartGroup(parts: EngineParts, conv: Conversation): Promise<Commit> {
 	const key_packages = await keyPackagesOf(parts, conv);
 	const made = await withIdentities(parts, () =>
-		parts.host.handle<Founding>({ cmd: "reset_group", conversation_id: conv.id, key_packages }),
+		parts.host.handle<Founding>({
+			...{ cmd: "reset_group", conversation_id: conv.id },
+			...(conv.type === 2 ? { owner: conv.owner_id } : {}),
+			...{ members: conv.members.map((member) => member.user_id), key_packages },
+		}),
 	);
 	return founding(made);
 }
