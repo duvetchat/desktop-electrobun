@@ -37,12 +37,14 @@ export type DeviceSetup =
  * into it; `confirmed` once its transfer went, until its list is up; `ended` when it can't go on (`over`: its attempt
  * ended, or can't be confirmed here any more; `listed`: the device is set up already). `unfinished`: this device
  * approved it before, by its own record, and no list it took names it yet, so it comes off this device's list first
- * (the core's way out).
+ * (the core's way out). `question`: the inbox message of the commitment asked about, which the person's yes answers
+ * (desktop-electrobun#535).
  */
 export interface DeviceApproval {
 	device: string;
 	name: string;
 	fingerprint: string;
+	question?: string;
 	step: "asked" | "offered" | "code" | "confirmed" | "ended";
 	code?: string;
 	ended?: "over" | "listed";
@@ -141,9 +143,9 @@ export class Approvals {
 	shown(): DeviceApproval | null {
 		const asked = this.#asked;
 		if (asked) {
-			const { device, name, fingerprint, step, code, ended, unfinished } = asked;
+			const { device, name, fingerprint, message: question, step, code, ended, unfinished } = asked;
 			return {
-				...{ device, name, fingerprint, step },
+				...{ device, name, fingerprint, question, step },
 				...(code ? { code } : {}),
 				...(ended ? { ended } : {}),
 				...(unfinished ? { unfinished: true as const } : {}),
@@ -259,15 +261,18 @@ export class Approvals {
 	 * hasn't taken): the engine takes its inbox first. A device this one approved before that never took its transfer is
 	 * still on this device's list, where the core refuses to approve it again: it comes off first, and alone (the core's
 	 * way out, `sign_device_list`, which Bun asks about in its own box on the desktop). Only this device's record says
-	 * which device that is: never the list the API serves, nor which devices it registers (desktop-electrobun#542).
+	 * which device that is: never the list the API serves, nor which devices it registers (desktop-electrobun#542). The
+	 * yes is to the `question` the person answered: once another stands, or a newer attempt of the device's waits for
+	 * its take, nothing is offered, and the newer question waits for its own yes (desktop-electrobun#535).
 	 */
-	async approve(device: string): Promise<"replaced" | void> {
+	async approve(device: string, question: string): Promise<"replaced" | void> {
 		this.#refuseWhileHeld(device);
 		const asked = this.#asked;
-		if (asked?.device !== device || asked.step !== "asked") return;
+		if (asked?.device !== device || asked.message !== question || asked.step !== "asked") return;
 		const { api, host, store } = this.#parts;
 		const frame = this.#commitmentOf(asked);
 		if (!frame) return this.#end(asked, "over");
+		if (this.#replacedAttempt(asked)) return;
 		const served = await servedIdentity(this.#parts);
 		if (served && (await observeOwn(this.#parts, served)) === "not_own_identity") return "replaced";
 		if (served && (await this.#unfinished(device))) {
@@ -298,6 +303,14 @@ export class Approvals {
 	#commitmentOf(asked: Asked): ApprovalFrame | null {
 		const message = keptIn(this.#parts).find(({ id }) => id === asked.message);
 		return (message && readApprovalFrame(message.message)) || null;
+	}
+
+	/** A newer commitment of the device's waits in the record: its attempt replaced the one asked about. */
+	#replacedAttempt(asked: Asked): boolean {
+		const newest = keptIn(this.#parts).findLast(
+			(message) => message.from_device_id === asked.device && readApprovalFrame(message.message)?.step === "commitment",
+		);
+		return newest !== undefined && newest.id !== asked.message;
 	}
 
 	/** Approved here before, by this device's record, with no list it took naming it since, and still on the list it

@@ -39,6 +39,8 @@ const setupOf = (state: EngineState): DeviceSetup | null =>
 	state.name === "new_device" ? (state.setup ?? null) : null;
 const approvalOf = (state: EngineState): DeviceApproval | null =>
 	state.name === "ready" ? (state.approval ?? null) : null;
+/** The question an approving device shows, which the person's yes answers. */
+const questionOf = (device: TestDevice) => approvalOf(device.engine.state)?.question ?? "";
 /** The new device's code's way, once an approving device's offer was taken. */
 const offered = (device: TestDevice) => {
 	const setup = setupOf(device.engine.state);
@@ -65,7 +67,7 @@ async function toTheCode(approver: TestDevice, fresh: TestDevice): Promise<strin
 	await fresh.engine.beginApproval();
 	await fresh.engine.useCode();
 	await until(() => approvalOf(approver.engine.state)?.step === "asked");
-	await approver.engine.approveDevice(deviceOf(fresh));
+	await approver.engine.approveDevice(deviceOf(fresh), questionOf(approver));
 	await until(() => approvalOf(approver.engine.state)?.step === "code");
 	await until(() => offered(fresh));
 	return approvalOf(approver.engine.state)!.code!;
@@ -100,9 +102,9 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
 			expect(approvalOf(a.engine.state)).toEqual({
 				...{ device: deviceOf(n), name: "Duvet for Windows", fingerprint },
-				step: "asked",
+				...{ question: expect.any(String), step: "asked" },
 			});
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			await until(() => approvalOf(a.engine.state)?.step === "code");
 			const { code } = approvalOf(a.engine.state)!;
 			expect(code).toMatch(/^\d{6}$/);
@@ -159,7 +161,7 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			const again = await restarted(fake, a);
 			await until(() => approvalOf(again.engine.state)?.step === "asked");
 			expect(log).not.toContain("approval_offer");
-			await again.engine.approveDevice(deviceOf(n));
+			await again.engine.approveDevice(deviceOf(n), questionOf(again));
 			expect(log.filter((cmd) => cmd === "approval_offer")).toHaveLength(1);
 
 			// Confirm too runs on the person's tap alone, and on the desktop after Bun's box: its no keeps the code shown.
@@ -253,10 +255,12 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			expect(over).toEqual(expect.any(String));
 			expect([first, renewed]).not.toContain(over);
 
-			// The approving device's own attempt ends ten minutes after its offer: its question says so (M1).
+			// The approving device's own attempt ends ten minutes after its offer: its question says so (M1). The yes is to
+			// the new attempt's question, once it shows (desktop-electrobun#535).
+			const before = questionOf(a);
 			await n.engine.useCode();
-			await until(() => approvalOf(a.engine.state)?.step === "asked");
-			await a.engine.approveDevice(deviceOf(n));
+			await until(() => approvalOf(a.engine.state)?.step === "asked" && questionOf(a) !== before);
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(approvalOf(a.engine.state)?.step).not.toBe("asked");
 			a.clock.advance(10 * MINUTE);
 			await turnEnded(a);
@@ -364,7 +368,7 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await n.engine.useCode();
 			await until(() => keptSteps(a).includes("commitment"));
 			expect(approvalOf(a.engine.state)).toBeNull();
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(log).not.toContain("approval_offer");
 			// The change done, the new device's question shows.
 			await a.engine.keySaved();
@@ -399,7 +403,7 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			// The new attempt's question says the device is taken off this device's list first.
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
 			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), unfinished: true });
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(removed).toEqual([[deviceOf(n)]]);
 			expect(listDevices((await a.host.handle<{ device_list: string }>({ cmd: "status" })).device_list)).toEqual([
 				deviceOf(a),
@@ -452,14 +456,14 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await n.api.sendToDevice(deviceOf(a), approvalFrameMessage({ ...frame, name: "Duvet for Windows" }));
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
 			expect(approvalOf(a.engine.state)).toEqual({
-				...{ device: deviceOf(n), name: "Duvet for Windows" },
+				...{ device: deviceOf(n), name: "Duvet for Windows", question: expect.any(String) },
 				...{ fingerprint: await approvalFingerprint(base64Bytes(commitment)), step: "asked" },
 			});
 
 			// The yes changes no list: none signed, none put up, and the device stays on both.
 			const asked = log.length;
 			puts.length = 0;
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(log.slice(asked)).not.toContain("sign_device_list");
 			expect(puts).toEqual([]);
 			const held = listDevices((await a.host.handle<{ device_list: string }>({ cmd: "status" })).device_list);
@@ -496,7 +500,7 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), unfinished: true });
 			// The server lists the user's devices without the other one.
 			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(b));
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(removed).toEqual([[deviceOf(n)]]);
 			expect(listDevices((await a.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(b)].sort());
 			await Promise.all([a, b, n].map((device) => device.engine.stop()));
@@ -527,7 +531,7 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			// The app starts again: the question comes back, its yes offers again, and the kept reveal gives the same code.
 			const again = await restarted(fake, a);
 			await until(() => approvalOf(again.engine.state)?.step === "asked");
-			await again.engine.approveDevice(deviceOf(n));
+			await again.engine.approveDevice(deviceOf(n), questionOf(again));
 			await until(() => approvalOf(again.engine.state)?.step === "code");
 			expect(approvalOf(again.engine.state)?.code).toBe(code);
 			// Then Bun's core worker starts again: the offer goes once more right before the confirmation.
@@ -610,13 +614,100 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await n.engine.useCode();
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
 			replaced = true;
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(log).not.toContain("approval_offer");
 			expect(approvalOf(a.engine.state)?.step).toBe("asked");
 			// Its identity the API's again: the yes offers.
 			replaced = false;
-			await a.engine.approveDevice(deviceOf(n));
+			await a.engine.approveDevice(deviceOf(n), questionOf(a));
 			expect(log).toContain("approval_offer");
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// desktop-electrobun#535: the yes offered to the question's commitment while a newer attempt of the device's waited
+	// in the record, before the take that keeps the newest alone; the new device then dropped the offer.
+	test(
+		"a yes to a question a newer attempt replaced offers nothing, and the newer one waits for its own yes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const offers: unknown[] = [];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd === "approval_offer") offers.push(command.commitment);
+				return null;
+			});
+			let reading = true;
+			const a = await firstDevice(fake, ana, { host, hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			await n.engine.useCode();
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			const first = approvalOf(a.engine.state)!;
+			// The new device begins again: its newer commitment is in the record, as an inbox's round keeps every frame, and
+			// the take that asks of it hasn't run.
+			reading = false;
+			await n.engine.useCode();
+			await until(async () => (await a.api.inbox()).length === 1);
+			const [newer] = await a.api.inbox();
+			a.store.write(KEPT_APPROVALS, [...(a.store.read<InboxMessage[]>(KEPT_APPROVALS) ?? []), newer]);
+			await a.api.clearInbox(newer!.id);
+			reading = true;
+
+			// The person's yes to the question shown offers nothing, and the newer attempt is asked of.
+			await a.engine.approveDevice(deviceOf(n), first.question!);
+			expect(offers).toEqual([]);
+			const second = approvalOf(a.engine.state)!;
+			expect(second).toMatchObject({ device: deviceOf(n), step: "asked", question: newer!.id });
+			expect(second.fingerprint).not.toBe(first.fingerprint);
+			// Its own yes offers to it, and the new device takes that offer.
+			await a.engine.approveDevice(deviceOf(n), second.question!);
+			expect(offers).toHaveLength(1);
+			await until(() => offered(n));
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// desktop-electrobun#535, with step 5's review M1: a yes that met an identity this device doesn't hold read the
+	// inbox, whose newer commitment of the device's replaced the question, and was tried again at once on that new
+	// question: an offer to a fingerprint the person never saw.
+	test(
+		"a yes tried again after the inbox offers only to the question it answered: a newer one waits for its own yes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const log: string[] = [];
+			let replaced = false;
+			const host = watchedHost(
+				answeringHost(testHost(), (command) => {
+					if (!replaced || command.cmd !== "observe_user" || command.user_id !== ana) return undefined;
+					replaced = false;
+					return { state: "rejected", verified: true, reason: "not_own_identity" };
+				}),
+				log,
+			);
+			let reading = true;
+			const a = await firstDevice(fake, ana, { host, hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			await n.engine.useCode();
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			const first = approvalOf(a.engine.state)!;
+			// The new device begins again, and its newer commitment waits in the inbox, which the yes reads.
+			reading = false;
+			await n.engine.useCode();
+			await until(async () => (await a.api.inbox()).length === 1);
+			reading = true;
+			replaced = true;
+			await a.engine.approveDevice(deviceOf(n), first.question!);
+			expect(log).not.toContain("approval_offer");
+			const second = approvalOf(a.engine.state)!;
+			expect(second.step).toBe("asked");
+			expect(second.fingerprint).not.toBe(first.fingerprint);
 			await Promise.all([a.engine.stop(), n.engine.stop()]);
 		},
 		SLOW,
@@ -672,7 +763,9 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await turnEnded(a);
 			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), step: "confirmed" });
 			const offers = log.filter((cmd) => cmd === "approval_offer").length;
-			expect(await rejection(a.engine.approveDevice(deviceOf(m)))).toMatchObject({ code: "approval_waits" });
+			expect(await rejection(a.engine.approveDevice(deviceOf(m), questionOf(a)))).toMatchObject({
+				code: "approval_waits",
+			});
 			expect(log.filter((cmd) => cmd === "approval_offer")).toHaveLength(offers);
 
 			// The first one's list up, the hold ends, and the second one is asked about.
