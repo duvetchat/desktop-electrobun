@@ -161,10 +161,10 @@ export class CatchUps {
 	}
 
 	/**
-	 * Outside the turn: the package, the parts not up yet, its completion and its keys, then its confirmation's turn. A
-	 * member whose changed key waits for the person's yes holds it, before its PUT and again before its completion and
-	 * keys, as the make's own identity round can bring the change (#530): it keeps its package, which again() goes on
-	 * with.
+	 * Outside the turn: the package, the parts not up yet, its keys (a device the API no longer has, or no longer lets
+	 * this user's reach, takes none), then its completion, as a share goes (#550), and its confirmation's turn. A member
+	 * whose changed key waits for the person's yes holds it, before its PUT and again before its keys and completion, as
+	 * the make's own identity round can bring the change (#530): it keeps its package, which again() goes on with.
 	 */
 	async #upload(catchUp: CatchUp, made: ShareMade) {
 		const { api, host } = this.#parts;
@@ -181,12 +181,14 @@ export class CatchUps {
 				await api.putSharePart(conversationId, made.share_id, catchUp.partsUp, new Blob([part.slice()]));
 			}
 			if (this.#waitsForYes(catchUp)) return;
-			await api.completeShare(conversationId, made.share_id);
 			for (const { device_id, message } of made.keys) {
 				if (catchUp.keysSent.has(device_id)) continue;
-				await api.sendToDevice(device_id, message);
+				await api.sendToDevice(device_id, message).catch((error: unknown) => {
+					if (statusOf(error) !== 403 && statusOf(error) !== 404) throw error;
+				});
 				catchUp.keysSent.add(device_id);
 			}
+			await api.completeShare(conversationId, made.share_id);
 		} catch (error) {
 			return this.#failed(catchUp, error);
 		}

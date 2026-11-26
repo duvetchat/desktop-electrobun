@@ -5,6 +5,7 @@ import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
+	approvedDevice,
 	firstDevice,
 	groupOf,
 	rejection,
@@ -332,6 +333,33 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			locked = false;
 			a.clock.advance(2_000);
 			await reached(c, conversation, sent.id);
+		},
+		SLOW,
+	);
+
+	// #550 (step 5's engines review, Minor 2): a catch-up goes as a share does, its keys before its completion. A device
+	// the API no longer has (404), or no longer lets this user's reach (403), takes none, and the member's others still
+	// get theirs: the package isn't dropped, and its next try doesn't meet the API's one catch-up a day.
+	test(
+		"a catch-up whose member lost a device meanwhile still reaches their other devices",
+		async () => {
+			const { fake, requests, cy, conversation, sent } = await waitingForCy();
+			// Cy's two devices join while Ana's device hears none of it: her catch-up for him is sealed to both.
+			fake.holdEvents();
+			const c = await firstDevice(fake, cy);
+			const d = await approvedDevice(fake, c);
+			const [first, second] = [c.registered.at(-1)!, d.registered.at(-1)!];
+			const inbox = new RegExp(`^/api/devices/(${first}|${second})/inbox$`);
+			// The first key to go is to a device the API no longer has.
+			fake.refuse({ method: "POST", path: inbox }, 404, { error: "device not found" });
+			fake.releaseEvents();
+			const keys = () => requests.filter((request) => request.startsWith("POST ") && inbox.test(request.slice(5)));
+			await until(() => keys().length > 0);
+			const other = keys()[0]!.includes(first) ? d : c;
+			await reached(other, conversation, sent.id);
+			// Its keys went before its completion.
+			const complete = requests.findIndex((request) => request.endsWith("/complete"));
+			expect(complete).toBeGreaterThan(requests.lastIndexOf(keys().at(-1)!));
 		},
 		SLOW,
 	);
