@@ -24,6 +24,7 @@ import { CoreError } from "./errors";
 import {
 	E2EEngine,
 	systemClock,
+	type BackupShown,
 	type ContactsShown,
 	type ConversationState,
 	type DeviceNotice,
@@ -158,6 +159,12 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		encryption.contacts = made.contacts();
 		tabs?.stateChanged();
 	});
+	// What the encrypted backup shows, the same way (Task 32).
+	encryption.backup = made.backup();
+	made.onBackup(() => {
+		encryption.backup = made.backup();
+		tabs?.stateChanged();
+	});
 	for (const conversationId of toOpen) {
 		made.openConversation(conversationId).catch((error: unknown) => {
 			console.error("[e2e] The conversation's group didn't open:", error);
@@ -278,6 +285,8 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			cutoverAt: () => engine?.cutoverAt ?? null,
 			// The person's contacts (Task 28).
 			contacts: () => engine?.contacts() ?? { changes: {}, verified: {} },
+			// What the encrypted backup shows (Task 32).
+			backup: () => engine?.backup() ?? encryption.backup,
 			contact: (id: string) => live().contact(id),
 			safetyNumber: (id: string) => live().safetyNumber(id),
 			verifyContact: ({ userId: id, digits }: ContactParams) => live().verifyContact(id, digits),
@@ -344,6 +353,7 @@ async function follow(): Promise<void> {
 	encryption.state = await asked.call<EngineState>("state").catch(() => encryption.state);
 	encryption.cutoverAt = await asked.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
 	encryption.contacts = await asked.call<ContactsShown>("contacts").catch(() => encryption.contacts);
+	encryption.backup = await asked.call<BackupShown>("backup").catch(() => encryption.backup);
 	if (encryption.state.name === "ready") refreshAll();
 }
 
@@ -594,8 +604,9 @@ export async function stopEngine(): Promise<void> {
 	started = false;
 	toOpen.clear();
 	encryption.offers = {};
-	// What the next user's engine shows of their contacts is theirs.
+	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };
+	encryption.backup = { state: "uploading" };
 	// What the device's database showed goes from memory, nothing searches it, and what it decrypted goes too.
 	useReader(null);
 	useDeviceSearch(null);

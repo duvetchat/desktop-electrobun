@@ -1,5 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { FetchError, type ApiClient, type FetchRequestConfig, type FetchResponse } from "$lib/api/api";
+import {
+	FetchError,
+	MAX_REQUEST_BYTES,
+	type ApiClient,
+	type FetchRequestConfig,
+	type FetchResponse,
+} from "$lib/api/api";
 import { FakeApi } from "$lib/e2e/testing/fake-api";
 import { e2eApi, type E2eApi } from "./e2e";
 
@@ -571,6 +577,24 @@ describe("a file at its signed URL", () => {
 			expect(
 				await e2eApi()
 					.sharePart(SHARE, 0)
+					.catch((e: unknown) => e),
+			).toBeInstanceOf(RangeError);
+		} finally {
+			fetched.mockRestore();
+		}
+	});
+
+	// Task 32's review, I2: a day of the backup is what the API keeps of one at most, its 32 MiB; a server that sends more
+	// makes the page hold nothing past that, as the restore runs at every start.
+	test("of a day of the backup, past the API's 32 MiB, is refused", async () => {
+		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) =>
+			urlOf(input) === FETCHED
+				? new Response(new Uint8Array(MAX_REQUEST_BYTES + 1))
+				: Response.json({ url: SIGNED })) as typeof fetch);
+		try {
+			expect(
+				await e2eApi()
+					.segment(SEGMENT)
 					.catch((e: unknown) => e),
 			).toBeInstanceOf(RangeError);
 		} finally {

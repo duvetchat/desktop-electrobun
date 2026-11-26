@@ -20,7 +20,7 @@
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
-	import type { EngineState } from "$lib/e2e/engine/engine";
+	import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
 	import DeviceSetupCard from "./DeviceSetupCard.svelte";
@@ -38,6 +38,7 @@
 	// other bottom bars. What deletes the device's data asks first.
 	let {
 		encryption,
+		backup = { state: "uploading" },
 		web,
 		onMakeIdentity,
 		onKeySaved,
@@ -49,6 +50,8 @@
 		approvalActions,
 	}: {
 		encryption: EngineState;
+		/** What the encrypted backup shows, of which the gate says a new device's restore alone. */
+		backup?: BackupShown;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
 		web: boolean;
 		onMakeIdentity: () => Promise<void>;
@@ -83,9 +86,7 @@
 
 	let hiddenFor = $state<string | null>(null);
 	// What the × hides: the state's bar, or a restore's, whose dismissal leaves a later bar of the ready state shown.
-	const barKey = $derived(
-		encryption.name === "ready" && encryption.backup?.state === "restoring" ? "restoring" : encryption.name,
-	);
+	const barKey = $derived(encryption.name === "ready" && backup.state === "restoring" ? "restoring" : encryption.name);
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
@@ -134,11 +135,11 @@
 	const bar = $derived.by((): { text: string; label?: string; run?: () => Promise<void> } | null => {
 		switch (encryption.name) {
 			case "ready": {
-				const { rotation, backup } = encryption;
+				const { rotation } = encryption;
 				if (!rotation) {
 					// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
 					if (encryption.keysAgain) return { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys };
-					if (backup?.state !== "restoring") return null;
+					if (backup.state !== "restoring") return null;
 					return {
 						text: t("e2e_backup_restoring", { done: formatNumber(backup.done), total: formatNumber(backup.total) }),
 					};

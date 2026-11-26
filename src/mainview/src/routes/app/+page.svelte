@@ -1133,6 +1133,7 @@
 		<NotificationPermissionBar />
 		<EncryptionGate
 			encryption={encryption.state}
+			backup={encryption.backup}
 			web={!isElectrobunWindow()}
 			onMakeIdentity={makeIdentity}
 			onKeySaved={keySaved}

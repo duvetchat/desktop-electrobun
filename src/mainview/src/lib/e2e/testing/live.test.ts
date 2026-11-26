@@ -564,8 +564,8 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			expect(fresh.engine.state).toEqual({ name: "new_device" });
 			await fresh.engine.recover(key);
 			await eventually(async () => (await fresh.engine.messages(dm, [before.id]))[0]?.text === text);
-			// Restored, it shows nothing more of its backup: up to date.
-			await eventually(async () => fresh.engine.state.name === "ready" && !fresh.engine.state.backup);
+			// Restored, its backup shows no restore any more, and no pause.
+			await eventually(async () => ["uploading", "up_to_date"].includes(fresh.engine.backup().state));
 		} finally {
 			await fresh.end();
 		}

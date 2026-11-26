@@ -2377,8 +2377,13 @@ export class FakeApi {
 		if (shown && (query.get("replaces") ?? "none") !== shown.id) {
 			throw fail(409, "another segment holds this day", { current: shown.id });
 		}
-		// As any upload in the user's quota: one past the storage's limit for a file is a 413.
-		if (bytes.length > this.fileLimit) throw fail(413, "uploading a backup segment: file is too large");
+		// As any upload in the user's quota, in the API's words: one past the storage's limit for a file is a 413.
+		if (bytes.length > this.fileLimit) {
+			throw fail(
+				413,
+				`uploading a backup segment: file is too large: ${bytes.length} bytes, your limit is ${this.fileLimit}`,
+			);
+		}
 		if (current) this.#segments.delete(current.id);
 		const segment: Segment = {
 			...{ id: this.#id(), identity: identity.id, conversation_id: params.conversation!, day: params.day! },

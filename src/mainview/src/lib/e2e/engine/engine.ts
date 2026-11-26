@@ -132,9 +132,8 @@ export interface EngineParts {
  * `stuck`, one that can't finish, as another device took off a device it keeps or changed the keys first: `gone`, the
  * devices the API no longer has that hold it, which it goes on without on the person's yes; `relisted`, another device's
  * change kept a device it takes off (duvetchat/e2e#49). `keysAgain`: a change that went on without devices went up, and
- * another one is offered, as one of them may still hold the keys. A ready device shows its encrypted backup (`backup`,
- * Task 32) while it restores, goes up or is paused: none, up to date. `failed` with `lostKey` is a database its key no
- * longer opens.
+ * another one is offered, as one of them may still hold the keys. What the encrypted backup shows (Task 32) is apart
+ * from it: backup() and onBackup(). `failed` with `lostKey` is a database its key no longer opens.
  */
 export type EngineState =
 	| { name: "starting" }
@@ -145,7 +144,6 @@ export type EngineState =
 			rotation?: { recoveryKey: string | null; stuck?: true; gone?: string[]; relisted?: true };
 			approval?: DeviceApproval;
 			keysAgain?: true;
-			backup?: BackupShown;
 	  }
 	| { name: "removed" }
 	| { name: "locked" }
@@ -259,9 +257,10 @@ export class E2EEngine {
 	/** The person's contacts: whom they verified, and their changed keys (Task 28). */
 	readonly #contacts: Contacts;
 	readonly #contactListeners = new Set<() => void>();
-	/** The encrypted backup (Task 32), and the minute without work it waits for (calls it off). */
+	/** The encrypted backup (Task 32), the minute without work it waits for (calls it off), and who hears what it shows. */
 	readonly #backups: Backups;
 	#quiet: (() => void) | null = null;
+	readonly #backupListeners = new Set<() => void>();
 
 	constructor(given: EngineParts) {
 		this.#contacts = new Contacts(given.store, given.user, () => {
@@ -285,7 +284,9 @@ export class E2EEngine {
 			turn: (work) => this.#backingUp(work),
 			inbox: async () => void (await this.#queue(() => this.#inbox(), true)),
 			changed: (id) => messagesChanged(id),
-			shown: () => this.#set(this.state),
+			shown: () => {
+				for (const listener of this.#backupListeners) listener();
+			},
 			update: (error) => this.#set({ name: "update", minimum: error.minimum }),
 		});
 		this.#groups = new Conversations(
@@ -343,6 +344,17 @@ export class E2EEngine {
 	onContacts(listener: () => void): () => void {
 		this.#contactListeners.add(listener);
 		return () => void this.#contactListeners.delete(listener);
+	}
+
+	/** What the views show of the encrypted backup (backup.ts): a ready device's restore, pause, or how far it's up. */
+	backup(): BackupShown {
+		return this.#backups.shown();
+	}
+
+	/** Each change of what the views show of the encrypted backup. */
+	onBackup(listener: () => void): () => void {
+		this.#backupListeners.add(listener);
+		return () => void this.#backupListeners.delete(listener);
 	}
 
 	/**
@@ -1175,8 +1187,8 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The state with what a new device shows of its setup, and a ready one of a new device's approval (Task 26) and of
-	 * its backup (Task 32), as they are now: no approval while a change of keys waits, which approves nothing.
+	 * The state with what a new device shows of its setup, and a ready one of a new device's approval (Task 26), as they
+	 * are now: none while a change of keys waits, which approves nothing.
 	 */
 	#shown(state: EngineState): EngineState {
 		if (state.name === "new_device") {
@@ -1184,15 +1196,13 @@ export class E2EEngine {
 			return setup ? { name: "new_device", setup } : { name: "new_device" };
 		}
 		if (state.name !== "ready") return state;
-		const { approval: _shown, keysAgain: _offered, backup: _backup, ...ready } = state;
+		const { approval: _shown, keysAgain: _offered, ...ready } = state;
 		const approval = ready.rotation ? null : this.#approvals.shown();
-		const backup = this.#backups.shown();
 		return {
 			...ready,
 			...(approval ? { approval } : {}),
 			// Another change of keys is offered once none waits (the one that waits carries the offer).
 			...(!ready.rotation && this.#keysAgain ? { keysAgain: true as const } : {}),
-			...(backup ? { backup } : {}),
 		};
 	}
 

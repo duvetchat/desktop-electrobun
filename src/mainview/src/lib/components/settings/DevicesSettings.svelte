@@ -13,7 +13,7 @@
 	 * the page that mounts Settings as a sheet hands it in, and a window of its own has none (nor its devices).
 	 */
 	export interface DevicesEngine {
-		readonly encryption: { readonly state: EngineState };
+		readonly encryption: { readonly state: EngineState; readonly backup: BackupShown };
 		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
 		changeKeys(): Promise<void>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off. */
@@ -73,15 +73,15 @@
 	}
 
 	/**
-	 * What Settings says of the encrypted backup (Task 32): how far a new device's restore went, a pause and why, days
-	 * going up, or else that it's up to date.
+	 * What Settings says of the encrypted backup (Task 32): how far a new device's restore went, a pause and why, that
+	 * it's up to date, or else days going up.
 	 */
-	export function backupLine(backup: BackupShown | undefined): string {
-		if (backup?.state === "restoring") {
+	export function backupLine(backup: BackupShown): string {
+		if (backup.state === "restoring") {
 			return t("e2e_backup_restoring", { done: formatNumber(backup.done), total: formatNumber(backup.total) });
 		}
-		if (backup?.state === "paused") return t(backup.reason === "full" ? "e2e_backup_paused" : "e2e_backup_too_large");
-		return t(backup?.state === "uploading" ? "e2e_backup_uploading" : "e2e_backup_up_to_date");
+		if (backup.state === "paused") return t(backup.reason === "full" ? "e2e_backup_paused" : "e2e_backup_too_large");
+		return t(backup.state === "up_to_date" ? "e2e_backup_up_to_date" : "e2e_backup_uploading");
 	}
 
 	/**
@@ -127,6 +127,7 @@
 		devices,
 		failed = false,
 		encryption,
+		backup = { state: "uploading" },
 		web,
 		storageKept = null,
 		now = Date.now(),
@@ -142,6 +143,8 @@
 		/** The list couldn't be read. */
 		failed?: boolean;
 		encryption: EngineState;
+		/** What the encrypted backup shows: «Backing up…» until the engine says it's up to date. */
+		backup?: BackupShown;
 		/** The web app, whose browser may not keep this device's data. */
 		web: boolean;
 		/** Whether the browser agreed to keep this device's data (navigator.storage.persisted), null untold. */
@@ -272,7 +275,7 @@
 
 	{#if encryption.name === "ready"}
 		<SettingsGroup>
-			<SettingsRow label={t("e2e_backup")} line={backupLine(encryption.backup)} icon={BackupIcon} />
+			<SettingsRow label={t("e2e_backup")} line={backupLine(backup)} icon={BackupIcon} />
 		</SettingsGroup>
 	{/if}
 

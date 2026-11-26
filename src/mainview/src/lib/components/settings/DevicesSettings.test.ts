@@ -222,17 +222,22 @@ describe("Settings' devices", () => {
 	});
 
 	test("say how the encrypted backup is on a ready device: up to date, going up, restoring, or paused and why", () => {
-		const ready = (backup?: BackupShown) =>
-			drawn({ encryption: { name: "ready", ...(backup ? { backup } : {}) } as EngineState });
-		const upToDate = ready();
-		expect(upToDate).toContain(NOTICES.backup);
-		expect(upToDate).toContain(NOTICES.backup_up_to_date);
+		const ready = (backup?: BackupShown) => drawn(backup ? { backup } : {});
+		// Until the engine says it's up to date, it isn't (Task 32's review, I3).
+		const told = ready();
+		expect(told).toContain(NOTICES.backup);
+		expect(told).toContain(NOTICES.backup_uploading);
+		expect(told).not.toContain(NOTICES.backup_up_to_date);
+		expect(ready({ state: "up_to_date" })).toContain(NOTICES.backup_up_to_date);
 		expect(ready({ state: "uploading" })).toContain(NOTICES.backup_uploading);
+		expect(ready({ state: "uploading" })).not.toContain(NOTICES.backup_up_to_date);
 		expect(ready({ state: "restoring", done: 12, total: 340 })).toContain("Restoring your messages: 12 of 340");
 		expect(ready({ state: "paused", reason: "full" })).toContain(NOTICES.backup_paused);
 		expect(ready({ state: "paused", reason: "too_large" })).toContain(NOTICES.backup_too_large);
 		// A device not set up has no backup of its own to tell of.
-		expect(drawn({ encryption: { name: "new_device" } })).not.toContain(NOTICES.backup);
+		expect(drawn({ encryption: { name: "new_device" }, backup: { state: "up_to_date" } })).not.toContain(
+			NOTICES.backup,
+		);
 	});
 
 	// Review 27's M4: the core's refusal of a change of keys keeping a device this one approved that never finished.

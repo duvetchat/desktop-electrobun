@@ -501,6 +501,43 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		SLOW,
 	);
 
+	// Task 32's review, I3: what the backup shows is the engine's own, apart from its state, and a tab that doesn't lead
+	// shows the leader's as it changes: up to date only once the leader's pass found nothing due.
+	test(
+		"on the web, a tab that doesn't lead shows the leader's encrypted backup as it changes",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			const leader = testDevice(fake, ana);
+			const { engine } = leader;
+			const leading = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: { state: () => engine.state, backup: () => engine.backup() },
+				lead: async () => {
+					await engine.start();
+					await engine.makeIdentity();
+					await engine.keySaved();
+				},
+			});
+			engine.onBackup(() => leading.stateChanged());
+			await leading.leading;
+			await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) } }));
+			await until(() => page.encryption.state.name === "ready");
+			expect(page.encryption.backup).toEqual({ state: "uploading" });
+			// The leader's app is quiet a minute: its pass finds nothing due, and this tab shows it.
+			leader.clock.advance(60_000);
+			await until(() => page.encryption.backup.state === "up_to_date");
+			expect(engine.backup()).toEqual({ state: "up_to_date" });
+			await page.stopEngine();
+			expect(page.encryption.backup).toEqual({ state: "uploading" });
+			await engine.stop();
+			leading.close();
+		},
+		SLOW,
+	);
+
 	// Round 3: a tab that doesn't lead asks the leader for a conversation's changed keys, and its close and its yes name
 	// the change it showed: one for another change takes nothing.
 	test(

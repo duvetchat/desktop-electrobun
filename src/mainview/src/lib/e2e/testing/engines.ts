@@ -8,7 +8,7 @@ import { e2eApi, type E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import type { CoreHost } from "../host";
-import { E2EEngine, type Clock, type EngineState } from "../engine/engine";
+import { E2EEngine, type BackupShown, type Clock, type EngineState } from "../engine/engine";
 import type { EngineStore } from "../engine/store";
 import type { FakeApi, GatewayEvent } from "./fake-api";
 import { BunCoreHost } from "./host-bun";
@@ -106,6 +106,8 @@ export interface TestDevice {
 	registered: string[];
 	/** States the engine went through. */
 	states: EngineState[];
+	/** What its encrypted backup showed, each change of it. */
+	backups: BackupShown[];
 	/** Connects to the gateway again, identified with `device`: its READY comes first. */
 	connect(device: string | null): void;
 }
@@ -164,8 +166,10 @@ export function testDevice(
 	});
 	const states: EngineState[] = [];
 	engine.onState((state) => states.push(state));
+	const backups: BackupShown[] = [];
+	engine.onBackup(() => backups.push(engine.backup()));
 	connect(null);
-	const device = { engine, host, user, token, api, store, clock, heard, registered, states, connect };
+	const device = { engine, host, user, token, api, store, clock, heard, registered, states, backups, connect };
 	shown.push(() => heldBy(fake, device));
 	return device;
 }
@@ -306,9 +310,13 @@ export async function restarted(fake: FakeApi, device: TestDevice, given: Parame
 
 /**
  * Another device of the first one's user, set up by the first one's approval by QR (Task 26 does it in the app) and on
- * the user's list: its engine started and ready.
+ * the user's list: its engine started and ready, hearing what `given` says once it is.
  */
-export async function approvedDevice(fake: FakeApi, first: TestDevice): Promise<TestDevice> {
+export async function approvedDevice(
+	fake: FakeApi,
+	first: TestDevice,
+	given: Pick<NonNullable<Parameters<typeof testDevice>[2]>, "hears"> = {},
+): Promise<TestDevice> {
 	const fresh = testDevice(fake, first.user);
 	await fresh.engine.start();
 	if (fresh.engine.state.name !== "new_device") throw new Error(`the new device is ${fresh.engine.state.name}`);
@@ -323,7 +331,7 @@ export async function approvedDevice(fake: FakeApi, first: TestDevice): Promise<
 		base_version: served.device_list_version,
 	});
 	await fresh.host.handle({ cmd: "device_list_uploaded", version });
-	const again = testDevice(fake, first.user, { host: fresh.host, store: fresh.store, token: fresh.token });
+	const again = testDevice(fake, first.user, { ...given, host: fresh.host, store: fresh.store, token: fresh.token });
 	await again.engine.start();
 	if (again.engine.state.name !== "ready") throw new Error(`the approved device is ${again.engine.state.name}`);
 	return again;
