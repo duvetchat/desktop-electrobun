@@ -44,9 +44,10 @@ export async function sendVerificationEmail() {
 	}
 }
 
-export async function resetPassword(token: string, password: string) {
+/** A new password, which ends every session; with `removeDevices`, every device of the user's goes too (decision 13). */
+export async function resetPassword(token: string, password: string, removeDevices = false) {
 	try {
-		await api.post("/api/auth/reset-password", { token, password });
+		await api.post("/api/auth/reset-password", { token, password, ...(removeDevices ? { remove_devices: true } : {}) });
 	} catch (err: any) {
 		throw new Error(reason(err, "Password reset failed"), { cause: err });
 	}

@@ -22,6 +22,7 @@ const props = (state: EngineState, web = false) => ({
 	onKeySaved: async () => {},
 	onLater: async () => {},
 	onStartOver: async () => {},
+	onFinishKeys: async () => {},
 });
 const drawn = (state: EngineState, web = false) =>
 	render(EncryptionGate, { props: props(state, web) }).body.replace(/<!--[^]*?-->/g, "");
@@ -68,6 +69,21 @@ describe("the encryption gate", () => {
 			(await buttons({ name: "failed", lostKey: false })).map((button) => button.attributes["aria-label"]),
 		).toEqual(["Dismiss"]);
 		expect(drawn({ name: "update", minimum: "1.2.0" })).toContain(NOTICES.update);
+	});
+
+	// Task 24: a rotation's new recovery key is a dialog of its own; one cut before its upload waits for the person's tap.
+	test("a rotation's new key has the screen, and one cut before its upload is finished by the person's tap", () => {
+		expect(drawn({ name: "ready", rotation: { recoveryKey: "1".repeat(48) } })).not.toContain(en.e2e_rotation_finish);
+		const finishing = drawn({ name: "ready", rotation: { recoveryKey: null } });
+		expect(finishing).toContain(en.e2e_rotation_finish);
+		expect(finishing).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+	});
+
+	// I1: a change of keys a removal elsewhere left unable to finish says why, and the two ways out.
+	test("a change of keys that can't finish says why and what to do, and offers no Finish", () => {
+		const stuck = drawn({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+		expect(stuck).toContain(en.e2e_rotation_stuck);
+		expect(stuck).not.toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
 	});
 
 	test("says it in the notices' words", () => {

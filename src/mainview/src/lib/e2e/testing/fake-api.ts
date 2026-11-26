@@ -393,6 +393,8 @@ interface Device {
 	listed: boolean;
 	removed: boolean;
 	created_at: string;
+	/** shortcut: set as it registers and by lastSeen alone; the API notes each device's requests, once an hour. */
+	last_seen_at: string;
 }
 
 interface Identity {
@@ -581,6 +583,8 @@ export class FakeApi {
 	minClients: Record<string, string> = { "desktop-windows": "0.0.0", web: "0.0.0", android: "0.0.0" };
 
 	#users = new Set<string>();
+	/** A new password's links, by their token: whose they are. */
+	#resetTokens = new Map<string, string>();
 	#sessions = new Map<string, Session>();
 	#devices = new Map<string, Device>();
 	#identities = new Map<string, Identity>();
@@ -747,6 +751,32 @@ export class FakeApi {
 	/** The conversation is deleted, as the API deletes one: no list has it, and its routes answer 404. */
 	deleteConversation(conversationId: string) {
 		if (!this.#conversations.delete(conversationId)) throw new Error(`no conversation ${conversationId}`);
+	}
+
+	/** The device was last seen at `at` (an RFC 3339 time), as the API notes a device's requests. */
+	lastSeen(deviceId: string, at: string) {
+		const device = this.#devices.get(deviceId);
+		if (!device) throw new Error(`no device ${deviceId}`);
+		device.last_seen_at = at;
+	}
+
+	/** The token of a new password's link for the user, as the reset email carries one. */
+	resetToken(user: string): string {
+		const token = crypto.randomUUID();
+		this.#resetTokens.set(token, user);
+		return token;
+	}
+
+	/**
+	 * The device's registration goes, as a new password's remove_devices takes each one: the user's signed list still
+	 * names it (step 3's ruling 23), with no certificate the API serves.
+	 */
+	dropDevice(deviceId: string) {
+		const device = this.#devices.get(deviceId);
+		if (!device) throw new Error(`no device ${deviceId}`);
+		this.#removeDevices(device.user, [device]);
+		const events = this.#outbox.splice(0);
+		queueMicrotask(() => this.#send(events));
 	}
 
 	/** The next request the match takes never reaches the API: fetch fails, and nothing is done. */
@@ -950,6 +980,32 @@ export class FakeApi {
 			),
 			route("POST", "/api/e2e/decrypt-failures", "session", ({ body }) => {
 				this.decryptFailures.push({ kind: String(body?.kind), count: body?.count ?? 1 });
+				return NO_CONTENT;
+			}),
+			// A sign-out ends its session, nothing else (decision 13): the device stays as it was.
+			route(
+				"POST",
+				"/api/auth/logout",
+				"session",
+				({ session }) => {
+					this.#sessions.delete(session.token);
+					return NO_CONTENT;
+				},
+				true,
+			),
+			// A new password ends every session of its user's, and with remove_devices takes every device of theirs first.
+			route("POST", "/api/auth/reset-password", "nothing", ({ body }) => {
+				const user = typeof body?.token === "string" ? this.#resetTokens.get(body.token) : undefined;
+				if (!user) throw fail(404, "invalid or expired token");
+				if (typeof body.password !== "string" || body.password.length < 8) {
+					throw fail(400, "password must be at least 8 characters long");
+				}
+				if (body.remove_devices !== undefined && typeof body.remove_devices !== "boolean") {
+					throw fail(400, "remove_devices is true or false");
+				}
+				this.#resetTokens.delete(body.token);
+				if (body.remove_devices) this.#removeDevices(user, this.#devicesOf(user));
+				for (const [token, session] of this.#sessions) if (session.user === user) this.#sessions.delete(token);
 				return NO_CONTENT;
 			}),
 			route("POST", `${me}/devices/challenge`, "session", ({ session }) => {
@@ -1172,6 +1228,7 @@ export class FakeApi {
 		const device: Device = {
 			...{ id, user: session.user, name, client: headers.get("X-Duvet-Client"), signatureKey, hpkeKey },
 			...{ certificate: null, certifiedBy: null, listed: false, removed: false, created_at: now() },
+			last_seen_at: now(),
 		};
 		this.#devices.set(id, device);
 		this.#emit(session.user, "DEVICE_ADD", this.#deviceView(device, null));
@@ -1191,8 +1248,8 @@ export class FakeApi {
 	}
 
 	#deviceView(device: Device, session: Session | null) {
-		const { id, name, client, listed, created_at } = device;
-		return { id, name, client, created_at, last_seen_at: created_at, listed, current: session?.device === id };
+		const { id, name, client, listed, created_at, last_seen_at } = device;
+		return { id, name, client, created_at, last_seen_at, listed, current: session?.device === id };
 	}
 
 	/** Devices taken out: their sessions end, and their key packages and inbox go, as the API does. */
@@ -1229,9 +1286,12 @@ export class FakeApi {
 	#identityView(user: string) {
 		const identity = this.#identities.get(user)!;
 		const list = readDeviceList(identity.deviceList, identity.identityKey)!;
+		// The listed devices' certificates of this identity, as the API serves them: never a removed device's, which a
+		// new password's remove_devices leaves on the signed list.
 		const certificates = list.devices.flatMap((id) => {
-			const certificate = this.#devices.get(id)?.certificate;
-			return certificate ? [bytesBase64(certificate)] : [];
+			const device = this.#devices.get(id);
+			const served = device?.certificate && device.listed && !device.removed && device.certifiedBy === identity.id;
+			return served ? [bytesBase64(device.certificate!)] : [];
 		});
 		return {
 			...{

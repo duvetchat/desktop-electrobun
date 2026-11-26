@@ -35,6 +35,7 @@
 		TriangleAlert as WarningIcon,
 		Users as UsersIcon,
 		ChevronRight as ChevronRightIcon,
+		MonitorSmartphone as DevicesIcon,
 	} from "@lucide/svelte";
 	import { slide } from "svelte/transition";
 	import { motionMs } from "$lib/motion";
@@ -133,6 +134,10 @@
 	import SettingsRow from "./SettingsRow.svelte";
 	import Slider from "./Slider.svelte";
 	import VoiceVideoSettings from "./VoiceVideoSettings.svelte";
+	import DevicesSettings, { askToDeleteThisDevice, type DevicesEngine } from "./DevicesSettings.svelte";
+	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import { e2eApi, type Device } from "$lib/api/e2e";
+	import { hasDeviceData } from "$lib/e2e/engine/devices";
 	import ChoiceCards from "./ChoiceCards.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
@@ -185,6 +190,7 @@
 		host = pageSettingsHost,
 		section = undefined,
 		asked = null,
+		e2e = undefined,
 	}: {
 		mode?: "sheet" | "window";
 		chrome?: Shell["chrome"];
@@ -196,6 +202,8 @@
 		section?: Section;
 		/** A section asked of the open window, each time it is: `at` tells one asking from the next. */
 		asked?: { section?: Section; at: number } | null;
+		/** The page's encryption engine, which only the app's own page has: Devices and deleting this device's data. */
+		e2e?: DevicesEngine;
 	} = $props();
 
 	// Only the desktop app reads what this computer plays.
@@ -229,6 +237,8 @@
 			items: [
 				{ id: "account", label: "My account", icon: UserIcon, tile: "#5e6380" },
 				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
+				// Only the app's own page has the encryption engine, which it hands in: a sheet, never a window of its own.
+				...(e2e ? [{ id: "devices" as const, label: t("e2e_devices"), icon: DevicesIcon, tile: "#7a5af8" }] : []),
 				...(desktopApp
 					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
 					: []),
@@ -839,6 +849,50 @@
 		}
 	});
 
+	// Settings → Devices (Task 24): the user's devices, read as the section opens and again as the engine's state changes
+	// (a change of keys saved takes its devices off), and on the web whether the browser agreed to keep this device's data.
+	let devices = $state<Device[] | null>(null);
+	let devicesFailed = $state(false);
+	let storageKept = $state<boolean | null>(null);
+	let signOutOpen = $state(false);
+
+	async function loadDevices() {
+		devicesFailed = false;
+		try {
+			devices = await e2eApi().devices();
+		} catch (error) {
+			console.error("[e2e] The devices weren't read:", error);
+			devicesFailed = true;
+		}
+	}
+
+	$effect(() => {
+		const state = e2e?.encryption.state;
+		if (!open || !e2e || activeSection !== "devices") return;
+		untrack(() => {
+			void state;
+			void loadDevices();
+			if (desktopApp) return;
+			void navigator.storage
+				?.persisted?.()
+				.then((kept) => (storageKept = kept))
+				.catch(() => (storageKept = null));
+		});
+	});
+
+	// Signing out keeps this device and its data (decision 13); deleting them is the dialog's other way out, which asks
+	// first with what it loses, by the devices it reads as it opens.
+	function askToSignOut() {
+		if (!e2e) return void host.logout();
+		signOutOpen = true;
+		void loadDevices();
+	}
+
+	function deleteThisDevice() {
+		signOutOpen = false;
+		if (e2e) void askToDeleteThisDevice(devices, e2e.removeThisDevice);
+	}
+
 	// Load attachments when switching to that section, and again for each location picked
 	$effect(() => {
 		if (open && activeSection === "attachments") {
@@ -1446,9 +1500,9 @@
 	{/snippet}
 
 	{#snippet foot()}
-		<button type="button" class={navItemClass(false, true)} onclick={() => host.logout()}>
+		<button type="button" class={navItemClass(false, true)} onclick={askToSignOut}>
 			<span class={NAV_ICON_SLOT}><LogOutIcon size={16} /></span>
-			Sign out
+			{t("settings_sign_out")}
 		</button>
 	{/snippet}
 
@@ -1589,6 +1643,23 @@
 			</SettingsRow>
 		</SettingsGroup>
 		<p class={NOTE}>A verification link will be sent to the new address.</p>
+	{:else if activeSection === "devices" && e2e}
+		{@const engine = e2e}
+		<DevicesSettings
+			{devices}
+			failed={devicesFailed}
+			encryption={engine.encryption.state}
+			web={!desktopApp}
+			{storageKept}
+			onReload={() => void loadDevices()}
+			onRemove={async (deviceId, keys) => {
+				await engine.removeDevice(deviceId, keys);
+				await loadDevices();
+			}}
+			onChangeKeys={engine.changeKeys}
+			onAlsoRemoved={engine.alsoRemoved}
+			onRemoveThis={engine.removeThisDevice}
+		/>
 	{:else if activeSection === "audio"}
 		{#snippet soundRow(key: SoundEvent | "master", label: string)}
 			{@const value = key === "master" ? audioStore.settings.master : audioStore.settings[key]}
@@ -2774,3 +2845,15 @@
 	onMove={(bucket) => openMoveBucket(bucket)}
 	onDelete={deleteBucketWithFiles}
 />
+<Dialog bind:open={signOutOpen} title={t("settings_sign_out_title")}>
+	{t("settings_sign_out_text")}
+	{#snippet body()}
+		{#if e2e && hasDeviceData(e2e.encryption.state)}
+			<Button variant="danger" class="w-full" onclick={deleteThisDevice}>{t("e2e_delete_device")}</Button>
+		{/if}
+	{/snippet}
+	{#snippet actions()}
+		<Button variant="quiet" onclick={() => (signOutOpen = false)}>{t("settings_cancel")}</Button>
+		<Button onclick={() => host.logout()}>{t("settings_sign_out")}</Button>
+	{/snippet}
+</Dialog>

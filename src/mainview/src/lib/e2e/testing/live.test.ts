@@ -109,22 +109,29 @@ async function deviceOf(who: Account) {
 	const socket = gateway(session.token);
 	const host = new BunCoreHost();
 	const registered: string[] = [];
-	const engine = new E2EEngine({
-		...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
-		store: memoryStore(),
-		deviceName: deviceName(),
-		registered: (id) => {
-			registered.push(id);
-			socket.connect(id);
-		},
-	});
+	const store = memoryStore();
+	/** An engine on the device's core, session and connection: a new one is the app's next start. */
+	const engineOn = () =>
+		new E2EEngine({
+			...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
+			store,
+			deviceName: deviceName(),
+			registered: (id) => {
+				registered.push(id);
+				socket.connect(id);
+			},
+		});
 	socket.connect(null);
-	const end = async () => {
-		await engine.stop();
-		socket.close();
-		rmSync(host.folder, { recursive: true, force: true });
+	const device = {
+		...{ client, routes, socket, host, registered, engineOn },
+		engine: engineOn(),
+		end: async () => {
+			await device.engine.stop();
+			socket.close();
+			rmSync(host.folder, { recursive: true, force: true });
+		},
 	};
-	return { client, routes, socket, host, registered, engine, end };
+	return device;
 }
 
 /** Waits until `holds` is true, as another device's work after an event ends in its own time: past `ms`, it fails. */
@@ -137,6 +144,31 @@ async function eventually(holds: () => Promise<boolean>, ms = 30_000): Promise<v
 }
 
 type Device = Awaited<ReturnType<typeof deviceOf>>;
+
+/**
+ * Another device of the account's, set up by `first`'s approval by QR (Task 26 does it in the app) and on its list:
+ * its engine started again, as the app's next start, and ready.
+ */
+async function approvedOn(first: Device, who: Account): Promise<Device> {
+	const fresh = await deviceOf(who);
+	await fresh.engine.start();
+	expect(fresh.engine.state).toEqual({ name: "new_device" });
+	await fresh.engine.stop();
+	await fresh.host.open(who.id);
+	const { qr } = await fresh.host.handle<{ qr: string }>({ cmd: "approval_begin" });
+	const approved = await first.host.handle<Record<string, string>>({ cmd: "approval_from_qr", qr });
+	await fresh.host.handle({ cmd: "approval_receive", transfer: approved.transfer });
+	const served = await fresh.routes.identity(who.id);
+	const { version } = await fresh.routes.putDeviceList({
+		...{ device_list: approved.device_list!, certificate: approved.certificate },
+		base_version: served.device_list_version,
+	});
+	await fresh.host.handle({ cmd: "device_list_uploaded", version });
+	fresh.engine = fresh.engineOn();
+	await fresh.engine.start();
+	expect(fresh.engine.state).toEqual({ name: "ready" });
+	return fresh;
+}
 /** Carol's and Dave's devices and their DM, which the groups' case leaves to the messages' case after it. */
 let carolAndDave: { c: Device; d: Device; dm: string } | null = null;
 /** Alice's and Bob's devices, which the start's case leaves to the members' case. */
@@ -311,6 +343,46 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(picture);
 		expect(opened.type).toBe("image/png");
 	}, 120_000);
+
+	// Devices in Settings (PLAN-E2E-CLIENTES.md, Task 24): Carol's device, which the cases above left set up, takes a
+	// device of hers she lost off her account with new keys, which the device that stays takes from its transfer, then
+	// takes that one off with a list: each through the API's own checks.
+	test("a lost device goes with new keys, and another one with a list", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no device");
+		const { c } = pair;
+		const carol = account(2);
+		const lost = await approvedOn(c, carol);
+		const kept = await approvedOn(c, carol);
+		const idOf = (device: Device) => device.registered.at(-1)!;
+		const [own, gone, stays] = [idOf(c), idOf(lost), idOf(kept)];
+		const devices = async () => (await c.routes.devices()).map(({ id }) => id).sort();
+		const identityKey = async (device: Device) =>
+			(await device.host.handle<{ identity_key: string }>({ cmd: "status" })).identity_key;
+		try {
+			expect(await devices()).toEqual([own, gone, stays].sort());
+			const before = await c.routes.identity(carol.id);
+
+			await c.engine.removeDevice(gone, { changeKeys: true });
+			const shown = c.engine.state;
+			expect(shown.name === "ready" && shown.rotation?.recoveryKey).toMatch(/^[1-9A-HJ-NP-Za-km-z]{48}$/);
+			await c.engine.keySaved();
+			expect(c.engine.state).toEqual({ name: "ready" });
+			const after = await c.routes.identity(carol.id);
+			expect(after.identity_key).not.toBe(before.identity_key);
+			expect(after.identity_key).toBe(await identityKey(c));
+			expect(await devices()).toEqual([own, stays].sort());
+			await eventually(async () => lost.engine.state.name === "removed");
+			await eventually(async () => (await identityKey(kept)) === after.identity_key);
+
+			await c.engine.removeDevice(stays);
+			expect(await devices()).toEqual([own]);
+			await eventually(async () => kept.engine.state.name === "removed");
+			expect(c.engine.state).toEqual({ name: "ready" });
+		} finally {
+			await Promise.all([lost.end(), kept.end()]);
+		}
+	}, 180_000);
 
 	// Members (PLAN-E2E-CLIENTES.md, Task 22), through the API's validator: a group Carol makes, with its MLS group at
 	// once; she adds Alice and Bob, one commit each, whose devices join by their welcomes, and removes Bob; Alice leaves

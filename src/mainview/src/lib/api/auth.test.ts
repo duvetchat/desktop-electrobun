@@ -66,6 +66,17 @@ describe("a refusal", () => {
 	});
 });
 
+// Task 24 (decision 13): a new password removes every device only when the person asks for it.
+test("a new password takes every device with it only when asked", async () => {
+	await resetPassword("t", "12345678");
+	expect(posted.mock.calls.at(-1)).toEqual(["/api/auth/reset-password", { token: "t", password: "12345678" }]);
+	await resetPassword("t", "12345678", true);
+	expect(posted.mock.calls.at(-1)).toEqual([
+		"/api/auth/reset-password",
+		{ token: "t", password: "12345678", remove_devices: true },
+	]);
+});
+
 // An identify names the device of the user the page last connected as, until READY says whose session it is
 // (lib/e2e/client.ts): a sign-in may be another account's, so the identify after it names no device of the one before.
 test("a sign-in forgets whose session the page had, so the identify after it names none of their devices", async () => {

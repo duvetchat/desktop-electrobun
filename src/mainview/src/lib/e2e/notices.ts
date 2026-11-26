@@ -39,7 +39,6 @@ export const NOTICES = {
 	edit_refused: "Your edit couldn't be saved for everyone.",
 	delete_refused: "Your message couldn't be deleted for everyone.",
 	loading_message: "Loading message",
-	files_wait: "Files and voice messages can't be sent in encrypted conversations yet",
 	not_ready: "Encrypted conversations aren't ready on this device",
 	too_many_waiting: "Too many messages wait to be sent here: send or dismiss them first",
 	search_split:
@@ -63,6 +62,8 @@ export const NOTICES = {
 	restart_refused: "Encryption can't restart here yet.",
 	members_now: "Members now: {names}",
 	change_unanswered: "No answer came yet: Duvet tries again on its own.",
+	// The mobile app's push, when a message can't be read in time (its task 21): this app doesn't show it.
+	new_message: "New message",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;
