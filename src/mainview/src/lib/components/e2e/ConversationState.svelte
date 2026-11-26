@@ -2,20 +2,27 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import type { ConversationState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 
 	// What a conversation says over its message box of its encrypted group (PLAN-E2E-CLIENTES.md, «Avisos»): nothing while
 	// the group goes on. Blocked, its restart for whoever may make it and the wait for the others; waiting for its owner to
-	// open it, or for another member to let this device back in; members other than those this device first saw, with the
-	// person's yes.
+	// open it, or for another member to let this device back in; members other than those this device first saw, with
+	// who they are now and the person's yes; and, while the group goes on, the members who can't receive what's sent yet.
 	let {
 		conversationState,
 		ownerName,
+		memberNames = [],
+		memberName = (userId: string) => userId,
 		onRestart,
 		onAccept,
 	}: {
 		conversationState: ConversationState | null;
 		/** The conversation's owner, by the name the app shows them. */
 		ownerName: string;
+		/** The conversation's members as the API has them now, by the names the app shows them. */
+		memberNames?: string[];
+		/** A member's name as the app shows it, by their user ID. */
+		memberName?: (userId: string) => string;
 		onRestart: () => Promise<void>;
 		onAccept: () => Promise<void>;
 	} = $props();
@@ -35,8 +42,12 @@
 				return { text: t("e2e_wait_owner", { owner: ownerName }) };
 			case "wait_rejoin":
 				return { text: t("e2e_wait_rejoin") };
-			case "members_changed":
-				return { text: t("e2e_members_changed"), label: t("e2e_members_accept"), run: onAccept };
+			case "members_changed": {
+				const detail = memberNames.length ? t("e2e_members_now", { names: formatList(memberNames) }) : undefined;
+				return { text: t("e2e_members_changed"), detail, label: t("e2e_members_accept"), run: onAccept };
+			}
+			case "no_device":
+				return { text: t("e2e_no_device", { name: formatList(said.users.map(memberName)) }) };
 			default:
 				return null;
 		}

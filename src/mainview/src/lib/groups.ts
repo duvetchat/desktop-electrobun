@@ -1,4 +1,6 @@
 import type { Conversation } from "$lib/api/conversations";
+import { MAX_MEMBERS } from "$lib/e2e/engine/members";
+import { t } from "$lib/i18n";
 
 /**
  * What the user can do to a conversation, as the API has it: any member of a group leaves it, and its owner renames it.
@@ -20,12 +22,13 @@ export type NewConversation =
 
 /**
  * One friend picked is the DM with them, which the API opens if they have one, whatever name was typed: a group is two
- * friends or more, and its name is the one thing it asks for.
+ * friends or more, 20 members at most with its owner (decision 17), and its name is the one thing it asks for.
  */
 export function newConversation(picked: Iterable<string>, typedName: string): NewConversation {
 	const userIds = [...picked];
 	if (userIds.length === 0) return { kind: "refused", why: "Add at least one friend to the group" };
 	if (userIds.length === 1) return { kind: "dm", userId: userIds[0]! };
+	if (userIds.length + 1 > MAX_MEMBERS) return { kind: "refused", why: t("e2e_group_full") };
 	const name = typedName.trim();
 	if (!name) return { kind: "refused", why: "Enter a group name" };
 	return { kind: "group", name, userIds };

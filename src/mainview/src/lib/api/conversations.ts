@@ -108,34 +108,12 @@ export async function getConversations(): Promise<Conversation[]> {
 	return res.data;
 }
 
-export async function createDM(userId: string): Promise<Conversation> {
-	const res = await api.post("/api/users/@me/conversations", { type: 1, user_id: userId });
-	return res.data;
-}
-
-export async function createGroup(name: string, userIds: string[]): Promise<Conversation> {
-	const res = await api.post("/api/users/@me/conversations", { type: 2, name, user_ids: userIds });
-	return res.data;
-}
+// A conversation's creation, its members' changes and leaving it go through the encryption engine, with their groups'
+// commits and statements (lib/e2e/engine.svelte.ts: createDM, createGroup, addMember, removeMember, leaveConversation).
 
 export async function updateConversation(conversationId: string, name: string): Promise<Conversation> {
 	const res = await api.patch(`/api/users/@me/conversations/${conversationId}`, { name });
 	return res.data;
-}
-
-export async function addConversationMember(conversationId: string, userId: string): Promise<ConversationMember> {
-	const res = await api.post(`/api/users/@me/conversations/${conversationId}/members`, {
-		user_id: userId,
-	});
-	return res.data;
-}
-
-export async function removeConversationMember(conversationId: string, userId: string): Promise<void> {
-	await api.delete(`/api/users/@me/conversations/${conversationId}/members/${userId}`);
-}
-
-export async function leaveConversation(conversationId: string): Promise<void> {
-	await api.delete(`/api/users/@me/conversations/${conversationId}/members/@me`);
 }
 
 export async function getDirectMessages(

@@ -9,8 +9,8 @@ import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
 import { logout, onSignOut } from "$lib/api/auth";
-import type { DirectMessage } from "$lib/api/conversations";
-import { e2eApi } from "$lib/api/e2e";
+import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
+import { e2eApi, type NewConversationRequest } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { useDeviceSearch } from "$lib/search";
@@ -231,8 +231,13 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			confirmApproval: (deviceId: string) => live().confirmApproval(deviceId),
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
 			openConversation: (id: string) => openOnEngine(id),
-			restartGroup: (id: string) => engine?.restartGroup(id),
+			restartGroup: ({ conversationId, leaving }: MessageParams) => live().restartGroup(conversationId, leaving),
 			acceptMembers: (id: string) => engine?.acceptMembers(id),
+			createConversation: (made: NewConversationRequest) => live().createConversation(made),
+			addMember: ({ conversationId, userId: user }: MessageParams) => live().addMember(conversationId, user ?? ""),
+			removeMember: ({ conversationId, userId: user }: MessageParams) =>
+				live().removeMember(conversationId, user ?? ""),
+			leaveConversation: (id: string) => live().leaveConversation(id),
 			cutoverAt: () => engine?.cutoverAt ?? null,
 			sendMessage: (message: Outgoing) => {
 				const stop = new AbortController();
@@ -302,7 +307,7 @@ async function followConversation(conversationId: string): Promise<void> {
 	if (state !== undefined) showConversation(conversationId, state);
 }
 
-type ConversationTap = "openConversation" | "restartGroup" | "acceptMembers";
+type ConversationTap = "openConversation" | "acceptMembers";
 
 /** The person's act on a conversation, run by the engine of this tab or of the one that leads. */
 function onConversation(method: ConversationTap, conversationId: string): Promise<void> {
@@ -313,12 +318,18 @@ function onConversation(method: ConversationTap, conversationId: string): Promis
 
 /** The conversation opened: its group goes on, or is made where this user may (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»). */
 export const openConversation = (conversationId: string) => onConversation("openConversation", conversationId);
-/** Restart encryption, over a blocked group this user may restart. */
-export const restartGroup = (conversationId: string) => onConversation("restartGroup", conversationId);
+/**
+ * Restart encryption, over a blocked group this user may restart: whom it would leave out that the person hasn't
+ * confirmed (`leaving`), and nothing restarted while there are some; none once it restarts.
+ */
+export const restartGroup = (conversationId: string, leaving: readonly string[] = []) =>
+	onMessages<string[]>("restartGroup", { conversationId, leaving: [...leaving] }, (made) =>
+		made.restartGroup(conversationId, leaving),
+	).finally(() => followConversation(conversationId));
 /** Open with these members, over a conversation whose members aren't those this device first saw. */
 export const acceptMembers = (conversationId: string) => onConversation("acceptMembers", conversationId);
 
-/** What a tab asks of the leader's engine about a conversation's messages. */
+/** What a tab asks of the leader's engine about a conversation's messages, or its members. */
 interface MessageParams {
 	conversationId: string;
 	ids?: string[];
@@ -326,6 +337,8 @@ interface MessageParams {
 	text?: string;
 	nonce?: string;
 	seq?: number;
+	userId?: string;
+	leaving?: string[];
 }
 
 const NOT_READY = "encrypted conversations aren't ready on this device";
@@ -377,6 +390,53 @@ export const heldBeforeEncrypted = (conversationId: string, seq: number) =>
 /** The person's messages of the conversation still being sent, in their order. */
 export const pendingEncrypted = (conversationId: string) =>
 	onMessages<Pending[]>("pendingMessages", conversationId, (made) => made.pendingMessages(conversationId));
+
+/**
+ * The person's new conversation (PLAN-E2E-CLIENTES.md, Task 22), by the engine of this tab or of the one that leads,
+ * which makes its group at once: the API's conversation. A page without an engine (a browser that can't run one, or
+ * its host still loading), or whose leading tab has none (task 22's review, M7), has the API make it alone, and its
+ * group waits for a device that can.
+ */
+function createConversation(made: NewConversationRequest): Promise<Conversation> {
+	if (tabs) {
+		return tabs.call<Conversation>("createConversation", made).catch((error: unknown) => {
+			if (!(error instanceof CoreError && error.code === "not_ready")) throw error;
+			return madeAlone(made, (id) => openConversation(id));
+		});
+	}
+	if (engine) return engine.createConversation(made);
+	return madeAlone(made, openOnEngine);
+}
+
+/** The conversation as the API makes it alone, opened (`open`) for the engine that's to make its group. */
+async function madeAlone(made: NewConversationRequest, open: (id: string) => Promise<void>): Promise<Conversation> {
+	const conv = await e2eApi().createConversation(made);
+	open(conv.id).catch((error: unknown) => {
+		console.error("[e2e] The new conversation's group waits for its next open:", error);
+	});
+	return conv;
+}
+/** A DM with a friend: the one they have, or a new one, its group made at once. */
+export const createDM = (userId: string) => createConversation({ type: 1, user_id: userId });
+/** A group of friends the user owns, named, its group made at once: 20 members at most, the user among them. */
+export const createGroup = (name: string, userIds: string[]) =>
+	createConversation({ type: 2, name, user_ids: userIds });
+/** The owner adds a user to the group, one commit of exactly them: the member added. */
+export const addMember = (conversationId: string, userId: string) =>
+	onMessages<ConversationMember>("addMember", { conversationId, userId }, (made) =>
+		made.addMember(conversationId, userId),
+	);
+/** The owner removes a member from the group, one commit that takes their devices out with them. */
+export const removeMember = (conversationId: string, userId: string) =>
+	onMessages<void>("removeMember", { conversationId, userId }, (made) => made.removeMember(conversationId, userId));
+/**
+ * The person leaves a group, with the statement this device signs. A page without an engine leaves one that has no
+ * group yet, which takes none, as the API does; one with a group needs the statement, which the API asks for.
+ */
+export function leaveConversation(conversationId: string): Promise<void> {
+	if (!tabs && !engine) return e2eApi().leave(conversationId);
+	return onMessages<void>("leaveConversation", conversationId, (made) => made.leaveConversation(conversationId));
+}
 
 type Tap =
 	| "makeIdentity"

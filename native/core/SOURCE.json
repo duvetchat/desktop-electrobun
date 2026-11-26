@@ -1,10 +1,10 @@
 {
 	"repository": "duvetchat/e2e",
-	"commit": "867309e42fabc120c8fa2ee2d640b489c53e352c",
+	"commit": "d8642b5ab99ae0dbc0387b2e0759be977d480940",
 	"files": {
-		"native/core/win-x64/duvet_e2e_ffi.dll": "92790c09937353f195c023291fa48a14d6df2ea721dd5d8145811075d51512e8",
-		"native/core/linux-x64/libduvet_e2e_ffi.so": "b7233a5cbe5fdc37120b2a47adbdd0613b0f815b82e9170d6aa8a0a97dc8f0d5",
-		"src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm.js": "e2e3d5dd9865721641e7734ce9415e837a53462e13c1647827c00fe50c5f50d8",
-		"src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm_bg.wasm": "6df212c455ee8b27a4b67760b3dd7bc4343d27f86d66cfa247962b15858aa670"
+		"native/core/win-x64/duvet_e2e_ffi.dll": "f72399f9fd52724488315d07402ab217f89041888887eeeb8e02c92a432b626c",
+		"native/core/linux-x64/libduvet_e2e_ffi.so": "8518b2b468421d1d79190dd24583d3c4fcd0bfe92dfbf1c0266d2762bae55b3e",
+		"src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm.js": "66a3b5237e23be3cc33bec279127a98366c963d9100f86f2d011d632a18740ee",
+		"src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm_bg.wasm": "bfe3b56f04b2b355d89ca8951992d2fb3b90b278ff767d534469b2536fdaa620"
 	}
 }

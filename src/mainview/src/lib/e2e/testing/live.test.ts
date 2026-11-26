@@ -174,8 +174,11 @@ async function approvedOn(first: Device, who: Account): Promise<Device> {
 let carolAndDave: { c: Device; d: Device; dm: string } | null = null;
 /** The recovery key each account's first device showed in the groups' case, by the account's ID: a test's own copy. */
 const recoveryKeys = new Map<string, string>();
+/** Alice's and Bob's devices, which the start's case leaves to the members' case. */
+let aliceAndBob: { a: Device; b: Device } | null = null;
 afterAll(async () => {
 	if (carolAndDave) await Promise.all([carolAndDave.c.end(), carolAndDave.d.end()]);
+	if (aliceAndBob) await Promise.all([aliceAndBob.a.end(), aliceAndBob.b.end()]);
 });
 
 describe.skipIf(!live)("live, against the API's stack", () => {
@@ -227,8 +230,9 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await a.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
 			const { key_packages } = await b.routes.claimKeyPackages(alice.id);
 			expect(key_packages.map(({ device_id }) => device_id)).toEqual([a.registered[0]!]);
+			aliceAndBob = { a, b };
 		} finally {
-			await Promise.all([a.end(), b.end()]);
+			if (!aliceAndBob) await Promise.all([a.end(), b.end()]);
 		}
 	}, 120_000);
 
@@ -388,6 +392,63 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		}
 	}, 180_000);
 
+	// Members (PLAN-E2E-CLIENTES.md, Task 22), through the API's validator: a group Carol makes, with its MLS group at
+	// once; she adds Alice and Bob, one commit each, whose devices join by their welcomes, and removes Bob; Alice leaves
+	// with her statement, and a member's commit, on the API's proposal, takes her out. Carol's and Dave's devices end at
+	// one epoch and authenticator, holding no leaf of Alice's or Bob's.
+	test("members are added, removed and leave", async () => {
+		const [pair, both] = [carolAndDave, aliceAndBob];
+		if (!pair || !both) throw new Error("the cases before left no devices");
+		const { c, d } = pair;
+		const { a, b } = both;
+		const [alice, bob, carol, dave] = [account(0), account(1), account(2), account(3)];
+		// Carol befriends Alice and Bob, whom she may then add.
+		for (const [device, them] of [
+			[a, alice],
+			[b, bob],
+		] as const) {
+			const request = await c.client.post<{ id: string }>("/api/users/@me/friends/requests", { user_id: them.id });
+			await device.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
+		}
+		const group = await c.engine.createConversation({ type: 2, name: "live members", user_ids: [dave.id] });
+		const held = (device: Device) =>
+			device.host
+				.handle<{ epoch: number; authenticator: string; devices: { user_id: string }[] }>({
+					...{ cmd: "group", conversation_id: group.id },
+				})
+				.catch(() => null);
+		/** Whether these devices hold the group at one epoch and authenticator, with leaves of these users alone. */
+		const together = async (devices: Device[], users: string[]) => {
+			const groups = await Promise.all(devices.map(held));
+			const [first] = groups;
+			const leaves = [...new Set(first?.devices.map((leaf) => leaf.user_id))].sort();
+			return (
+				!!first &&
+				groups.every((one) => one?.epoch === first.epoch && one.authenticator === first.authenticator) &&
+				Bun.deepEquals(leaves, [...users].sort())
+			);
+		};
+		// Made at once: Dave's device comes in by its welcome.
+		await eventually(() => together([c, d], [carol.id, dave.id]));
+
+		// Carol adds Alice, then Bob: one request each, their devices in by their welcomes.
+		await c.engine.addMember(group.id, alice.id);
+		await c.engine.addMember(group.id, bob.id);
+		await eventually(() => together([c, d, a, b], [carol.id, dave.id, alice.id, bob.id]));
+
+		// She removes Bob, and Alice leaves: the API proposes her leaf's removal, which a member's commit makes.
+		await c.engine.removeMember(group.id, bob.id);
+		await a.engine.leaveConversation(group.id);
+		await eventually(() => together([c, d], [carol.id, dave.id]), 60_000);
+		const listed = (
+			await c.client.get<{ id: string; members: { user_id: string }[] }[]>("/api/users/@me/conversations")
+		).data;
+		expect(listed.find((conv) => conv.id === group.id)?.members.map((member) => member.user_id)).toEqual([
+			carol.id,
+			dave.id,
+		]);
+	}, 180_000);
+
 	// A new device (PLAN-E2E-CLIENTES.md, Task 26): Dave's second device, set up with the recovery key his first showed
 	// in the groups' case, goes into his DM with Carol by an external commit and reads what she sends after.
 	test("a second device recovers with the key and reads what comes after", async () => {
@@ -456,21 +517,20 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		}
 	}, 180_000);
 
-	// Starting over (review M7): Bob's new device, with neither his key nor another device of his, starts over, and his
-	// DM with Carol takes it back once Carol's engine commits the removal of his device from before, which the API's
-	// removals worker proposes as the groups' external sender.
+	// Starting over (review M7): Bob's new device starts over, as one with neither his key nor another device of his
+	// would, and his DM with Carol takes it back once Carol's engine commits the removal of his first device, which the
+	// API's removals worker proposes as the groups' external sender. Last of all: it leaves Bob's first device removed.
 	test("a device that started over is let back in by another member's engine", async () => {
 		const pair = carolAndDave;
-		if (!pair) throw new Error("the case before left no device");
+		if (!pair || !aliceAndBob) throw new Error("the cases before left no devices");
 		const { c } = pair;
-		const [bob, carol] = [account(1), account(2)];
+		const bob = account(1);
 		const fresh = await deviceOf(bob);
 		try {
-			const request = await fresh.client.post<{ id: string }>("/api/users/@me/friends/requests", { user_id: carol.id });
-			await c.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
+			// Carol and Bob are friends since the members' case.
 			const made = await c.client.post<{ id: string }>("/api/users/@me/conversations", { type: 1, user_id: bob.id });
 			const dm = made.data.id;
-			// Carol's device makes the DM's group, with Bob's device from before, whose key packages the API still has.
+			// Carol's device makes the DM's group, with Bob's first device in it, which the members' case left running.
 			await c.engine.openConversation(dm);
 			await eventually(async () => (await heldGroup(c, dm)) !== null);
 
@@ -480,8 +540,8 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await fresh.engine.keySaved();
 			expect(fresh.engine.state.name).toBe("ready");
 			await inOneGroup([c, fresh], dm);
-			// Two commits past the group's first epoch: the removal, by Carol's device (the only member left that commits),
-			// then this device's join.
+			// Two commits past the group's first epoch: the removal, by Carol's device (no device commits its own removal,
+			// and her other one no longer runs), then this device's join.
 			expect((await heldGroup(fresh, dm))?.epoch).toBeGreaterThanOrEqual(3);
 			const text = "welcome back";
 			const sent = (await c.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text }))!;

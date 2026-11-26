@@ -6,8 +6,8 @@
 // what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts and inbox.ts hold the steps, sync.ts
 // each conversation's queue and group; this class keeps the state the views read, and what's due later.
 import { FetchError, UpdateRequiredError, type UploadOptions } from "$lib/api/api";
-import type { DirectMessage } from "$lib/api/conversations";
-import type { E2eApi } from "$lib/api/e2e";
+import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
+import type { E2eApi, NewConversationRequest } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineEvent, EngineEvents } from "../events";
 import type { CoreHost, HostOpened } from "../host";
@@ -30,6 +30,7 @@ import { fileNames } from "./files";
 import { firstListWaits, identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
+import { checkRoom } from "./members";
 import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
@@ -368,14 +369,52 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The person opened the conversation: its group goes on, or is made here when it has none and this user may. Before
-	 * this device is ready, it opens once it is.
+	 * The person opened the conversation: its group goes on, or is made here when it has none and this user may, and its
+	 * members without a device are asked for («Quien no tenía dispositivo»). Before this device is ready, it opens once
+	 * it is.
 	 */
 	openConversation(conversationId: string): Promise<void> {
 		return this.#queue(async () => {
 			if (this.state.name !== "ready") return void this.#toOpen.add(conversationId);
-			await this.#whenReady(() => this.#groups.open(conversationId));
+			await this.#whenReady(() => this.#open(conversationId));
 		});
+	}
+
+	/**
+	 * The person's new DM or group (PLAN-E2E-CLIENTES.md, Task 22): the API makes the conversation, then this device its
+	 * group at once, as any member of a DM and a group's owner may; one past 20 members, its owner among them, is refused
+	 * before anything is asked. Before this device is ready, its group is made once it is. The API's conversation.
+	 */
+	async createConversation(made: NewConversationRequest): Promise<Conversation> {
+		if (made.type === 2) checkRoom(new Set([this.#parts.user, ...made.user_ids]).size);
+		let conv: Conversation;
+		try {
+			conv = await this.#parts.api.createConversation(made);
+		} catch (error) {
+			if (error instanceof UpdateRequiredError && this.state.name !== "update") {
+				this.#set({ name: "update", minimum: error.minimum });
+			}
+			throw error;
+		}
+		await this.openConversation(conv.id).catch((error: unknown) => {
+			console.error("[e2e] The new conversation's group waits for its next open:", error);
+		});
+		return conv;
+	}
+
+	/** The owner's addition of a user to a group, one commit of exactly that user (sync.ts' add): the member added. */
+	addMember(conversationId: string, userId: string): Promise<ConversationMember> {
+		return this.#act(() => this.#groups.add(conversationId, userId));
+	}
+
+	/** The owner's removal of a member of a group, one commit that takes them and their devices out. */
+	removeMember(conversationId: string, userId: string): Promise<void> {
+		return this.#act(() => this.#groups.remove(conversationId, userId));
+	}
+
+	/** The person leaves a group, with the statement this device signs: a member's commit takes them out later. */
+	leaveConversation(conversationId: string): Promise<void> {
+		return this.#act(() => this.#groups.leave(conversationId));
 	}
 
 	/**
@@ -430,11 +469,11 @@ export class E2EEngine {
 	}
 
 	/**
-	 * What the conversations' sends do now, settled: their requests run outside the engine's turn, so what the turn took
-	 * on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
+	 * What the conversations' sends and catch-ups do now, settled: their requests run outside the engine's turn, so what
+	 * the turn took on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
 	 */
 	sendsSettled(): Promise<void> {
-		return this.#sends.settled();
+		return Promise.all([this.#sends.settled(), this.#groups.settled()]).then(() => {});
 	}
 
 	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
@@ -476,9 +515,17 @@ export class E2EEngine {
 		return this.#sends.pending(conversationId);
 	}
 
-	/** The person's tap on Restart encryption, over a blocked group they may restart. */
-	restartGroup(conversationId: string): Promise<void> {
-		return this.#queue(() => this.#whenReady(() => this.#groups.restart(conversationId)));
+	/**
+	 * The person's tap on Restart encryption, over a blocked group they may restart: whom it would leave out, that the
+	 * person hasn't confirmed yet (`leaving`), and nothing restarted while there are some; else it restarts, and answers
+	 * none.
+	 */
+	async restartGroup(conversationId: string, leaving: readonly string[] = []): Promise<string[]> {
+		const out = await this.#queue(async () => {
+			if (this.state.name !== "ready") return [];
+			return this.#groups.restart(conversationId, leaving);
+		});
+		return out ?? [];
 	}
 
 	/** The person's yes to a conversation's members of today, which its record from before the cutover didn't have. */
@@ -802,8 +849,17 @@ export class E2EEngine {
 		return false;
 	}
 
+	/** A conversation the person opened, its members without a device asked for once its group goes on. */
+	async #open(conversationId: string): Promise<void> {
+		await this.#groups.open(conversationId);
+		await this.#groups.checkDevices(conversationId);
+	}
+
 	#set(state: EngineState) {
+		const was = this.state.name;
 		this.state = this.#shown(state);
+		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups).
+		if (state.name === "ready" && was !== "ready") this.#groups.ready();
 		for (const listener of this.#listeners) listener(this.state);
 	}
 
@@ -907,9 +963,14 @@ export class E2EEngine {
 				}
 				break;
 			case "IDENTITY_UPDATE":
+				// Another user's: whether they have a device may have changed, which their conversations tell the core.
+				if (event.data.user_id !== this.#parts.user) {
+					const { user_id } = event.data;
+					this.#soon(() => this.#whenReady(() => this.#groups.identityChanged(user_id)));
+					break;
+				}
 				// The user's own: another device changed the list or the keys, which may leave this one off it, or
 				// published the identity this first device was to make, if it hasn't shown a key yet.
-				if (event.data.user_id !== this.#parts.user) break;
 				this.#soon(async () => {
 					const { state } = this;
 					// Ready, the device's own list may now leave out a device that still has leaves: the groups say whether
@@ -1113,7 +1174,7 @@ export class E2EEngine {
 		await this.#whenReady(() => this.#groups.all());
 		for (const id of [...this.#toOpen]) {
 			this.#toOpen.delete(id);
-			await this.#whenReady(() => this.#groups.open(id)).catch((error: unknown) => {
+			await this.#whenReady(() => this.#open(id)).catch((error: unknown) => {
 				console.error("[e2e] A conversation's group didn't open:", error);
 			});
 		}

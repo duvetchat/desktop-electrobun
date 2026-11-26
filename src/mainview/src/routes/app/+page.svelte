@@ -13,7 +13,6 @@
 	import SpaceEdge from "$lib/components/SpaceEdge.svelte";
 	import SpaceNav from "$lib/components/SpaceNav.svelte";
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
-	import { createDM } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { firstTextRoom, type OpenChats } from "$lib/nav";
@@ -86,6 +85,7 @@
 	import {
 		approvalActions,
 		changeKeys,
+		createDM,
 		encryption,
 		keySaved,
 		makeIdentity,
