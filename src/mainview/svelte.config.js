@@ -126,6 +126,9 @@ const config = {
   // preprocess: vitePreprocess(),
   kit: {
     adapter: adapter({
+      // build/, which the desktop app copies (electrobun.config.ts), unless DUVET_BUILD_DIR names another folder: the
+      // browser cases' build of the app against a local stack (scripts/web-e2e.ts) never takes its place.
+      pages: process.env.DUVET_BUILD_DIR || "build",
       precompress: true,
     }),
     csp,
