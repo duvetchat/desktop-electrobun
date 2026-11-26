@@ -131,15 +131,35 @@ function keptRefusals(store: EngineStore): Map<string, number> {
 	return read;
 }
 
-/** A message as its queue's entry: its ciphertext the data, its ID the message's, its author and device the sender's. */
-function messageEntry(message: DirectMessage): [string, MlsEventEntry] | null {
-	const { conversation_id, seq, generation, epoch } = message;
-	if (!conversation_id || seq === undefined || generation === undefined || epoch === undefined) return null;
+const isObject = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+/** A number the engine counts with (an entry's, a group's generation): a whole one JS holds exactly, 0 or more. */
+const isCount = (value: unknown): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * A message as its queue's entry: its ciphertext the data, its ID the message's, its author and device the sender's,
+ * each as the server gave it. None of a notice's, which has no number, nor of a message the API never sends so: not an
+ * object, without its conversation, or whose number, generation, epoch or time isn't one (a NaN in the conversation's
+ * numbers would keep its queue from being read). Its time is the message's, never one made up.
+ */
+export function messageEntry(message: DirectMessage): [string, MlsEventEntry] | null {
+	if (!isObject(message)) return null;
+	const { conversation_id, seq, generation, epoch, sent_at } = message;
+	if (typeof conversation_id !== "string" || !conversation_id || ![seq, generation, epoch].every(isCount)) return null;
+	if (!Number.isSafeInteger(sent_at)) return null;
 	const reply = message.referenced_message?.message_id;
 	return [
 		conversation_id,
 		{
-			...{ seq, kind: "message", data: message.ciphertext ?? null, sent_at: message.sent_at ?? 0, generation, epoch },
+			...{
+				seq: seq!,
+				kind: "message",
+				data: message.ciphertext ?? null,
+				sent_at: sent_at!,
+				generation: generation!,
+				epoch: epoch!,
+			},
 			...{ message_id: message.id, sender_user: message.author_id, sender_device: message.sender_device_id },
 			...(message.mentions?.length ? { mentions: message.mentions } : {}),
 			...(reply ? { reply_to: reply } : {}),
@@ -147,18 +167,29 @@ function messageEntry(message: DirectMessage): [string, MlsEventEntry] | null {
 	];
 }
 
+/** An event's entry with its conversation, and its group's generation where it gives one: none where they don't read. */
+function eventEntry(id: unknown, entry: unknown, generation?: unknown) {
+	if (typeof id !== "string" || !id || !isObject(entry) || !isCount(entry.seq)) return null;
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the server's entry, carried as it came: the core reads it
+	const made = { id, entry: entry as unknown as MlsEventEntry };
+	if (generation === undefined) return made;
+	return isCount(generation) ? { ...made, generation } : null;
+}
+
 /** The entry an event carries, with its conversation and, of a group's own events, its generation: none from what has
- * none (a notice's message, its deletion). */
-function entryOf(event: EngineEvent): { id: string; entry: MlsEventEntry; generation?: number } | null {
+ * none (a notice's message, its deletion), nor from what isn't one. */
+export function entryOf(event: EngineEvent): { id: string; entry: MlsEventEntry; generation?: number } | null {
+	const data: unknown = event.data;
+	if (!isObject(data)) return null;
 	switch (event.type) {
 		case "MLS_COMMIT":
 		case "MLS_WELCOME":
 		case "MLS_PROPOSAL":
-			return { id: event.data.conversation_id, entry: event.data.entry, generation: event.data.generation };
+			return eventEntry(data.conversation_id, data.entry, data.generation);
 		case "DM_MESSAGE_UPDATE":
-			return { id: event.data.conversation_id, entry: event.data.entry };
+			return eventEntry(data.conversation_id, data.entry);
 		case "DM_MESSAGE_DELETE":
-			return event.data.entry ? { id: event.data.conversation_id, entry: event.data.entry } : null;
+			return data.entry ? eventEntry(data.conversation_id, data.entry) : null;
 		case "DM_MESSAGE_CREATE": {
 			const made = messageEntry(event.data);
 			return made && { id: made[0], entry: made[1] };
@@ -778,6 +809,9 @@ export class Conversations {
 			}
 			const last = page.entries.at(-1)?.seq;
 			if (last === undefined || last >= page.last_seq) return at;
+			// A page that doesn't go past where this read was would come again as it is, for good: the turn ends, as for
+			// a gap that doesn't move, and goes again later.
+			if (!(last > from)) throw new Error(`the queue of ${conv.id} doesn't go past entry ${from}`);
 			from = last;
 		}
 	}
