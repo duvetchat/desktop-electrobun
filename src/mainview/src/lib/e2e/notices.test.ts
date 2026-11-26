@@ -30,6 +30,19 @@ describe("the notices", () => {
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
 
+	test("a conversation's members say the table's words", () => {
+		// The add sheet's full group, a restart's question and refusal, a change of the members not answered yet (task 22).
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_group_full", "group_full"],
+			["e2e_restart_leaves_out", "restart_leaves_out"],
+			["e2e_restart_refused", "restart_refused"],
+			["e2e_members_now", "members_now"],
+			["e2e_change_unanswered", "change_unanswered"],
+			["e2e_no_device", "no_device"],
+		];
+		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
+	});
+
 	test("a conversation's files say the table's words", () => {
 		// The app's words for them (en.json, which t() reads) are the notices', key for key: the mobile app takes the same.
 		const words: [keyof typeof en, NoticeKey][] = [

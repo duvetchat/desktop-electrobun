@@ -62,29 +62,49 @@ export async function makeGroup(
 	return founding(made);
 }
 
-/** The blocked group's next generation (reset_group), with the members it has and every device's key packages. */
+/**
+ * The blocked group's next generation (reset_group), with the members and the owner the API has, in its order, as a
+ * creation takes them, and every device's key packages: the core takes them only as a restart may found its group
+ * (#46), else a rule_violation.
+ */
 export async function restartGroup(parts: EngineParts, conv: Conversation): Promise<Commit> {
 	const key_packages = await keyPackagesOf(parts, conv);
 	const made = await withIdentities(parts, () =>
-		parts.host.handle<Founding>({ cmd: "reset_group", conversation_id: conv.id, key_packages }),
+		parts.host.handle<Founding>({
+			...{ cmd: "reset_group", conversation_id: conv.id },
+			...(conv.type === 2 ? { owner: conv.owner_id } : {}),
+			...{ members: conv.members.map((member) => member.user_id), key_packages },
+		}),
 	);
 	return founding(made);
 }
 
+/** The group info of a group's latest epoch, as the API serves it (GET …/mls/group-info). */
+export interface ServedGroupInfo {
+	generation: number;
+	epoch: number;
+	group_info: string;
+}
+
 /**
  * The external commit that brings this device into the group as the API serves it (join_external), on the group info
- * of its latest epoch: held to the record of a conversation from before the cutover, and to the pinned external sender.
+ * of its latest epoch, which the caller fetched and judged: held to the record of a conversation from before the
+ * cutover, and to the pinned external sender.
  */
 export async function joinGroup(
 	parts: EngineParts,
 	conv: Conversation,
+	{ generation, epoch, group_info }: ServedGroupInfo,
 	externalSender: string,
 	expected: LegacyRecord | null,
 ): Promise<Commit> {
-	const { generation, epoch, group_info } = await parts.api.groupInfo(conv.id);
-	const made = await parts.host.handle<{ commit: string; group_info: string }>({
-		...{ cmd: "join_external", conversation_id: conv.id, generation, group_info, external_sender: externalSender },
-		...(expected ? { expected } : {}),
-	});
+	// A device that never saw the group's members (a first device, joining a group it was added to without one) is
+	// asked for their identities first.
+	const made = await withIdentities(parts, () =>
+		parts.host.handle<{ commit: string; group_info: string }>({
+			...{ cmd: "join_external", conversation_id: conv.id, generation, group_info, external_sender: externalSender },
+			...(expected ? { expected } : {}),
+		}),
+	);
 	return { generation, epoch, ...made };
 }

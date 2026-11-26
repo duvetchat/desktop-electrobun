@@ -184,6 +184,9 @@ export interface QueueExpired {
 /** An addition's answer: the member, as the conversations list gives them, and the commit that added them. */
 export type MemberAdded = ConversationMember & { commit: CommitTaken };
 
+/** A new conversation, as POST …/conversations takes it: a DM with a user, or a group of users, named. */
+export type NewConversationRequest = { type: 1; user_id: string } | { type: 2; name: string; user_ids: string[] };
+
 /** An encrypted message as a device sends it: its MLS message, its nonce, whom it mentions, what it replies to, its
  * sticker, and the IDs its files go up with, in their order. */
 export interface EncryptedMessage {
@@ -351,6 +354,9 @@ export function e2eApi(client: ApiClient = api) {
 		// E. A conversation's group.
 		/** The session's conversations, each with its group, and where this session's device has had a leaf in it. */
 		conversations: () => answer(client.get<Conversation[]>("/api/users/@me/conversations")),
+		/** A DM with a friend (the one they have, with its group, if they have one), or a group of friends the user owns. */
+		createConversation: (made: NewConversationRequest) =>
+			answer(client.post<Conversation>("/api/users/@me/conversations", made)),
 		groupInfo: (conversationId: string) =>
 			answer(
 				client.get<{ generation: number; epoch: number; group_info: string }>(`${conv(conversationId)}/mls/group-info`),

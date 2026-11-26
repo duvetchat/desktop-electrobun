@@ -414,7 +414,7 @@ function __wbg_get_imports() {
             return ret;
         }, arguments); },
         __wbindgen_generic_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 1582, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 1483, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_8c6199ad7c142ad4___convert__closures_____invoke___wasm_bindgen_8c6199ad7c142ad4___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_8c6199ad7c142ad4___JsError___true_);
             return ret;
         },

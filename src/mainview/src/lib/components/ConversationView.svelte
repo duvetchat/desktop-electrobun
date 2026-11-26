@@ -74,10 +74,7 @@
 		sendConversationTyping,
 		sendConversationRecording,
 		deleteDirectMessage,
-		addConversationMember,
-		removeConversationMember,
 		updateConversation,
-		leaveConversation,
 		ackConversation,
 		type Conversation,
 		type ConversationMember,
@@ -90,6 +87,7 @@
 	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
+	import { confirmRestart, refusalWords } from "$lib/e2e/member-changes";
 	import { drawnRows } from "$lib/e2e/engine/content";
 	import { FilesGone, gifFile, sealedSize, shownFile } from "$lib/e2e/engine/files";
 	import { gifBytes, outgoingFiles } from "$lib/e2e/thumbnails";
@@ -133,16 +131,21 @@
 	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
 	import {
 		acceptMembers,
+		addMember,
 		deleteEncrypted,
 		discardEncrypted,
 		editEncrypted,
 		encryption,
 		heldBeforeEncrypted,
+		leaveConversation,
 		openConversation,
 		pendingEncrypted,
+		removeMember as removeGroupMember,
 		restartGroup,
 		sendEncrypted,
 	} from "$lib/e2e/engine.svelte";
+	import { MAX_MEMBERS } from "$lib/e2e/engine/members";
+	import { getBotUser } from "$lib/api/developer";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -279,25 +282,51 @@
 		return friend.sender_id === user?.id ? friend.recipient_id : friend.sender_id;
 	}
 
+	// A group has 20 members at most, its owner among them (decision 17): a full one takes no one, which the sheet says
+	// before anything is asked.
+	const groupFull = $derived(conversation.members.length >= MAX_MEMBERS);
+
 	function openAddMemberModal() {
 		const memberIds = new Set(conversation.members.map((m) => m.user_id));
 		eligibleFriends = get(friends).filter((f) => !memberIds.has(getFriendOtherId(f)));
 		showAddMemberModal = true;
-		addMemberError = "";
+		addMemberError = groupFull ? t("e2e_group_full") : "";
 	}
 
+	// The owner's addition, one commit of exactly that user through the encryption engine (PLAN-E2E-CLIENTES.md, Task
+	// 22), whose devices come in by its welcome.
 	async function handleAddMember(userId: string) {
 		addMemberLoading = true;
 		addMemberError = "";
 		try {
-			const newMember = await addConversationMember(conversation.id, userId);
+			const newMember = await addMember(conversation.id, userId);
 			onMemberAdded?.(newMember);
 			showAddMemberModal = false;
 		} catch (err) {
-			addMemberError = getApiError(err, "Failed to add member");
+			addMemberError = refusalWords(err, "Failed to add member");
 		} finally {
 			addMemberLoading = false;
 		}
+	}
+
+	// A user's name as the app shows it: a member's; one who left, as the API has them, or their ID without that.
+	async function nameOf(userId: string): Promise<string> {
+		const member = conversation.members.find((m) => m.user_id === userId)?.user;
+		if (member) return member.alias ?? member.username;
+		const user = await getBotUser(userId).catch(() => null);
+		return user?.alias ?? user?.username ?? userId;
+	}
+
+	// Restart encryption (#46's client rule): whom it leaves out named first, and it goes only on the person's yes
+	// (lib/e2e/member-changes.ts), in the app's dialog; a refusal is a toast.
+	function restartEncryption() {
+		const convId = conversation.id;
+		return confirmRestart({
+			restart: (confirmed) => restartGroup(convId, confirmed),
+			nameOf,
+			confirm: confirmAction,
+			refused: (text) => toast(text, "error"),
+		});
 	}
 
 	async function renameGroup() {
@@ -316,11 +345,14 @@
 		}
 	}
 
-	// A failure shows in the dialog, which stays. Done, the group goes here, its call too, whatever the gateway has said.
+	// A failure shows in the dialog, which stays, in the app's words. Done, the group goes here, its call too, whatever
+	// the gateway has said.
 	function leaveGroup() {
 		const convId = conversation.id;
 		void confirmAction("Leave the group?", "Leave group", async () => {
-			await leaveConversation(convId);
+			await leaveConversation(convId).catch((err: unknown) => {
+				throw new Error(refusalWords(err, t("e2e_leave_failed")), { cause: err });
+			});
 			conversationLeft(convId);
 		});
 	}
@@ -923,8 +955,13 @@
 		return picked;
 	}
 
+	// The owner's removal, one commit that takes the member's devices out with them. A refusal shows in its dialog.
 	async function handleRemoveMember(userId: string) {
-		await removeConversationMember(conversation.id, userId);
+		try {
+			await removeGroupMember(conversation.id, userId);
+		} catch (err) {
+			throw new Error(refusalWords(err, t("e2e_remove_failed")), { cause: err });
+		}
 	}
 	// A group's owner takes members out of it, from their profile and their menu (#423).
 	const removeMember = $derived(conversation.type === 2 && isOwner ? handleRemoveMember : undefined);
@@ -1152,7 +1189,12 @@
 	<ConversationState
 		conversationState={groupState}
 		{ownerName}
-		onRestart={() => restartGroup(conversation.id)}
+		memberNames={conversation.members.map((member) => member.user.alias ?? member.user.username)}
+		memberName={(userId) => {
+			const member = conversation.members.find((m) => m.user_id === userId)?.user;
+			return member?.alias ?? member?.username ?? userId;
+		}}
+		onRestart={restartEncryption}
 		onAccept={() => acceptMembers(conversation.id)}
 	/>
 {/snippet}
@@ -1445,7 +1487,7 @@
 					type="button"
 					class="hover:bg-duvet-hover focus-visible:outline-duvet-accent flex items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition-colors focus-visible:outline-2 disabled:opacity-45 motion-reduce:transition-none"
 					onclick={() => handleAddMember(uid)}
-					disabled={addMemberLoading}
+					disabled={addMemberLoading || groupFull}
 				>
 					<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
 					<span class="flex min-w-0 flex-col">

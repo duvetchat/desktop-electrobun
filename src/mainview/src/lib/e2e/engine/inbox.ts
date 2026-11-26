@@ -9,6 +9,7 @@ import { readApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineParts } from "./engine";
 import type { Failures } from "./failures";
+import { withIdentities } from "./identity";
 import { KEPT_APPROVALS, KEPT_LATER, KEPT_TRANSFERS, type EngineStore } from "./store";
 
 /** The most messages a page of the inbox has (the API's most). */
@@ -83,12 +84,15 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 			const own = await identityOf(user);
 			const sender = await identityOf(message.from_user_id);
 			const certificate = sender?.certificates.find((one) => certificateDevice(one) === message.from_device_id);
-			const received = await host.handle<{ type: string }>({
-				cmd: "receive_direct",
-				message: message.message,
-				...(own ? { identity_key: own.identity_key } : {}),
-				...(certificate ? { from_certificate: certificate } : {}),
-			});
+			// A catch-up's key (Task 22) or a history's is taken once its sender's identity is known here: observed first.
+			const received = await withIdentities(parts, () =>
+				host.handle<{ type: string }>({
+					cmd: "receive_direct",
+					message: message.message,
+					...(own ? { identity_key: own.identity_key } : {}),
+					...(certificate ? { from_certificate: certificate } : {}),
+				}),
+			);
 			if (received.type === "rotation.transfer") rotated = true;
 		} catch (error) {
 			if (!(error instanceof CoreError)) {
