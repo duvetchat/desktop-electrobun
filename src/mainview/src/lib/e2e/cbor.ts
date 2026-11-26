@@ -83,12 +83,16 @@ export function commitmentDevice(commitment: string): string | null {
 	return bytes && asUuid(asMap(cbor(bytes))?.get("device"));
 }
 
-/** The devices a device list names (its signed object in base64: `{body, sig}`, its body's `devices`), or null. */
+/**
+ * The devices a device list names (its signed object in base64: `{body, sig}`, its body's `devices`), or null: of a
+ * list as the core writes one, with its `version`, as the mobile app reads it.
+ */
 export function listDevices(list: string): string[] | null {
 	const signed = canonicalBytes(list);
 	const body = signed && asBytes(asMap(cbor(signed))?.get("body"));
-	const devices = body ? asMap(cbor(body))?.get("devices") : null;
-	if (!Array.isArray(devices)) return null;
+	const fields = body ? asMap(cbor(body)) : null;
+	const devices = fields?.get("devices");
+	if (typeof fields?.get("version") !== "number" || !Array.isArray(devices)) return null;
 	const ids = devices.map(asUuid).filter((id) => id !== null);
 	return ids.length === devices.length ? ids : null;
 }

@@ -46,4 +46,12 @@ describe("the CBOR reader", () => {
 		for (const other of others(list)) expect(listDevices(other)).toBeNull();
 		for (const other of others(commitment)) expect(commitmentDevice(other)).toBeNull();
 	});
+
+	test("a list's devices are read only of a list with its version, as the core writes one", () => {
+		const devices = [0x67, ...ascii("devices"), 0x81, ...ID];
+		const version = [0x67, ...ascii("version")];
+		expect(listDevices(base64(signed([0xa2, ...devices, ...version, 0x01])))).toEqual([DEVICE]);
+		expect(listDevices(base64(signed([0xa1, ...devices])))).toBeNull();
+		expect(listDevices(base64(signed([0xa2, ...devices, ...version, 0x61, ...ascii("1")])))).toBeNull();
+	});
 });
