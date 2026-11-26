@@ -241,8 +241,9 @@ export class Conversations {
 	/** Groups under an external sender other than the pinned one: this device never goes in (Ruling 32). */
 	readonly #otherSender = new Set<string>();
 	/**
-	 * Restarts the core refused (a successor's, without a statement it needs), by conversation, with the queue's last
-	 * number then: Restart is off until a newer entry comes (task 22's review, M8).
+	 * Restarts the core refused (a successor's, without a statement it needs), or whose commit the API's validator did
+	 * (#550), by conversation, with the queue's last number then: Restart is off until a newer entry comes (task 22's
+	 * review, M8).
 	 */
 	readonly #cantRestart = new Map<string, number>();
 	/**
@@ -417,8 +418,9 @@ export class Conversations {
 	 * The person's restart of the conversation's blocked group, which only its owner (in a DM, either member) makes, with
 	 * the members and owner the API has (reset_group). Whom it leaves out, those the core's group holds that the API no
 	 * longer lists, the person confirms first (#46's client rule): while `leaving` isn't them, nothing is made, and they're
-	 * what this answers. A reset the core refuses (a successor's, without a statement it needs) leaves the group blocked,
-	 * and isn't offered again before a new entry comes, which may bring what it needs.
+	 * what this answers. A reset the core refuses (a successor's, without a statement it needs), or whose commit the
+	 * API's validator refuses (422, said as the core's refusal, #550), leaves the group blocked, and isn't offered again
+	 * before a new entry comes, which may bring what it needs.
 	 */
 	async restart(conversationId: string, leaving: readonly string[] = []): Promise<string[]> {
 		if (this.#inFlight.has(conversationId) || this.#otherSender.has(conversationId)) return [];
@@ -432,14 +434,20 @@ export class Conversations {
 		try {
 			commit = await restartGroup(this.#parts, conv);
 		} catch (error) {
-			if (error instanceof CoreError && error.code === "rule_violation") {
-				this.#cantRestart.set(conv.id, conv.mls?.last_seq ?? 0);
-				this.#set(conv.id, this.#blocked(conv));
-			}
+			if (error instanceof CoreError && error.code === "rule_violation") this.#refuseRestart(conv);
 			throw error;
 		}
-		await this.#commit(conv, "restart", commit);
+		if ((await this.#commit(conv, "restart", commit)) === "invalid") {
+			this.#refuseRestart(conv);
+			throw new CoreError("rule_violation", "the API refused the restart", { rule: "restart_refused" });
+		}
 		return [];
+	}
+
+	/** A restart refused: Restart is off until a new entry comes, so no tap claims key packages for nothing. */
+	#refuseRestart(conv: Conversation) {
+		this.#cantRestart.set(conv.id, conv.mls?.last_seq ?? 0);
+		this.#set(conv.id, this.#blocked(conv));
 	}
 
 	/**
