@@ -236,7 +236,8 @@ export function shownFile(raw: unknown): ShownFile | null {
 	const inside = decoded(thumbnail);
 	if (typeof thumbnail === "string" && inside && inside.length <= MAX_THUMBNAIL) file.thumbnail = thumbnail;
 	const ref = fileRef(at("thumbnail_ref"));
-	if (ref && !file.thumbnail) file.thumbnail_ref = ref;
+	// The thumbnail inside wins, an empty one too, as the mobile app reads it: never both.
+	if (ref && file.thumbnail === undefined) file.thumbnail_ref = ref;
 	return file;
 }
 

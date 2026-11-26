@@ -794,15 +794,9 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 
 // What step 5's fuzzing found (PLAN-E2E-CLIENTES.md, «Lo que el paso 5 revisa»), which e2e-fuzz-corpus.json keeps too.
 describe("what the fuzzers found", () => {
+	const file = { id: "0193a4b2-0000-7000-8000-0000000000c3", key: "a2V5", sha256: "c2hh", name: "a.ogg", size: 3 };
+
 	test("a file's waveform and thumbnail are kept only as base64 in the form the core writes it", () => {
-		const file = {
-			id: "0193a4b2-0000-7000-8000-0000000000c3",
-			key: "a2V5",
-			sha256: "c2hh",
-			name: "a.ogg",
-			type: "audio/ogg",
-			size: 3,
-		};
 		const waveform = bytesBase64(new Uint8Array(64).fill(7));
 		const thumbnail = bytesBase64(new Uint8Array(100).fill(9));
 		expect(shownFile({ ...file, waveform, thumbnail })).toMatchObject({ waveform, thumbnail });
@@ -810,5 +804,13 @@ describe("what the fuzzers found", () => {
 		const shown = shownFile({ ...file, waveform: waveform.replace(/=+$/, ""), thumbnail: ` ${thumbnail}` });
 		expect(shown).not.toHaveProperty("waveform");
 		expect(shown).not.toHaveProperty("thumbnail");
+	});
+
+	test("a thumbnail inside the message, an empty one too, is its thumbnail: one of its own beside it isn't taken", () => {
+		const ref = { id: "0193a4b2-0000-7000-8000-0000000000c4", key: "a2V5", sha256: "c2hh", size: 9 };
+		const shown = shownFile({ ...file, thumbnail: "", thumbnail_ref: ref });
+		expect(shown).toMatchObject({ thumbnail: "" });
+		expect(shown).not.toHaveProperty("thumbnail_ref");
+		expect(shownFile({ ...file, thumbnail_ref: ref })).toMatchObject({ thumbnail_ref: ref });
 	});
 });
