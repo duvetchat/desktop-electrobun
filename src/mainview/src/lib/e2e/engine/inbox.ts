@@ -151,6 +151,11 @@ export async function takeInbox(
 	let after: string | undefined;
 	for (;;) {
 		const page = await api.inbox(after);
+		// A page that doesn't go past where this read began (the API's after is exclusive, its IDs in order) would come
+		// again as it is, for good: the round ends, and the next reads the inbox again, as a queue page that doesn't move
+		// ends its turn (sync.ts; #555).
+		const last = page.at(-1)?.id;
+		if (after !== undefined && !(last !== undefined && last > after)) return rotated;
 		let handled: string | undefined;
 		for (const message of page) {
 			if (!(await handle(message))) break;
