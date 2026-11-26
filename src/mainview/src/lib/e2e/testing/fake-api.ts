@@ -92,6 +92,18 @@ const LABEL = {
 
 const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((byte, i) => byte === b[i]);
 const base64url = (bytes: Uint8Array) => bytesBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/** The UTC day of an instant (ms), YYYY-MM-DD as the core writes a backup's days. */
+const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
+
+/**
+ * The ID of the backup key an encrypted identity is sealed with, in the clear as the core writes it (`{v: 1, key_id,
+ * nonce, ct}`), in base64 as the API lists a segment's: null for anything else.
+ */
+function base64Key(sealed: unknown): string | null {
+	if (typeof sealed !== "string" || !BASE64.test(sealed)) return null;
+	const key = asBytes(asMap(cbor(base64Bytes(sealed)))?.get("key_id"), 8);
+	return key ? bytesBase64(key) : null;
+}
 
 /** A signed object's body, once its Ed25519 signature over label || 0x00 || body verifies with key; else null. */
 function signedBody(label: string, signed: Uint8Array, key: Uint8Array): Map<string, Cbor> | null {
@@ -599,7 +611,10 @@ export class FakeApi {
 	 * request from a client below it, or of a platform it doesn't name, gets a 426. Day one's platforms, any version.
 	 */
 	minClients: Record<string, string> = { "desktop-windows": "0.0.0", web: "0.0.0", android: "0.0.0" };
-	/** What the API's clock is off by as it stamps a message (sent_at): a test's way to a message of days ago. */
+	/**
+	 * What the API's clock is off by as it stamps a message or another entry of a conversation's queue (sent_at): a test's
+	 * way to a message, an edit or a deletion of days ago, and to a day of the backup that ended.
+	 */
 	sentAtOffset = 0;
 
 	#users = new Set<string>();
@@ -615,6 +630,12 @@ export class FakeApi {
 		{ id: string; from_user_id: string; from_device_id: string; message: string; created_at: string }[]
 	>();
 	#segments = new Map<string, Segment>();
+	/**
+	 * Each user's backup keys, by the key_id each identity's encrypted identity names (the API's UserBackupKeys): when a
+	 * new identity retired each one (null: the current one), and when they last started over, which takes every key it
+	 * retired out of the backup.
+	 */
+	#backupKeys = new Map<string, { retired: Map<string, number | null>; resetAt: number }>();
 	#shares = new Map<string, Share>();
 	/** Who sent a catch-up to whom in which conversation (sender:conversation:recipient): the API takes one a day. */
 	#catchUpsSent = new Set<string>();
@@ -1200,7 +1221,11 @@ export class FakeApi {
 				const after = query.get("after") ?? "";
 				const conversation = query.get("conversation_id");
 				const listed = [...this.#segments.values()].filter(
-					(s) => s.identity === identity?.id && s.id > after && (!conversation || s.conversation_id === conversation),
+					(s) =>
+						s.identity === identity?.id &&
+						s.id > after &&
+						(!conversation || s.conversation_id === conversation) &&
+						this.#shownSegment(session.user, s),
 				);
 				return ok(
 					listed.slice(0, 1000).map(({ id, conversation_id, day, complete, key_id, size, created_at }) => ({
@@ -1216,7 +1241,8 @@ export class FakeApi {
 			),
 			route("GET", `${me}/backup/segments/(?<segment>${UUID_PATH})`, "device", ({ session, params }) => {
 				const segment = this.#segments.get(params.segment!);
-				if (!segment || segment.identity !== this.#identities.get(session.user)?.id) throw fail(404, "no such segment");
+				const own = segment && segment.identity === this.#identities.get(session.user)?.id;
+				if (!segment || !own || !this.#shownSegment(session.user, segment)) throw fail(404, "segment not found");
 				return ok({ url: signedPath(segment.file) });
 			}),
 			// A file at its signed URL, which the part's and the segment's routes answer: it takes no session.
@@ -1419,12 +1445,30 @@ export class FakeApi {
 
 		let identity = current!;
 		if (change !== "same") {
+			// The backup key its encrypted identity names, in the clear as the core writes it: a new one, as the API's
+			// AddBackupKey takes one. A rotation and starting over retire the user's keys now (RetireBackupKeys).
+			const keyId = base64Key(body.encrypted_identity);
+			if (!keyId) throw fail(400, "the encrypted identity doesn't name the backup key it's sealed with");
+			const keys = this.#backupKeys.get(session.user) ?? { retired: new Map(), resetAt: -Infinity };
+			if (keys.retired.has(keyId)) throw fail(400, "the encrypted identity is sealed with a backup key you had before");
+			const at = Date.now();
+			for (const [key, retired] of keys.retired) if (retired === null) keys.retired.set(key, at);
+			if (change === "reset") keys.resetAt = at;
+			keys.retired.set(keyId, null);
+			this.#backupKeys.set(session.user, keys);
 			identity = {
 				...{ id: this.#id(), identityKey, deviceList, version: list.version, changed_at: now() },
 				...{ encrypted_identity: body.encrypted_identity, wrapped_backup_key: body.wrapped_backup_key },
 				wrapped_previous_backup_keys: body.wrapped_previous_backup_keys ?? null,
 			};
 			this.#identities.set(session.user, identity);
+			// A rotation carries the backup on, each segment under the key that sealed it (MoveBackupSegments); starting
+			// over leaves it with the identity it replaced.
+			if (change === "rotation") {
+				for (const segment of this.#segments.values()) {
+					if (segment.identity === current!.id) segment.identity = identity.id;
+				}
+			}
 			const off: Device[] = [];
 			for (const own of this.#devicesOf(session.user)) {
 				const signed = certificates.get(own.id);
@@ -1628,7 +1672,7 @@ export class FakeApi {
 
 	/** An entry of the conversation's queue, under its next number. */
 	#addEntry(conv: Conversation, entry: Omit<Entry, "seq" | "sent_at">): Entry {
-		const added = { seq: ++conv.seq, sent_at: Date.now(), ...entry };
+		const added = { seq: ++conv.seq, sent_at: Date.now() + this.sentAtOffset, ...entry };
 		conv.entries.push(added);
 		return added;
 	}
@@ -2200,6 +2244,12 @@ export class FakeApi {
 		return this.#fileRows.has(id) ? this.#files.get(id) : undefined;
 	}
 
+	/** The bytes the API keeps of a segment of a backup, by the segment's ID: those it serves, which a test may alter. */
+	segmentFile(id: string): Uint8Array | undefined {
+		const segment = this.#segments.get(id);
+		return segment ? this.#files.get(segment.file) : undefined;
+	}
+
 	/** A package as clients get it: a catch-up has no range (null, as the API's *string gives it). */
 	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share): ShareView {
 		return { id, conversation_id, from_user_id, kind, range: range || null, starts_at, size, parts };
@@ -2285,7 +2335,22 @@ export class FakeApi {
 		return NO_CONTENT;
 	}
 
-	/** A day's segment, in place of the one it names (`replaces`: its ID, or none): its header must be this route's. */
+	/**
+	 * Whether a segment is shown, as the API lists and serves one: its key seals its day, a retired one only the days
+	 * before the UTC day it was retired on (e2e.KeySealsDay).
+	 */
+	#shownSegment(user: string, segment: Segment): boolean {
+		const retired = this.#backupKeys.get(user)?.retired.get(segment.key_id);
+		return retired === null || (retired !== undefined && segment.day < utcDay(retired));
+	}
+
+	/**
+	 * A day's segment, in place of the one it names (`replaces`: its ID, or none), as the API keeps one: its header must
+	 * be this route's, and its key one of the user's that seals its day: one that isn't theirs is `unknown backup key`,
+	 * and one retired on or before its day, or that starting over retired, `retired backup key` (the API's dayOf). The
+	 * same bytes as the day's segment shown now are that one, sent again: its ID. Another segment shown there must be the
+	 * one it names (409, with it as `current`); one no longer shown holds nothing to lose.
+	 */
 	#putSegment({ session, params, query, bytes }: Context): Answer {
 		const identity = this.#identities.get(session.user);
 		if (!identity) throw fail(404, "no identity");
@@ -2298,11 +2363,26 @@ export class FakeApi {
 			header.get("day") === params.day &&
 			typeof header.get("complete") === "boolean";
 		if (!fits || !keyId) throw fail(400, "the segment's header isn't this route's");
+		const keys = this.#backupKeys.get(session.user);
+		const retired = keys?.retired.get(bytesBase64(keyId));
+		if (retired === undefined) throw fail(400, "unknown backup key");
+		if (retired !== null && (retired <= keys!.resetAt || params.day! >= utcDay(retired))) {
+			throw fail(400, "retired backup key");
+		}
 		const current = [...this.#segments.values()].find(
 			(s) => s.identity === identity.id && s.conversation_id === params.conversation && s.day === params.day,
 		);
-		if ((query.get("replaces") ?? "none") !== (current?.id ?? "none")) {
-			throw fail(409, "another copy of this day came first", { current: current?.id ?? null });
+		const shown = current && this.#shownSegment(session.user, current) ? current : undefined;
+		if (shown && equal(this.#files.get(shown.file)!, bytes)) return ok({ id: shown.id }, 201);
+		if (shown && (query.get("replaces") ?? "none") !== shown.id) {
+			throw fail(409, "another segment holds this day", { current: shown.id });
+		}
+		// As any upload in the user's quota, in the API's words: one past the storage's limit for a file is a 413.
+		if (bytes.length > this.fileLimit) {
+			throw fail(
+				413,
+				`uploading a backup segment: file is too large: ${bytes.length} bytes, your limit is ${this.fileLimit}`,
+			);
 		}
 		if (current) this.#segments.delete(current.id);
 		const segment: Segment = {

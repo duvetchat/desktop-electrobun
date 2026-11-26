@@ -1649,6 +1649,7 @@
 			{devices}
 			failed={devicesFailed}
 			encryption={engine.encryption.state}
+			backup={engine.encryption.backup}
 			web={!desktopApp}
 			{storageKept}
 			onReload={() => void loadDevices()}
