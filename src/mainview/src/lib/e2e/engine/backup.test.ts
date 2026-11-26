@@ -320,6 +320,45 @@ describe.skipIf(!coreLibrary)("the encrypted backup", () => {
 		SLOW,
 	);
 
+	// Task 33's review, I1 (desktop-electrobun#540): a copy can outlive a deletion when its device never builds its day
+	// again; a device restoring it must leave out what the API saw deleted.
+	test(
+		"a day's copy that still holds a message deleted since restores without it",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const { device: a, key } = await withKey(fake, ana);
+			const b = await firstDevice(fake, bo);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			const kept = await sent(fake, a, conversation, "kept", DAY, [a, b]);
+			const gone = await sent(fake, a, conversation, "deleted for everyone", DAY, [a, b]);
+			a.clock.advance(MINUTE);
+			await until(async () => (await a.api.segments()).length === 1);
+			await turnEnded(a);
+			const [copy] = await a.api.segments();
+
+			// Deleted for everyone, and Ana's device stops before its day goes up again: the copy still holds it.
+			await a.engine.deleteMessage(conversation, gone.id);
+			await until(async () => (await b.engine.messages(conversation, [gone.id])).length === 0);
+			await a.engine.stop();
+			expect((await a.api.deletedMessages(conversation)).ids).toEqual([gone.id]);
+			expect((await a.api.segments()).map(({ id }) => id)).toEqual([copy!.id]);
+
+			// A device Ana recovers with her key restores that copy, without the message.
+			const n = testDevice(fake, ana);
+			await n.engine.start();
+			await n.engine.recover(key);
+			await until(async () => (await textOn(n, conversation, kept.id)) === "kept");
+			await turnEnded(n);
+			expect(await textOn(n, conversation, gone.id)).toBeNull();
+			await Promise.all([b.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
 	test(
 		"a new device restores its days, newest conversations first, and the rows that waited fill in",
 		async () => {
@@ -1255,6 +1294,87 @@ describe("the backup's rules", () => {
 		await stub.backups.settled();
 		expect(stub.log[0]).toBe("inbox");
 		expect(stub.log).toContain("putSegment");
+	});
+
+	// Task 33's review, I1 and M1 (desktop-electrobun#540): no case made the deleted IDs matter where a copy is written
+	// back, so these commands handed an empty list passed every test; and the list's last page was told by the API's
+	// default size.
+	test("a restore, a 409's copy and a move take their segments in without what the API saw deleted", async () => {
+		const gone = ["0193a4b2-0000-7000-8000-0000000d0001", "0193a4b2-0000-7000-8000-0000000d0002"];
+		const limits: unknown[] = [];
+		const deletedMessages = async (_conversation: string, _after?: string, limit?: number) => {
+			limits.push(limit);
+			return { ids: gone };
+		};
+
+		// A restore's day.
+		const restored: unknown[] = [];
+		const restore = onAStub({
+			core: {
+				backup_import: ({ deleted }) => {
+					restored.push(deleted);
+					return { imported: 1 };
+				},
+			},
+			api: { segments: async () => [segmentOf(S1, "2026-11-21")], deletedMessages },
+		});
+		restore.store.write(BACKUP_RESTORE, { done: [] });
+		restore.backups.wake();
+		await restore.backups.settled();
+		expect(restored).toEqual([gone]);
+
+		// Another device's copy of a day due here (409), taken in before the day is built over it.
+		const confirmed: string[] = [];
+		const takenIn: unknown[] = [];
+		let puts = 0;
+		const copy = onAStub({
+			core: {
+				backup_due: () => ({ segments: confirmed.length ? [] : [{ conversation_id: C, day: "2026-11-20" }] }),
+				backup_uploaded: ({ day }) => void confirmed.push(day),
+				backup_import: ({ deleted }) => {
+					takenIn.push(deleted);
+					return { imported: 1 };
+				},
+			},
+			api: {
+				deletedMessages,
+				putSegment: async () => {
+					if (++puts > 1) return { id: crypto.randomUUID() };
+					throw new FetchError(
+						"Request failed with status 409",
+						{},
+						{
+							...{ data: { error: "another copy holds this day", current: S2 }, status: 409 },
+							...{ statusText: "", headers: new Headers() },
+						},
+					);
+				},
+			},
+		});
+		copy.backups.quiet();
+		await copy.backups.settled();
+		expect(takenIn).toEqual([gone]);
+		expect(confirmed).toEqual(["2026-11-20"]);
+
+		// A move's segment, under an older key.
+		const moved: unknown[] = [];
+		const move = onAStub({
+			core: {
+				backup_reencrypt: ({ deleted }) => {
+					moved.push(deleted);
+					return { data: "AAAA", key_id: "current" };
+				},
+			},
+			api: { segments: async () => [segmentOf(S1, "2026-11-21", "older")], deletedMessages },
+		});
+		move.store.write(BACKUP_KEY_SEEN, "older");
+		move.backups.quiet();
+		await move.backups.settled();
+		expect(moved).toEqual([gone]);
+
+		// Each list was read 1000 a page, the API's most, whatever its own page is.
+		expect(limits).toHaveLength(3);
+		expect(limits.every((limit) => limit === 1000)).toBe(true);
 	});
 
 	// The review's M13: full pages forever list no backup.

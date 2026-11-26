@@ -584,7 +584,10 @@ export class Backups {
 		if (pages > MAX_PAGES) throw new Error(`the API's listing went past ${MAX_PAGES} pages`);
 	}
 
-	/** The conversation's deleted encrypted messages, by ID, as the API lists them: none of one the user left. */
+	/**
+	 * The conversation's deleted encrypted messages, by ID, as the API lists them: none of one the user left. Each page
+	 * is asked for at the API's most, so a short one is its last whatever the API's own page is (desktop-electrobun#540).
+	 */
 	async #deleted(generation: number, conversationId: string): Promise<string[]> {
 		const ids: string[] = [];
 		for (let after: string | undefined, pages = 1; ; pages++) {
@@ -592,7 +595,7 @@ export class Backups {
 			this.#nextPage(pages);
 			let page: string[];
 			try {
-				({ ids: page } = await this.#parts.api.deletedMessages(conversationId, after));
+				({ ids: page } = await this.#parts.api.deletedMessages(conversationId, after, PAGE));
 			} catch (error) {
 				const status = statusOf(error);
 				if (status !== 403 && status !== 404) throw error;
