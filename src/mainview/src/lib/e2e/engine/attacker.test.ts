@@ -1,0 +1,638 @@
+import { describe, expect, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
+import { base64Bytes } from "$lib/activity-thumbnail";
+import type { DirectMessage } from "$lib/api/conversations";
+import type { Identity } from "$lib/api/e2e";
+import { bytesBase64 } from "$lib/staged-images";
+import { MAX_FILE_NAME } from "../conventions";
+import { FakeApi, type GatewayEvent } from "../testing/fake-api";
+import { coreLibrary } from "../testing/host-bun";
+import {
+	approvedDevice,
+	filesOn,
+	firstDevice,
+	groupOf,
+	resetFrom,
+	restarted,
+	sameGroup,
+	sendWritten,
+	shownKey,
+	testDevice,
+	turnEnded,
+	until,
+	useFake,
+	type TestDevice,
+} from "../testing/engines";
+import { useXHR } from "../testing/xhr";
+
+// Step 5: the server as an attacker, against the desktop's and the web's engine (PLAN-E2E-CLIENTES.md, «Lo que el paso
+// 5 revisa»). End-to-end encryption lets the server withhold and delay, but never read, forge, or make a device act on
+// its word alone: the device never takes a device, an identity or a key the person didn't accept, never loses or forges
+// a message the person holds, confirms only what the server took («Restricciones globales»), and goes on where the plan
+// says it goes on. Each case is a lie the fake API tells, on real cores, held to the rule it names; what the server only
+// withholds is its right, and no case's. The mobile app's twin task writes the same cases in snake_case.
+const SLOW = 240_000;
+// A message's files go up as a form, through XMLHttpRequest, which the fake answers.
+useXHR();
+const IDENTITY = { method: "PUT", path: "/api/users/@me/identity" };
+const DEVICE_LIST = { method: "PUT", path: "/api/users/@me/device-list" };
+const KEY_PACKAGES = { method: "PUT", path: "/api/users/@me/devices/@me/key-packages" };
+const INBOX = { method: "DELETE", path: "/api/users/@me/devices/@me/inbox" };
+const messagesPath = (conversation: string) => `/api/users/@me/conversations/${conversation}/messages`;
+
+const said = (request: Request) => `${request.method} ${new URL(request.url).pathname}`;
+
+/** The text a device's core shows of a message, once it has it: null while it has none. */
+async function textOn(device: TestDevice, conversation: string, id: string): Promise<string | null> {
+	const [shown] = await device.engine.messages(conversation, [id]);
+	return shown?.status === "ok" ? (shown.text ?? null) : null;
+}
+
+interface Status {
+	device_id?: string;
+	identity_key?: string;
+	has_identity: boolean;
+	device_list?: string;
+}
+const statusOf = (device: TestDevice) => device.host.handle<Status>({ cmd: "status" });
+
+/** A message of the device's, sent through its engine. */
+async function send(device: TestDevice, conversation: string, text: string): Promise<DirectMessage> {
+	const sent = await device.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
+	if (!sent) throw new Error(`the message "${text}" wasn't sent`);
+	return sent;
+}
+
+/** Ana's and Bo's first devices in their DM, whose group Ana made; every request the fake saw goes to `seen` first. */
+async function dm(given: { seen?: (request: Request) => void; aHears?: (event: GatewayEvent) => boolean } = {}) {
+	const fake = new FakeApi();
+	const [ana, bo] = [fake.addUser(), fake.addUser()];
+	useFake(fake, given.seen);
+	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const a = await firstDevice(fake, ana, { hears: given.aHears });
+	const b = await firstDevice(fake, bo);
+	await a.engine.openConversation(conversation);
+	await sameGroup([a, b], conversation);
+	return { fake, ana, bo, a, b, conversation };
+}
+
+/**
+ * Ana's first device and a second one it approved (her list's version 2), Bo's first device, their DM's group, and a
+ * message of Bo's that both of Ana's devices hold. `older` is Ana's identity as the API served it before her second
+ * device was listed: a list a server could serve again.
+ */
+async function anaWithTwoDevices(seen?: (request: Request) => void) {
+	const fake = new FakeApi();
+	const [ana, bo] = [fake.addUser(), fake.addUser()];
+	useFake(fake, seen);
+	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const a1 = await firstDevice(fake, ana);
+	const older = await a1.api.identity(ana);
+	const a2 = await approvedDevice(fake, a1);
+	const b = await firstDevice(fake, bo);
+	await a1.engine.openConversation(conversation);
+	await sameGroup([a1, a2, b], conversation);
+	const kept = await send(b, conversation, "kept");
+	await until(async () => (await textOn(a2, conversation, kept.id)) === "kept");
+	return { fake, ana, bo, a1, a2, b, conversation, older, message: kept.id };
+}
+
+/** The API serves the user's identity as `served` from now on (none for null), to everyone, by both of its routes. */
+function serveAs(fake: FakeApi, user: string, served: Identity | null) {
+	fake.servedAs = (view) => (view.user_id === user ? structuredClone(served) : view);
+}
+
+/** The server tells the user's devices their identity changed, whatever it serves. */
+const identityUpdate = (fake: FakeApi, user: string, served: Identity) =>
+	fake.tell(user, {
+		type: "IDENTITY_UPDATE",
+		data: { user_id: user, identity_key: served.identity_key, device_list_version: served.device_list_version },
+	});
+
+/**
+ * Counts the device lists put up, and fails each past the third: a device that puts its list up again and again, on a
+ * fake whose answers come at once, never yields to a timer, and the test's own time limit couldn't end it.
+ */
+function listPuts() {
+	const puts: string[] = [];
+	const seen = (request: Request) => {
+		if (said(request) !== `${DEVICE_LIST.method} ${DEVICE_LIST.path}`) return;
+		puts.push(said(request));
+		if (puts.length > 3) throw new TypeError("fetch failed: this list went up three times already");
+	};
+	return { puts, seen };
+}
+
+describe.skipIf(!coreLibrary)("a list the server hides or rolls back is refused", () => {
+	// «Arranque», step 5, and the core's observe_user: a list older than the one the device holds is `older_list`, and
+	// the device keeps its own, which names it. Ruling 26 starts over only a device the API never listed; decision 13: a
+	// device's data goes on the person's word alone.
+	test(
+		"an older list of the user's own, from before this device was listed, leaves it ready with what it holds",
+		async () => {
+			const { puts, seen } = listPuts();
+			const { fake, ana, a2, conversation, older, message } = await anaWithTwoDevices(seen);
+			const device = (await statusOf(a2)).device_id;
+			serveAs(fake, ana, older);
+			// And a server that lies there too: whatever list this device puts up, another won.
+			const lost = { error: "device list changed", device_list: older.device_list, version: older.device_list_version };
+			fake.refuse(DEVICE_LIST, 409, lost, {}, Infinity);
+			const before = puts.length;
+			const again = await restarted(fake, a2);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect((await statusOf(again)).device_id).toBe(device);
+			expect(await textOn(again, conversation, message)).toBe("kept");
+			expect(puts.slice(before)).toEqual([]);
+			await again.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"an older list whose device's own list the API takes again isn't put up again and again",
+		async () => {
+			const { puts, seen } = listPuts();
+			const { fake, ana, a2, conversation, older, message } = await anaWithTwoDevices(seen);
+			serveAs(fake, ana, older);
+			const before = puts.length;
+			// The API takes the list it holds again (200), and still serves the older one.
+			const again = await restarted(fake, a2);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect(await textOn(again, conversation, message)).toBe("kept");
+			expect(puts.slice(before)).toEqual([]);
+			await again.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"an older list heard of while ready changes nothing, and the device reads on",
+		async () => {
+			const { fake, ana, a2, b, conversation, older } = await anaWithTwoDevices();
+			serveAs(fake, ana, older);
+			identityUpdate(fake, ana, older);
+			await turnEnded(a2);
+			expect(a2.engine.state).toEqual({ name: "ready" });
+			const next = await send(b, conversation, "after the lie");
+			await until(async () => (await textOn(a2, conversation, next.id)) === "after the lie");
+		},
+		SLOW,
+	);
+
+	// The approving device and a contact hold the newer list too: neither takes the approved device out on the older one.
+	test(
+		"a device the person approved stays in the approver's and a contact's groups when its list is rolled back",
+		async () => {
+			const { fake, ana, a1, a2, b, conversation, older } = await anaWithTwoDevices();
+			const approved = (await statusOf(a2)).device_id!;
+			serveAs(fake, ana, older);
+			identityUpdate(fake, ana, older);
+			const [a1Again, bAgain] = [await restarted(fake, a1), await restarted(fake, b)];
+			await bAgain.engine.openConversation(conversation);
+			const next = await send(bAgain, conversation, "to every device of Ana's");
+			await until(async () => (await textOn(a2, conversation, next.id)) === "to every device of Ana's");
+			for (const device of [a1Again, bAgain]) {
+				expect((await groupOf(device, conversation))!.devices.map((one) => one.device_id)).toContain(approved);
+			}
+			expect(a1Again.engine.state).toEqual({ name: "ready" });
+		},
+		SLOW,
+	);
+
+	// observe_user of the user's own: an identity this device doesn't hold is not_own_identity, which the inbox may
+	// explain with a transfer; without one, the plan says the device is off the list (removed). It takes none of it.
+	test(
+		"another user's identity served as the user's own takes nothing from the device",
+		async () => {
+			const { fake, ana, bo, a1, conversation, message } = await anaWithTwoDevices();
+			const own = await statusOf(a1);
+			const bos = await a1.api.identity(bo);
+			serveAs(fake, ana, { ...bos, user_id: ana });
+			const again = await restarted(fake, a1);
+			expect(["ready", "removed"]).toContain(again.engine.state.name);
+			const now = await statusOf(again);
+			expect([now.device_id, now.identity_key]).toEqual([own.device_id, own.identity_key]);
+			expect(await textOn(again, conversation, message)).toBe("kept");
+		},
+		SLOW,
+	);
+
+	// A 404 says the user has no identity: a first device's. A device whose core holds the one the API took is none,
+	// and makes no second identity (the core refuses): withholding it is the server's right, starting over the person's.
+	test(
+		"no identity served leaves a device that holds one as it was, then another served elsewhere deletes nothing",
+		async () => {
+			const { fake, ana, a2, conversation, message } = await anaWithTwoDevices();
+			const own = await statusOf(a2);
+			serveAs(fake, ana, null);
+			const again = await restarted(fake, a2);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect(await textOn(again, conversation, message)).toBe("kept");
+			// Then another device of Ana's starts over, and the API serves its identity: this one is off that list, and
+			// what it holds stays until the person's word.
+			fake.servedAs = (view) => view;
+			const other = testDevice(fake, ana);
+			await other.engine.start();
+			await other.engine.stop();
+			await other.host.open(ana);
+			await resetFrom(other);
+			await until(() => again.engine.state.name === "removed");
+			expect((await statusOf(again)).device_id).toBe(own.device_id);
+			expect(await textOn(again, conversation, message)).toBe("kept");
+		},
+		SLOW,
+	);
+});
+
+// A case the plan's list implies: «Estados» says a device is removed when another device took it off the list, which
+// the signed list proves. DEVICE_REMOVE is the server's word alone, which the engine takes as it comes, for an honest
+// removal ends the device's sessions at once and would leave nothing to check it with. The limit, pinned: the server
+// can make a listed device say it was removed until its next start, which finds it listed; what it holds stays, unless
+// the person starts it over on that word.
+describe.skipIf(!coreLibrary)("a removal only the server says of deletes nothing", () => {
+	test(
+		"a DEVICE_REMOVE of a device still listed shows it removed until its next start, which finds it ready",
+		async () => {
+			const { fake, ana, a1, conversation, message } = await anaWithTwoDevices();
+			const device = (await statusOf(a1)).device_id!;
+			fake.tell(ana, { type: "DEVICE_REMOVE", data: { device_id: device } });
+			await turnEnded(a1);
+			expect(a1.engine.state).toEqual({ name: "removed" });
+			const again = await restarted(fake, a1);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect((await statusOf(again)).device_id).toBe(device);
+			expect(await textOn(again, conversation, message)).toBe("kept");
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("an event repeated or reordered is applied once, in order", () => {
+	// Review Focus 4: the number decides. What's repeated is skipped, a gap asks for the queue, and the queue's pages and
+	// the events meet in one order: messages, an edit and a deletion, beside the commits sync.test.ts holds.
+	test(
+		"messages, an edit and a deletion heard late, backwards and twice end as their author left them",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			fake.holdEvents();
+			const first = await send(b, conversation, "first");
+			const second = await send(b, conversation, "second");
+			await b.engine.editMessage(conversation, first.id, "first, edited");
+			await b.engine.deleteMessage(conversation, second.id);
+			// The edit and the deletion come first, twice: Ana's device reads what they leave out from the queue.
+			const changes = (event: GatewayEvent) => event.type === "DM_MESSAGE_UPDATE" || event.type === "DM_MESSAGE_DELETE";
+			fake.releaseEvents({ only: changes, order: "reverse", repeat: true });
+			await until(async () => (await textOn(a, conversation, first.id)) === "first, edited");
+			// Then the messages themselves, backwards and twice, long after.
+			fake.releaseEvents({ order: "reverse", repeat: true });
+			await turnEnded(a);
+			const [shown] = await a.engine.messages(conversation, [first.id]);
+			expect(shown).toMatchObject({ status: "ok", text: "first, edited" });
+			expect(shown?.edited_at).toBeTruthy();
+			expect(await a.engine.messages(conversation, [second.id])).toEqual([]);
+			expect(fake.decryptFailures).toEqual([]);
+			expect((await groupOf(a, conversation))!.blocked).toBe(false);
+		},
+		SLOW,
+	);
+
+	// «El buzón»: each message is handled, then deleted. An inbox that keeps them (its DELETE answered, nothing deleted)
+	// serves them again at every round: each one's work is done once.
+	test(
+		"an inbox served again and again, and DEVICE_MESSAGE heard twice, take a rotation's transfer once",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a1 = await firstDevice(fake, ana);
+			const a2 = await approvedDevice(fake, a1);
+			fake.refuse(INBOX, 204, undefined, {}, Infinity);
+			await a1.engine.changeKeys();
+			await a1.engine.keySaved();
+			const rotated = (await a1.api.identity(ana)).identity_key;
+			await until(async () => (await statusOf(a2)).identity_key === rotated);
+			const device = (await statusOf(a2)).device_id!;
+			for (let round = 0; round < 2; round++) {
+				fake.tell(ana, { type: "DEVICE_MESSAGE", data: { device_id: device } }, device);
+				fake.tell(ana, { type: "DEVICE_MESSAGE", data: { device_id: device } }, device);
+				a2.connect(device);
+				await turnEnded(a2);
+			}
+			expect(a2.engine.state).toEqual({ name: "ready" });
+			expect((await statusOf(a2)).identity_key).toBe(rotated);
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("an entry served twice with other bytes is refused", () => {
+	// Review Focus 4 and the core's apply: an entry under a number already applied is skipped, whatever it holds.
+	test(
+		"another entry heard under a number the device applied changes nothing there",
+		async () => {
+			const { fake, ana, a, b, conversation } = await dm();
+			const first = await send(b, conversation, "first");
+			const second = await send(b, conversation, "second");
+			await until(async () => (await textOn(a, conversation, second.id)) === "second");
+			// The server tells Ana's device that the first message's number holds the second's bytes.
+			fake.tell(ana, { type: "DM_MESSAGE_CREATE", data: { ...first, ciphertext: second.ciphertext } });
+			await turnEnded(a);
+			expect(await textOn(a, conversation, first.id)).toBe("first");
+			expect(await textOn(a, conversation, second.id)).toBe("second");
+			expect(fake.decryptFailures).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// The core's apply counts every entry in the group, one it can't open too: the first copy of a number that comes is
+	// the one it applies. A changed copy opens nothing and shows no other text, and the queue's own copy, under that
+	// number, is skipped: its message waits, as if the server withheld it, which it could as well with a changed copy in
+	// both. The device goes on.
+	test(
+		"a changed copy heard first takes its number: the queue's own copy is skipped, and its message waits",
+		async () => {
+			let deaf = false;
+			const { fake, ana, a, b, conversation } = await dm({ aHears: () => !deaf });
+			deaf = true;
+			const first = await send(b, conversation, "first");
+			deaf = false;
+			const bytes = base64Bytes(first.ciphertext!);
+			const last = bytes.length - 1;
+			bytes[last] = (bytes[last] ?? 0) ^ 1;
+			fake.tell(ana, { type: "DM_MESSAGE_CREATE", data: { ...first, ciphertext: bytesBase64(bytes) } });
+			await turnEnded(a);
+			const second = await send(b, conversation, "second");
+			await until(async () => (await textOn(a, conversation, second.id)) === "second", { what: "the next message" });
+			expect(await a.engine.messages(conversation, [first.id])).toMatchObject([{ status: "waiting" }]);
+			expect((await groupOf(a, conversation))!.blocked).toBe(false);
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("a group whose external sender isn't the API's is refused", () => {
+	// The core's contract: the API is the groups' one external sender, and the clients take only removals from it,
+	// signed with its key. A welcome under another key: failures.test.ts' «another external sender is refused, and the
+	// pinned one stays».
+	// «El motor», its external sender: the client pins the key the first time it sees it, and a different one is a
+	// warning, never a change (Ruling 32).
+	test(
+		"another key served after the pinned one, and a removal proposed under it, take no one out, and the group goes on",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const pinned = fake.externalSender;
+			const bos = (await statusOf(b)).device_id!;
+			const other = generateKeyPairSync("ed25519");
+			fake.externalSender = Buffer.from(other.publicKey.export({ format: "jwk" }).x!, "base64url").toString("base64");
+			const again = await restarted(fake, a);
+			expect(again.store.read<string>("external_sender")).toBe(pinned);
+			fake.proposeRemoval(conversation, bos, other.privateKey);
+			await turnEnded(again);
+			await turnEnded(b);
+			const next = await send(again, conversation, "still here");
+			await until(async () => (await textOn(b, conversation, next.id)) === "still here");
+			const held = await sameGroup([again, b], conversation);
+			expect(held.blocked).toBe(false);
+			expect(held.devices.map((one) => one.device_id)).toContain(bos);
+			expect(again.engine.conversationState(conversation)).toBeNull();
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("the server's deleted IDs delete nothing the client holds", () => {
+	// The core's contract: a deletion is its author's tombstone (decision 16); backup_import's `deleted` erases only what
+	// an import brought; and an entry the queue serves with `deleted` opens nothing. The device's files of it may go from
+	// memory (task 18's review, M4), its row never.
+	test(
+		"a message the server lists as deleted, its author never having deleted it, stays where it's held",
+		async () => {
+			const { fake, ana, a, b, conversation } = await dm();
+			const kept = await send(b, conversation, "kept");
+			await until(async () => (await textOn(a, conversation, kept.id)) === "kept");
+			fake.markDeleted(conversation, kept.id);
+			const deleted = {
+				...{ seq: kept.seq, kind: "message", data: "", deleted: true, sent_at: kept.sent_at, message_id: kept.id },
+				...{ generation: kept.generation, epoch: kept.epoch, sender_user: kept.author_id },
+				sender_device: kept.sender_device_id,
+			};
+			fake.tell(ana, {
+				type: "DM_MESSAGE_DELETE",
+				data: { id: kept.id, conversation_id: conversation, entry: deleted },
+			});
+			fake.tell(ana, { type: "DM_MESSAGE_DELETE", data: { id: kept.id, conversation_id: conversation } });
+			await turnEnded(a);
+			expect(await textOn(a, conversation, kept.id)).toBe("kept");
+			expect((await a.api.deletedMessages(conversation)).ids).toContain(kept.id);
+			const again = await restarted(fake, a);
+			expect(await textOn(again, conversation, kept.id)).toBe("kept");
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("a hostile file name stays a name", () => {
+	// Review Focus 7 and «Convenciones entre clientes»: the name is the sender's word, cleaned again as it's read: its
+	// last part, without what hides what it is, 255 characters at most. Here the sender is hostile; the server only
+	// carries the file. A view shows and saves a file by that name (SealedFile, saveFile), and Settings → Attachments
+	// lists it (fileNames).
+	test(
+		"a sender's names with paths, unseen characters and bidirectional controls are shown and listed as names",
+		async () => {
+			const { a, b, conversation } = await dm();
+			const names: [string, string][] = [
+				["C:\\Users\\Ana\\Desktop\\evil.exe", "evil.exe"],
+				["../../.ssh/authorized_keys", "authorized_keys"],
+				["invoice\u202Efdp.exe", "invoicefdp.exe"],
+				["zero\u200Bwidth\u2060word\uFEFF.txt", "zerowidthword.txt"],
+				["line\u2028and\u2029paragraph.txt", "lineandparagraph.txt"],
+				["nul\u0000bell\u0007tab\t.txt", "nulbelltab.txt"],
+				["\u200B\u200C\u061C", "file"],
+				["..", "file"],
+				[`${"a".repeat(300)}.txt`, "a".repeat(MAX_FILE_NAME)],
+			];
+			const bytes = crypto.getRandomValues(new Uint8Array(16));
+			const sent = await sendWritten(
+				a,
+				conversation,
+				names.map(([name]) => ({ bytes, said: { name } })),
+			);
+			const files = await filesOn(b, conversation, sent.id);
+			expect(files.map((file) => file.name)).toEqual(names.map(([, name]) => name));
+			const listed = await b.engine.fileNames();
+			expect(files.map((file) => listed.get(file.id))).toEqual(names.map(([, name]) => name));
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("a 2xx that stored nothing loses nothing", () => {
+	// «Confirmar solo lo que el servidor tomó»: a confirmation follows a 2xx, which the client can't tell from a lie. What
+	// it confirmed it keeps: nothing the person holds is lost, no second identity or key is made, and the device goes on.
+	// One case per row of «Qué se manda y qué se le dice al núcleo»; the report says what the others cost.
+	test(
+		"an identity the API answered for and never kept stays on the device, which makes no second one",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = testDevice(fake, ana);
+			await a.engine.start();
+			await a.engine.makeIdentity();
+			expect(shownKey(a.engine.state)).not.toBeNull();
+			fake.refuse(IDENTITY, 200, { identity_id: crypto.randomUUID(), device_list_version: 1 });
+			await a.engine.keySaved();
+			const made = await statusOf(a);
+			expect(made.has_identity).toBe(true);
+			// The person taps again: the core makes no second identity, so the key they saved stays this identity's.
+			await a.engine.makeIdentity().catch(() => {});
+			expect(shownKey(a.engine.state)).toBeNull();
+			expect((await statusOf(a)).identity_key).toBe(made.identity_key);
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"a list the API answered for and never kept stays the device's, its removal holding",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a1 = await firstDevice(fake, ana);
+			const a2 = await approvedDevice(fake, a1);
+			const second = (await statusOf(a2)).device_id!;
+			await a2.engine.stop();
+			fake.refuse(DEVICE_LIST, 200, { version: 3 });
+			await a1.engine.removeDevice(second);
+			expect(a1.engine.state).toEqual({ name: "ready" });
+			// The API still lists it, and this device keeps the list it signed without it.
+			expect((await a1.api.identity(ana)).device_list_version).toBe(2);
+			const held = (await statusOf(a1)).device_list!;
+			const again = await restarted(fake, a1);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect((await statusOf(again)).device_list).toBe(held);
+		},
+		SLOW,
+	);
+
+	test(
+		"key packages the API answered for and never kept leave the device to join by its own commit",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			// Bo's device's one upload as it starts.
+			fake.refuse(KEY_PACKAGES, 200, { handed_out: [] });
+			const b = await firstDevice(fake, bo);
+			const a = await firstDevice(fake, ana);
+			await a.engine.openConversation(conversation);
+			const hello = await send(a, conversation, "hello");
+			await until(async () => (await textOn(b, conversation, hello.id)) === "hello");
+		},
+		SLOW,
+	);
+
+	// The API's own answers from here on, with nothing kept and no event sent (forget).
+	//
+	// A finding left for an issue: once the core confirmed its creation (commit_result accepted), the API listing the
+	// conversation with no group makes #make tell the core no answer came, which the core answers not_found (nothing
+	// waits), so every open and send there throws before anything is encrypted. And once another member makes the API's
+	// group, this device stays in its own, at the same numbers: its next message goes to the API, which takes it by them,
+	// and no one can read it, nor it theirs, with no notice. What the person typed meanwhile isn't kept.
+	test.skip(
+		"a group the API answered for and never kept leaves its maker's message waiting, and the device goes on",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo);
+			fake.forget({ method: "POST", path: `/api/users/@me/conversations/${conversation}/mls/commits` });
+			await a.engine.openConversation(conversation);
+			const nonce = crypto.randomUUID();
+			await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "kept here" }).catch(() => null);
+			await turnEnded(a);
+			expect((await a.engine.pendingMessages(conversation)).map((one) => one.nonce)).toEqual([nonce]);
+			// Bo's device makes the group the API keeps: Ana's goes into it, and what waited goes.
+			await b.engine.openConversation(conversation);
+			await until(async () => (await a.engine.pendingMessages(conversation)).length === 0, {
+				what: "Ana's waiting message sent",
+			});
+			await sameGroup([a, b], conversation);
+		},
+		SLOW,
+	);
+
+	test(
+		"an edit the API answered for and never kept is its author's alone, and what follows goes",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const message = await send(b, conversation, "as written");
+			await until(async () => (await textOn(a, conversation, message.id)) === "as written");
+			fake.forget({ method: "PATCH", path: `${messagesPath(conversation)}/${message.id}` });
+			await b.engine.editMessage(conversation, message.id, "edited");
+			expect(await textOn(b, conversation, message.id)).toBe("edited");
+			const next = await send(b, conversation, "next");
+			await until(async () => (await textOn(a, conversation, next.id)) === "next");
+			expect(await textOn(a, conversation, message.id)).toBe("as written");
+		},
+		SLOW,
+	);
+
+	test(
+		"a deletion the API answered for and never kept is its author's alone, and what follows goes",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const message = await send(b, conversation, "still on Ana's");
+			await until(async () => (await textOn(a, conversation, message.id)) === "still on Ana's");
+			fake.forget({ method: "DELETE", path: `${messagesPath(conversation)}/${message.id}` });
+			await b.engine.deleteMessage(conversation, message.id);
+			expect(await b.engine.messages(conversation, [message.id])).toEqual([]);
+			const next = await send(b, conversation, "next");
+			await until(async () => (await textOn(a, conversation, next.id)) === "next");
+			expect(await textOn(a, conversation, message.id)).toBe("still on Ana's");
+		},
+		SLOW,
+	);
+
+	test(
+		"a history package, or its key in the inbox, the API answered for and never kept is offered to no one",
+		async () => {
+			const { fake, bo, a, b, conversation } = await dm();
+			await send(a, conversation, "shared");
+			const share = /^\/api\/users\/@me\/conversations\/[^/]+\/history-shares\/[^/]+\/complete$/;
+			const inbox = /^\/api\/devices\/[^/]+\/inbox$/;
+			for (const lost of [share, inbox]) {
+				fake.forget({ method: "POST", path: lost });
+				expect(await a.engine.shareHistory(conversation, bo, "all")).toMatchObject({ sent: true });
+				await turnEnded(a);
+				await turnEnded(b);
+				expect(b.engine.offers(conversation)).toEqual([]);
+			}
+		},
+		SLOW,
+	);
+
+	test(
+		"a message the API answered for and never kept stays its sender's",
+		async () => {
+			const { fake, ana, a, conversation } = await dm();
+			const { last_seq } = await a.api.queue(conversation, 0);
+			const at = new Date().toISOString();
+			const answered = {
+				...{ id: crypto.randomUUID(), conversation_id: conversation, author_id: ana, content: null, type: 0 },
+				...{ created_at: at, updated_at: at, seq: last_seq + 1, attachments: [] },
+			};
+			fake.refuse({ method: "POST", path: messagesPath(conversation) }, 201, answered);
+			const nonce = crypto.randomUUID();
+			const sent = await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "never kept" });
+			expect(sent?.id).toBe(answered.id);
+			expect(await textOn(a, conversation, answered.id)).toBe("never kept");
+			expect((await a.engine.pendingMessages(conversation)).map((one) => one.nonce)).toEqual([]);
+		},
+		SLOW,
+	);
+});
