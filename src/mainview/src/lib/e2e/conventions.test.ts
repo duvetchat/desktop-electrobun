@@ -79,3 +79,20 @@ describe("the conventions between clients", () => {
 		}
 	});
 });
+
+// What step 5's fuzzing found (PLAN-E2E-CLIENTES.md, «Lo que el paso 5 revisa»), which e2e-fuzz-corpus.json keeps too.
+describe("what the fuzzers found", () => {
+	// A surrogate's halves kept apart by a zero-width space: once it goes, they'd be U+E0001, a hidden tag character.
+	const apart = "\uDB40​\uDC01";
+
+	test("a hidden character between a surrogate's halves leaves no hidden character of their own", () => {
+		expect(cleanName(`invoice${apart}.pdf`)).toBe("invoice��.pdf");
+	});
+
+	test("nor in a device's name, whose frame reads back as it was read", () => {
+		const frame = { duvet: "approval", step: "offer", data: "b2Y=", name: `Ana${apart}` } as const;
+		const read = readApprovalFrame(approvalFrameMessage(frame));
+		expect(read).toEqual({ ...frame, name: "Ana��" });
+		expect(readApprovalFrame(approvalFrameMessage(read!))).toEqual(read);
+	});
+});

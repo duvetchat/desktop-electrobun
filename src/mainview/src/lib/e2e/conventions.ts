@@ -76,6 +76,10 @@ export const MAX_FILE_NAME = 255;
 // zero-width joiner, which holds an emoji sequence together. The bidirectional controls are format characters: with one,
 // "invoice\u202Ecod.exe" shows as "invoiceexe.doc".
 const UNSEEN = /[\p{Cc}\p{Zl}\p{Zp}]|(?!\u200D)\p{Cf}/gu;
+// A lone surrogate, which shows as U+FFFD and is written as one in UTF-8, is made one first: halves that a hidden
+// character kept apart would otherwise join into a character of their own once it goes, as U+DB40 U+200B U+DC01 joins
+// into U+E0001, a hidden tag character.
+const visible = (text: string) => text.replace(/\p{Cs}/gu, "\uFFFD").replace(UNSEEN, "");
 
 /**
  * A file's name as a client may show or use it, whoever wrote it: its last part after any / or \, without the
@@ -83,7 +87,7 @@ const UNSEEN = /[\p{Cc}\p{Zl}\p{Zp}]|(?!\u200D)\p{Cf}/gu;
  */
 export function cleanName(name: string): string {
 	const last = name.split(/[/\\]/).pop() ?? "";
-	const kept = Array.from(last.replace(UNSEEN, "").trim()).slice(0, MAX_FILE_NAME).join("").trim();
+	const kept = Array.from(visible(last).trim()).slice(0, MAX_FILE_NAME).join("").trim();
 	return kept === "" || kept === "." || kept === ".." ? "file" : kept;
 }
 
@@ -264,7 +268,7 @@ export function readApprovalFrame(message: string): ApprovalFrame | null {
 	if (duvet !== "approval" || !isStep(step)) return null;
 	if (typeof data !== "string" || !data || !BASE64.test(data)) return null;
 	// The approving device shows the name: it loses what doesn't show, as a file's name does.
-	const shown = typeof name === "string" ? name.replace(UNSEEN, "").trim() : name;
+	const shown = typeof name === "string" ? visible(name).trim() : name;
 	if (shown !== undefined && (typeof shown !== "string" || !shown || Array.from(shown).length > MAX_DEVICE_NAME)) {
 		return null;
 	}
