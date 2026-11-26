@@ -42,7 +42,7 @@ import type { E2eMessage, E2eReply } from "../mainview/src/lib/e2e/host";
 import { nativeLibraryPath } from "./native-library";
 import { coreLibraryPath } from "./e2e/library";
 import { startCore } from "./e2e/core";
-import { e2eBoundary } from "./e2e/rpc";
+import { e2eBoundary, fileMark } from "./e2e/rpc";
 import { nativeConfirm, nativeNotice } from "./e2e/confirm";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
@@ -245,8 +245,8 @@ const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUB
 // The core in a worker of its own (e2e/core.ts), each user's database at <userData>/e2e/<user_id>/core.db, its key in
 // the system's keyring under the channel's own name (as its notifications have it) and the user's ID. The main window's
 // page reaches it through e2e/rpc.ts alone: the commands of the core's contract, and a yes in the system's box, over
-// this window, before what approves a device or makes new keys. A build without the library (macOS, Linux) answers
-// unsupported.
+// this window, before what approves a device or makes new keys, and before another account's database than the one in
+// <userData>/e2e/last-user opens (#558). A build without the library (macOS, Linux) answers unsupported.
 const coreLibrary = coreLibraryPath(nativeLibraryPath);
 const e2e = e2eBoundary({
 	start: coreLibrary
@@ -259,6 +259,7 @@ const e2e = e2eBoundary({
 		: null,
 	confirm: nativeConfirm({ platform: process.platform, owner: () => win.ptr, showMessageBox: Utils.showMessageBox }),
 	show: nativeNotice({ platform: process.platform }),
+	lastUser: fileMark(join(Utils.paths.userData, "e2e", "last-user")),
 	reply: (reply) => rpc.send.e2eReply(reply),
 });
 

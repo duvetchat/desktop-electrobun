@@ -246,6 +246,21 @@ export function verifyQuestion({ user, digits }: { user: string; digits: string 
 	};
 }
 
+/**
+ * Opening the database of another account than the one this installation opened last (#558): each account that used
+ * Duvet here keeps its own, which signing out leaves. By its ID, which is all Bun knows of it.
+ */
+export function otherAccountQuestion(user: string): Question {
+	return {
+		title: "Open another account's encrypted conversations?",
+		message:
+			"Duvet will open the encrypted conversations this computer keeps for another account than the one it opened last." +
+			"\n\nOpen them only if you've just signed in to that account here." +
+			`\n\nIts ID: ${user}`,
+		yes: "Open",
+	};
+}
+
 /** Taking devices off the account (sign_device_list): each one by its ID, which is all Bun can tell of it. */
 export function removalQuestion(remove: string[]): Question {
 	const one = remove.length === 1;

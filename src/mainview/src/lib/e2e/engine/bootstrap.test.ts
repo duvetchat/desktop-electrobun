@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
+import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import { firstDevice, testDevice, testHost, until, useFake, watchedHost, type TestDevice } from "../testing/engines";
@@ -281,6 +282,40 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			await a.engine.makeIdentity();
 			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
 			expect(log).toHaveLength(asked);
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
+	// desktop-electrobun#558: the desktop asks before it opens another account's database than the one it opened last.
+	test(
+		"a no to opening this account's database ends the tries with the failed bar, asking no more",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			let asked = 0;
+			const host = new Proxy(testHost(), {
+				get(target, name) {
+					if (name === "open") {
+						return async () => {
+							asked++;
+							throw new CoreError("refused", "the person didn't confirm it");
+						};
+					}
+					const value = Reflect.get(target, name);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			const a = testDevice(fake, ana, { host });
+			await a.engine.start();
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			// Neither the time nor a new gateway session asks again: the person said no.
+			a.clock.advance(10 * MINUTE);
+			a.connect(null);
+			await a.engine.makeIdentity();
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			expect(asked).toBe(1);
 			await a.engine.stop();
 		},
 		SLOW,

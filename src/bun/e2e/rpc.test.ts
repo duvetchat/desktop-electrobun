@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
-import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc";
+import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileMark, type BoundaryDeps, type UserMark } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import {
 	IDOK,
@@ -156,6 +156,12 @@ function person(...answers: boolean[]) {
 	return { asked, confirm };
 }
 
+/** The account opened last, kept in memory: a page of its own starts with none. */
+function memoryMark(): UserMark {
+	let last: string | null = null;
+	return { read: () => last, write: (userId) => void (last = userId) };
+}
+
 /** A reply as the page reads it from JSON: its `ok` and its error whatever the op gives. */
 type Reply = { id: number; instance: number; ok?: any; error?: any };
 
@@ -169,6 +175,7 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 		start: null,
 		confirm: async () => false,
 		show: () => {},
+		lastUser: memoryMark(),
 		...deps,
 		reply: (reply: E2eReply) => {
 			replies.push(reply);
@@ -1072,6 +1079,7 @@ describe("a reply Bun can't send", () => {
 				start: null,
 				confirm: async () => false,
 				show: () => {},
+				lastUser: memoryMark(),
 				reply: (reply) => {
 					if (first) {
 						first = false;
@@ -1083,6 +1091,64 @@ describe("a reply Bun can't send", () => {
 			send({ id: 9, op: "open", params: { userId: ANA }, instance: 0 });
 		});
 		expect(await sent).toEqual({ id: 9, instance: 1, error: { code: "internal" } });
+	});
+});
+
+// #558: each account that used this installation keeps its database here (decision 13), and a script in one account's
+// page could name another's.
+describe("whose database Bun opens", () => {
+	const ready = () => fakeCore((op) => (op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: {} }));
+	const opens = (core: ReturnType<typeof ready>) =>
+		core.calls.filter(({ op }) => op === "open").map(({ params }) => params);
+
+	test("another account than the one opened last asks first, and only that one's database is destroyed", async () => {
+		const core = ready();
+		const { asked, confirm } = person(false, true);
+		const page = pageOf({ start: core.start, confirm });
+		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toEqual([]);
+
+		// Bo's database, as a script in Ana's page asks it: the person's no opens nothing. Ana's closed before the box, so
+		// a page left signed in as Bo after Ana signed out, its close lost, can't read hers either.
+		expect((await page.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.message).toContain(BO);
+		expect(opens(core)).toEqual([{ userId: ANA }]);
+		expect(core.calls.map(({ op }) => op)).toEqual(["open", "close"]);
+		expect((await page.ask("destroy", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect(core.calls.some(({ op }) => op === "destroy")).toBe(false);
+
+		// The person's yes: Bo's opens, and is the one opened last, which opens again without asking.
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(2);
+		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect((await page.ask("destroy", { userId: BO })).ok).toEqual({});
+		expect(core.calls.filter(({ op }) => op === "destroy")).toEqual([{ op: "destroy", params: { userId: BO } }]);
+	});
+
+	test("the account opened last is the installation's, from one start of the app to the next", async () => {
+		const folder = mkdtempSync(join(tmpdir(), "duvet-boundary-"));
+		folders.push(folder);
+		const mark = join(folder, "e2e", "last-user");
+		const first = pageOf({ start: ready().start, lastUser: fileMark(mark) });
+		await first.ask("open", { userId: ANA });
+
+		const { asked, confirm } = person(false);
+		const lost = fakeCore((op) => (op === "open" ? { ok: { state: "failed", reason: "bad_key" } } : { ok: {} }));
+		const next = pageOf({ start: lost.start, confirm, lastUser: fileMark(mark) });
+		expect((await next.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect((await next.ask("destroy", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(1);
+		expect((await next.ask("open", { userId: ANA })).ok).toEqual({ state: "failed", reason: "bad_key" });
+		expect(asked).toHaveLength(1);
+		// Its key lost, Ana's database didn't open, and it's still hers: its data can go (Ruling 26's way out).
+		expect((await next.ask("destroy", { userId: ANA })).ok).toEqual({});
+		// A mark Bun can't read is no account: the next open asks nothing of the first account to open here.
+		writeFileSync(mark, "not an account");
+		expect(fileMark(mark).read()).toBeNull();
+		expect(fileMark(join(folder, "nothing")).read()).toBeNull();
 	});
 });
 

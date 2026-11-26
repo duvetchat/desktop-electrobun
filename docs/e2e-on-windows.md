@@ -98,7 +98,10 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
    - **being approved:** with the Windows app as alice's new device (her web set up first), its Set up opens Windows'
      own box, «Set up this device», with a fingerprint for a code and one for a phone's scan. The web's «Is this device
      yours?» shows the first. The box asks nothing: the window takes the code while it's open, and it goes once the
-     device is set up (desktop-electrobun#557).
+     device is set up (desktop-electrobun#557);
+   - **another account:** sign out of alice and in as bob on the same app. Before bob's encrypted conversations open,
+     Windows' box asks to open another account's. Cancel leaves the bar saying they couldn't open, until the app starts
+     again; OK opens them, and signing in as bob again asks nothing (desktop-electrobun#558).
 4. **The window keeps up while a large history is shared.** In a DM with a few hundred messages, Share history with a
    member's new device, and pick «the conversation's history». While it goes, drag the window by its title bar, snap it
    with Win+Left and Win+Right, and type in another chat: none of it should stall.

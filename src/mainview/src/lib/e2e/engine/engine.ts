@@ -1570,9 +1570,14 @@ export class E2EEngine {
 		}
 	}
 
-	/** A start that failed: a client too old waits for its update; anything else goes again later. */
+	/**
+	 * A start that failed: a client too old waits for its update, and the person's no to opening this account's database
+	 * on the desktop (desktop-electrobun#558) waits for the app's next start, as going again would put the same question
+	 * up again at once. Anything else goes again later.
+	 */
 	#failed(error: unknown) {
 		if (error instanceof UpdateRequiredError) return this.#set({ name: "update", minimum: error.minimum });
+		if (error instanceof CoreError && error.code === "refused") return this.#set({ name: "failed", lostKey: false });
 		console.error("[e2e] The engine didn't start:", error);
 		this.#later();
 	}

@@ -7,6 +7,8 @@
 // (index.ts): the pop-out's and the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time,
 // so nothing runs between a question and the command it answers. A worker that stops is started again, with the
 // database it had open.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
 	ATTACHMENT_PART,
 	E2E_OPS,
@@ -23,6 +25,7 @@ import {
 	approvalQuestion,
 	newDeviceNotice,
 	newKeysQuestion,
+	otherAccountQuestion,
 	qrBytes,
 	removalQuestion,
 	readCommitment,
@@ -129,8 +132,40 @@ export interface BoundaryDeps {
 	confirm: Confirm;
 	/** What Bun shows the person outside the page that asks nothing (confirm.ts): a new device's fingerprints. */
 	show: Show;
+	/** The account whose database this installation opened last (fileMark). */
+	lastUser: UserMark;
 	/** Sends the page a reply: the main window's `e2eReply` message. */
 	reply: (reply: E2eReply) => void;
+}
+
+/** The account whose database this installation opened last: its ID, or none; a mark Bun can't read throws. */
+export interface UserMark {
+	read(): string | null;
+	write(userId: string): void;
+}
+
+/** The account opened last, kept in a file: what isn't an account's ID in it, or no file, is none. */
+export function fileMark(file: string): UserMark {
+	return {
+		read() {
+			let kept: string;
+			try {
+				kept = readFileSync(file, "utf8");
+			} catch (error) {
+				if (isRecord(error) && error.code === "ENOENT") return null;
+				throw error;
+			}
+			return UUID.test(kept) ? kept : null;
+		},
+		write(userId) {
+			try {
+				mkdirSync(dirname(file), { recursive: true });
+				writeFileSync(file, userId);
+			} catch (error) {
+				console.error("[e2e] the account opened last wasn't kept:", error);
+			}
+		},
+	};
 }
 
 /** What answers a request with an error. */
@@ -196,8 +231,10 @@ function devices(value: unknown, field = "remove"): string[] {
  * Bun's half of the boundary: the handler of the main window's `e2e` message. It answers each request with `reply`, in
  * the order they came, and never throws: a throw in the app's worker would end it, and the app with it.
  */
-export function e2eBoundary({ start, confirm, show, reply }: BoundaryDeps): (message: unknown) => void {
+export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryDeps): (message: unknown) => void {
 	let worker: CoreWorker | null = null;
+	/** The account the page opened last, whether its database opened or not: the only one whose data it may delete. */
+	let current: string | null = null;
 	/** The core's instance: one more each time its worker stops, which the page is told. */
 	let instance = 1;
 	/** The handle of the database the worker has open, and one a stopped worker left open in the library. */
@@ -244,6 +281,32 @@ export function e2eBoundary({ start, confirm, show, reply }: BoundaryDeps): (mes
 		const scanned = typeof qr === "string" ? qrBytes(qr) : null;
 		if (!made || !scanned) return notify(null);
 		notify(newDeviceNotice({ code: await approvalFingerprint(made.bytes), scan: await approvalFingerprint(scanned) }));
+	}
+
+	/**
+	 * Another account than the one this installation opened last asks the person first (#558): signing out leaves each
+	 * account's database here (decision 13), and a script in one account's page would read or delete another's. What's
+	 * open closes before the box, so a no leaves no database open. A mark Bun can't read asks too.
+	 */
+	async function mayOpen(userId: string) {
+		let last: string | null | undefined;
+		try {
+			last = lastUser.read();
+		} catch (error) {
+			console.error("[e2e] the account opened last couldn't be read:", error);
+		}
+		if (last !== null && last !== userId) {
+			if (worker) unwrap(await core("close"));
+			opened = null;
+			let yes = false;
+			try {
+				yes = await confirm(otherAccountQuestion(userId));
+			} catch (error) {
+				console.error("[e2e] the confirmation failed:", error);
+			}
+			if (!yes) throw refused("refused", "the person didn't confirm it");
+		}
+		if (last !== userId) lastUser.write(userId);
 	}
 
 	/**
@@ -372,7 +435,10 @@ export function e2eBoundary({ start, confirm, show, reply }: BoundaryDeps): (mes
 				user = null;
 				reopen = false;
 				notify(null);
+				current = null;
 				if (!start) return { state: "unsupported" };
+				await mayOpen(userId);
+				current = userId;
 				// The core's handle stays in Bun.
 				const { handle, ...opening } = unwrap(await core("open", { userId }));
 				opened = typeof handle === "number" ? handle : null;
@@ -384,11 +450,14 @@ export function e2eBoundary({ start, confirm, show, reply }: BoundaryDeps): (mes
 				user = null;
 				reopen = false;
 				notify(null);
+				current = null;
 				if (worker) unwrap(await core("close"));
 				opened = null;
 				return {};
 			case "destroy": {
 				const userId = uuid(p.userId, "userId");
+				// The account the page opened: a script in its page can't delete another's (#558).
+				if (userId !== current) throw refused("refused", "only the database of the account opened here is deleted");
 				underWay = null;
 				user = null;
 				reopen = false;
