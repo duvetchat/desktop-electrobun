@@ -591,7 +591,8 @@ describe.skipIf(!interop)("interop, against the API's stack with the mobile app"
 			const asked = () => (d1.engine.state.name === "ready" ? d1.engine.state.approval : undefined);
 			await eventually(async () => asked()?.step === "asked", FIRST);
 			const phone = asked()!.device;
-			await d1.engine.approveDevice(phone);
+			// The yes names the question it answers (desktop-electrobun#535).
+			await d1.engine.approveDevice(phone, asked()!.question ?? "");
 			await eventually(async () => asked()?.step === "code");
 			note("dave-desktop-code", { device: phone, code: asked()!.code });
 			expect(await noted<{ device: string }>("dave-phone-accepted")).toEqual({ device: phone });

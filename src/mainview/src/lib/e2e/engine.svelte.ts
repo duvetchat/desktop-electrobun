@@ -257,7 +257,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			endApproval: () => engine?.endApproval(),
 			resetIdentity: () => engine?.resetIdentity(),
 			finishSetup: () => engine?.finishSetup(),
-			approveDevice: (deviceId: string) => live().approveDevice(deviceId),
+			approveDevice: ({ deviceId, question }: ApproveParams) => live().approveDevice(deviceId, question),
 			declineDevice: (deviceId: string) => live().declineDevice(deviceId),
 			confirmApproval: (deviceId: string) => live().confirmApproval(deviceId),
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
@@ -410,6 +410,13 @@ interface ContactParams {
 	digits: string;
 }
 
+/** The person's yes to a new device of theirs, as a tab asks the leader's engine: the device, and the question's inbox
+ * message, which the yes answers alone (desktop-electrobun#535). */
+interface ApproveParams {
+	deviceId: string;
+	question: string;
+}
+
 /**
  * Whether the person verified the user, once the engine observed them as the API serves them now (a changed key leaves
  * its notice): what a contact's profile and DM show, read again as they open. False where no engine can say.
@@ -560,7 +567,7 @@ type Tap =
 	| "endApproval"
 	| "resetIdentity"
 	| "finishSetup";
-type TapWith = "recover" | "acceptCode" | "approveDevice" | "declineDevice" | "confirmApproval";
+type TapWith = "recover" | "acceptCode" | "declineDevice" | "confirmApproval";
 
 /** One of the person's taps, run by the engine of this tab or of the one that leads: it settles with its state shown. */
 function tap(method: Tap): Promise<void> {
@@ -590,9 +597,13 @@ export const setupActions = {
 	finishSetup: () => tap("finishSetup"),
 };
 
-/** What the person answers about a new device of theirs that asks to be approved. */
+/** What the person answers about a new device of theirs that asks to be approved: a yes, to the question they saw. */
 export const approvalActions = {
-	approve: (deviceId: string) => tapWith("approveDevice", deviceId),
+	approve: (deviceId: string, question: string): Promise<void> => {
+		const given: ApproveParams = { deviceId, question };
+		if (tabs) return tabs.call<void>("approveDevice", given).finally(follow);
+		return engine?.approveDevice(deviceId, question) ?? Promise.resolve();
+	},
 	decline: (deviceId: string) => tapWith("declineDevice", deviceId),
 	confirm: (deviceId: string) => tapWith("confirmApproval", deviceId),
 };

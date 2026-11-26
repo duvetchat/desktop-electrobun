@@ -901,15 +901,17 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The person's yes to «Is this device yours?»: this device offers to approve it (never without it). Its identity
-	 * replaced meanwhile, its inbox goes first, which may bring the change of keys' transfer, and the yes is tried again.
+	 * The person's yes to «Is this device yours?», to the question they answered (`question`, its inbox message): this
+	 * device offers to approve it (never without it). Its identity replaced meanwhile, its inbox goes first, which may
+	 * bring the change of keys' transfer, and the yes is tried again, on that question alone: one the inbox put in its
+	 * place waits for its own yes (desktop-electrobun#535).
 	 */
-	approveDevice(deviceId: string): Promise<void> {
+	approveDevice(deviceId: string, question: string): Promise<void> {
 		return this.#queue(async () => {
 			if (this.#role() !== "approver") return;
-			if ((await this.#approvals.approve(deviceId)) === "replaced") {
+			if ((await this.#approvals.approve(deviceId, question)) === "replaced") {
 				await this.#inbox();
-				if (this.#role() !== "approver" || (await this.#approvals.approve(deviceId)) === "replaced") return;
+				if (this.#role() !== "approver" || (await this.#approvals.approve(deviceId, question)) === "replaced") return;
 			}
 			// A reveal kept from before the app started again: taken now.
 			await this.#approvals.take("approver");

@@ -123,7 +123,12 @@
 			inside = null;
 		};
 	});
-	const ref = $derived(file.thumbnail_ref ? { ...file.thumbnail_ref, url: file.thumbnailUrl ?? null } : null);
+	// A file laid out as neither has none to draw, and its thumbnail isn't fetched (desktop-electrobun#544).
+	const ref = $derived(
+		file.thumbnail_ref && (kind === "image" || kind === "video")
+			? { ...file.thumbnail_ref, url: file.thumbnailUrl ?? null }
+			: null,
+	);
 	const refState = $derived(ref ? decryptedFiles.state(ref) : undefined);
 	const placeOfRef = $derived(ref ? `${ref.id}:${ref.key}:${ref.sha256}:${ref.size}:${ref.url}` : "");
 	$effect(() => {

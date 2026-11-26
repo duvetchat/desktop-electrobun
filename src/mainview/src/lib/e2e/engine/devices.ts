@@ -98,8 +98,10 @@ async function confirmList(parts: EngineParts, version: number): Promise<void> {
  * top of the version it was signed from, and is confirmed only after its 200 (Review Focus 11); one that lost its race
  * (409) is observed, and signed again. A list of this device's that the API never took, already without it, goes up as
  * it is (the core signs none on top of it without what it lacks). Taken or not, the own user is observed after.
+ * `alone` signs off that device and no other: an approval's way out, which takes nothing off on the API's word
+ * (desktop-electrobun#542).
  */
-export async function signWithout(parts: EngineParts, device: string): Promise<void> {
+export async function signWithout(parts: EngineParts, device: string, { alone = false } = {}): Promise<void> {
 	const { api, host } = parts;
 	for (let round = 1; ; round++) {
 		const served = await servedIdentity(parts);
@@ -111,9 +113,8 @@ export async function signWithout(parts: EngineParts, device: string): Promise<v
 		const held = heldDevices(status);
 		// On neither list: done. On this device's alone, an approval of its own that never finished (task 26's I1).
 		if (!listed.includes(device) && !held.includes(device)) return;
-		const off = [...new Set([device, ...(await takenAway(api, held, status.device_id))])].filter((id) =>
-			held.includes(id),
-		);
+		const away = alone ? [] : await takenAway(api, held, status.device_id);
+		const off = [...new Set([device, ...away])].filter((id) => held.includes(id));
 		const device_list = off.length
 			? (await host.handle<{ device_list: string }>({ cmd: "sign_device_list", remove: off })).device_list
 			: status.device_list;

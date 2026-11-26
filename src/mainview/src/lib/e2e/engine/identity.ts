@@ -8,6 +8,7 @@ import { CoreError } from "../errors";
 import { coreStatus, type CoreStatus } from "./bootstrap";
 import type { Observation } from "./contacts";
 import type { EngineParts, EngineState } from "./engine";
+import { APPROVED_HERE, type EngineStore } from "./store";
 
 /** What create_identity answers: what goes up, and the recovery key the person saves first. */
 export interface IdentityMade {
@@ -31,17 +32,57 @@ export async function servedIdentity({ api, user }: EngineParts): Promise<Identi
 	}
 }
 
+/** A device this one approved, and when, by the engine's clock (the record's APPROVED_HERE). */
+export interface ApprovedHere {
+	device: string;
+	at: number;
+}
+/** The most approvals the record keeps: the newest. */
+const APPROVED_KEPT = 20;
+
+const isApproved = (one: unknown): one is ApprovedHere =>
+	typeof one === "object" &&
+	one !== null &&
+	typeof Reflect.get(one, "device") === "string" &&
+	typeof Reflect.get(one, "at") === "number";
+
+/** The devices this one approved that no list the core took has named yet: approvals of its own that didn't finish. */
+export function approvedHere(store: EngineStore): ApprovedHere[] {
+	const kept = store.read<unknown>(APPROVED_HERE);
+	return Array.isArray(kept) ? kept.filter(isApproved) : [];
+}
+
+/** This device approved `device` (approval_confirm) at `at`: kept until a list the core took names it. */
+export function noteApproved(store: EngineStore, device: string, at: number) {
+	const others = approvedHere(store).filter((one) => one.device !== device);
+	store.write(APPROVED_HERE, [...others, { device, at }].slice(-APPROVED_KEPT));
+}
+
+/** These devices are no approvals of this device's left to finish: on a list the core took, or signed off. */
+export function forgetApproved(store: EngineStore, devices: readonly string[]) {
+	const kept = approvedHere(store);
+	const left = kept.filter((one) => !devices.includes(one.device));
+	if (left.length < kept.length) store.write(APPROVED_HERE, left.length ? left : null);
+}
+
+/** The own user's list, as the core just made of it: one it took (not refused) finishes the approvals it names. */
+function ownListSeen({ store }: EngineParts, deviceList: string, seen: { state: string }) {
+	if (seen.state !== "rejected") forgetApproved(store, listDevices(deviceList) ?? []);
+}
+
 /**
  * observe_user of each user, as the API serves their identities, 50 at a time: one it doesn't serve stays as it was.
  * What the core answers of each goes to the contacts (`observed`, contacts.ts), where a changed key leaves its
  * notice.
  */
-export async function observeUsers({ api, host, contacts }: EngineParts, users: string[]): Promise<void> {
+export async function observeUsers(parts: EngineParts, users: string[]): Promise<void> {
+	const { api, host, contacts, user } = parts;
 	for (let at = 0; at < users.length; at += 50) {
 		for (const { user_id, identity_key, device_list, certificates } of await api.identities(users.slice(at, at + 50))) {
 			const seen = await host.handle<Observation>({
 				...{ cmd: "observe_user", user_id, identity_key, device_list, certificates },
 			});
+			if (user_id === user) ownListSeen(parts, device_list, seen);
 			contacts?.observed(user_id, seen);
 		}
 	}
@@ -64,13 +105,14 @@ export async function withIdentities<T>(parts: EngineParts, run: () => Promise<T
 }
 
 /** observe_user of the user's own identity, as served: what the core made of it (`not_own_identity`, an identity this
- * device doesn't hold). */
-export async function observeOwn({ host, user }: EngineParts, served: Identity): Promise<string | undefined> {
+ * device doesn't hold). A list it took finishes the approvals of this device's it names (desktop-electrobun#542). */
+export async function observeOwn(parts: EngineParts, served: Identity): Promise<string | undefined> {
 	const { identity_key, device_list, certificates } = served;
-	const seen = await host.handle<{ state: string; reason?: string }>({
+	const seen = await parts.host.handle<{ state: string; reason?: string }>({
 		cmd: "observe_user",
-		...{ user_id: user, identity_key, device_list, certificates },
+		...{ user_id: parts.user, identity_key, device_list, certificates },
 	});
+	ownListSeen(parts, device_list, seen);
 	return seen.reason;
 }
 

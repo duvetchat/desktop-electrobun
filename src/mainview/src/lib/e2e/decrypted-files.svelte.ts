@@ -3,18 +3,24 @@
 // deleted, each one's URL revoked as it goes. A file is downloaded from its signed URL, opened by the core and checked
 // (engine/files.ts' openSealed) once, whoever asks: two panes showing a message share it. A file is what its message
 // says of it, its ID with its key, SHA-256 and size, never its ID alone: any member can write another's ID in an
-// envelope, and one message never shows or blocks another's file (task 18's review, I1). Four come down at once, a
-// click's first (I5). One let go of for room isn't fetched again by itself, as the view still showing it would fetch it
-// in turn and let another go: a click does, and so does it after a download that failed, which is never final (I4).
+// envelope, and one message never shows or blocks another's file (task 18's review, I1). Four come down at once, within
+// 64 MiB of sealed bytes, a click's first (I5). One let go of for room isn't fetched again by itself, as the view still
+// showing it would fetch it in turn and let another go: a click does, and so does it after a download that failed,
+// which is never final (I4).
 // Reads are reactive (createSubscriber, as conversation-content.svelte.ts's), so what draws a file draws it again as it
 // changes. No rune: Bun's tests load it as it is.
 import { createSubscriber } from "svelte/reactivity";
-import { FileError, openSealed, type FileFailure, type FileRef } from "./engine/files";
+import { FileError, openSealed, sealedSize, type FileFailure, type FileRef } from "./engine/files";
 
 /** How much decrypted memory holds: 256 MiB. */
 export const MAX_DECRYPTED = 256 << 20;
 /** How many files come down and open at once: each holds its sealed bytes about three times over while it does. */
 export const OPENING_MOST = 4;
+/**
+ * How many sealed bytes come down at once, beside the count, as the Android app holds them: four of a bucket's large
+ * files would take hundreds of MB meanwhile (desktop-electrobun#544). A file past it comes down alone.
+ */
+export const OPENING_BYTES_MOST = 64 << 20;
 
 /** Where a file is: on its way (how far, from 0 to 1), here (its URL, and its bytes' type), not shown (why), or let go
  * of for room. */
@@ -53,6 +59,8 @@ interface Entry {
 	/** Its start, while it waits for one of the places that open files, and what takes it out of the queue. */
 	begin: (() => void) | null;
 	cancel: (() => void) | null;
+	/** Its sealed bytes, as the budget of those in flight counts them: the budget at most. */
+	bytes: number;
 	/** The views that show it and asked for it by themselves; a click's ask holds its place whatever they do. */
 	asking: number;
 	clicked: boolean;
@@ -61,6 +69,7 @@ interface Entry {
 export class DecryptedFiles {
 	readonly #files = new Map<string, Entry>();
 	readonly #limit: number;
+	readonly #inFlight: number;
 	readonly #url: (blob: Blob) => string;
 	readonly #revoke: (url: string) => void;
 	#opener: Opener | null = null;
@@ -68,6 +77,7 @@ export class DecryptedFiles {
 	#used = 0;
 	/** Files that come down and open now, and those that wait for a place, a click's first. */
 	#opening = 0;
+	#openingBytes = 0;
 	readonly #waiting: Entry[] = [];
 	#changed = () => {};
 	readonly #track = createSubscriber((update) => {
@@ -79,8 +89,10 @@ export class DecryptedFiles {
 		limit = MAX_DECRYPTED,
 		url = (blob: Blob) => URL.createObjectURL(blob),
 		revoke = (made: string) => URL.revokeObjectURL(made),
+		inFlight = OPENING_BYTES_MOST,
 	) {
 		this.#limit = limit;
+		this.#inFlight = inFlight;
 		this.#url = url;
 		this.#revoke = revoke;
 	}
@@ -146,6 +158,7 @@ export class DecryptedFiles {
 			// Every message that asked for it before keeps it as well (task 18's re-review, N4).
 			...{ state: { status: "loading", progress: 0 }, messages: new Set([...(had?.messages ?? []), message]) },
 			...{ used: ++this.#clock, work: null, begin: null, cancel: null },
+			bytes: Math.min(sealedSize(file.size), this.#inFlight),
 			...{ asking: (had?.asking ?? 0) + (had || !auto ? 0 : 1), clicked: !auto },
 		};
 		this.#files.set(place, entry);
@@ -210,7 +223,10 @@ export class DecryptedFiles {
 		return null;
 	}
 
-	/** Its work once a place is free: at once, or after those before it, a click's before the views' asks. */
+	/**
+	 * Its work once a place is free and its sealed bytes fit those in flight: at once, or after those before it, a
+	 * click's before the views' asks.
+	 */
 	#inPlace<T>(entry: Entry, work: () => Promise<T>, first: boolean): Promise<T> {
 		return new Promise<T>((resolve, reject) => {
 			entry.cancel = () => {
@@ -219,21 +235,34 @@ export class DecryptedFiles {
 				entry.begin = entry.cancel = null;
 				// A download it never made: not a failure of its bytes, and nothing to count.
 				reject(new FileError("download"));
+				this.#next();
 			};
 			entry.begin = () => {
 				entry.begin = entry.cancel = null;
 				this.#opening++;
+				this.#openingBytes += entry.bytes;
 				work()
 					.then(resolve, reject)
 					.finally(() => {
 						this.#opening--;
-						this.#waiting.shift()?.begin?.();
+						this.#openingBytes -= entry.bytes;
+						this.#next();
 					});
 			};
-			if (this.#opening < OPENING_MOST) entry.begin();
-			else if (first) this.#waiting.unshift(entry);
+			if (first) this.#waiting.unshift(entry);
 			else this.#waiting.push(entry);
+			this.#next();
 		});
+	}
+
+	/** The files that wait, in their order, while a place is free and their sealed bytes fit: one past them alone. */
+	#next() {
+		for (let next = this.#waiting[0]; next; next = this.#waiting[0]) {
+			if (this.#opening >= OPENING_MOST) return;
+			if (this.#opening > 0 && this.#openingBytes + next.bytes > this.#inFlight) return;
+			this.#waiting.shift();
+			next.begin?.();
+		}
 	}
 
 	/** A click on a file that waits for its place: it goes before the views' asks. */
@@ -242,6 +271,7 @@ export class DecryptedFiles {
 		if (at <= 0) return;
 		this.#waiting.splice(at, 1);
 		this.#waiting.unshift(entry);
+		this.#next();
 	}
 
 	/** A file's work ended: kept, unless it was let go of meanwhile; a file kept past the limit lets others go. */

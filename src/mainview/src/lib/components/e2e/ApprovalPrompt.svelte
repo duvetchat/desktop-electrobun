@@ -2,9 +2,10 @@
 	import type { DeviceApproval } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
 
-	/** The question's title: «Is this device yours?» until the person's yes, then the device's approval by its name. */
+	/** The question's title: «Is this device yours?» until the person's yes, then the approval's; never the device's
+	 * name. */
 	export function approvalTitle(approval: DeviceApproval): string {
-		return approval.step === "asked" ? t("e2e_approval_ask") : t("e2e_approval_title", { name: approval.name });
+		return approval.step === "asked" ? t("e2e_approval_ask") : t("e2e_approval_title");
 	}
 </script>
 
@@ -13,9 +14,11 @@
 	import { CoreError } from "$lib/e2e/errors";
 
 	// What a device of the person's says of a new one that asks to be approved (PLAN-E2E-CLIENTES.md, Task 26), in the
-	// gate's dialog: its name and the fingerprint its screen shows, with a yes and a no before anything is offered; then
-	// the code to type into it, and when to confirm. On the desktop Bun asks once more in its own box, naming that
-	// fingerprint; on the web this page's Confirm stands for it.
+	// gate's dialog: the fingerprint its screen shows, with a yes and a no before anything is offered; then the code to
+	// type into it, and when to confirm. On the desktop Bun asks once more in its own box, naming that fingerprint; on
+	// the web this page's Confirm stands for it. Its name is whatever wrote its request says, which the fingerprint
+	// doesn't bind: it's quoted as the device's own word on a line of its own, never in the title or in what to compare
+	// or type (desktop-electrobun#543).
 	let {
 		approval,
 		onApprove,
@@ -49,11 +52,9 @@
 
 <div class="flex flex-col gap-3">
 	{#if approval.step === "asked"}
-		<p class="text-duvet-ink font-content text-[13.5px] leading-[1.4]">
-			{t("e2e_approval_asks", { name: approval.name })}
-		</p>
+		<p class="text-duvet-ink font-content text-[13.5px] leading-[1.4]">{t("e2e_approval_asks")}</p>
 		{#if approval.unfinished}
-			<p class="text-duvet-ink2 text-[13px] leading-[1.4]">{t("e2e_approval_unfinished", { name: approval.name })}</p>
+			<p class="text-duvet-ink2 text-[13px] leading-[1.4]">{t("e2e_approval_unfinished")}</p>
 		{/if}
 	{/if}
 	{#if approval.step === "ended"}
@@ -65,11 +66,16 @@
 			{t("e2e_code_fingerprint", { fingerprint: approval.fingerprint })}
 		</p>
 		<p class="text-duvet-ink2 text-[12.5px] leading-[1.4]">{t("e2e_approval_fingerprint_line")}</p>
+		{#if approval.name}
+			<p class="text-duvet-ink2 text-[12.5px] leading-[1.4] wrap-break-word">
+				{t("e2e_approval_name", { name: approval.name })}
+			</p>
+		{/if}
 	{/if}
 	{#if approval.step === "offered"}
-		<p class="text-duvet-ink2 text-[13px]" role="status">{t("e2e_approval_waiting", { name: approval.name })}</p>
+		<p class="text-duvet-ink2 text-[13px]" role="status">{t("e2e_approval_waiting")}</p>
 	{:else if approval.step === "code"}
-		<p class="text-duvet-ink2 text-[13px]">{t("e2e_approval_code", { name: approval.name })}</p>
+		<p class="text-duvet-ink2 text-[13px]">{t("e2e_approval_code")}</p>
 		<p class="text-duvet-ink text-center font-mono text-[28px] tracking-[0.3em]">{approval.code}</p>
 		<p class="text-duvet-ink text-[13px] font-medium">{t("e2e_approval_confirm_after")}</p>
 	{/if}

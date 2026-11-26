@@ -168,6 +168,8 @@ describe("the encryption gate", () => {
 		const gate = source("EncryptionGate.svelte");
 		expect(gate).toMatch(/<Dialog\b[^>]*title=\{approvalTitle\(/);
 		expect(gate).toContain("<ApprovalPrompt");
+		// The yes is to the question the person answered (desktop-electrobun#535): its message, with its device.
+		expect(gate).toMatch(/onApprove=\{\(\) => approvalActions\.approve\(approving\.device, approving\.question\b/);
 	});
 
 	// M1: one stack for the app's bottom bars, which neither places by itself.
