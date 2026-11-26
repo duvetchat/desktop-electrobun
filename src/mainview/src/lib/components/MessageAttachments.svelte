@@ -57,6 +57,19 @@
 		return pictures.length >= 2 ? pictures : [];
 	});
 
+	// A picture's or a video's box, inside maxWidth × maxHeight with its shape. A conversation's file is drawn from what
+	// its sender says of it before its bytes are here, any sides from 1 to 65535: never thinner than a tap's room, so
+	// it shows and takes a click (desktop-electrobun#544).
+	const SEALED_BOX_LEAST = 48;
+	function boxOf(att: NonNullable<Message["attachments"]>[number]): { width: number; height: number } {
+		const width = att.width ?? maxWidth;
+		const height = att.height ?? maxHeight;
+		const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+		const least = att.sealed ? SEALED_BOX_LEAST : 0;
+		const side = (value: number, most: number) => Math.min(most, Math.max(least, Math.round(value * scale)));
+		return { width: side(width, maxWidth), height: side(height, maxHeight) };
+	}
+
 	// A file's kind, as its card says it after its size: its name's extension.
 	function fileKind(name: string): string {
 		const dot = name.lastIndexOf(".");
@@ -209,24 +222,16 @@
 						<span class="text-xs">Attachment deleted</span>
 					</div>
 				{:else if att.content_type.startsWith("image/")}
-					{@const rawW = att.width ?? maxWidth}
-					{@const rawH = att.height ?? maxHeight}
-					{@const imgScale = Math.min(maxWidth / rawW, maxHeight / rawH, 1)}
-					{@const iw = Math.round(rawW * imgScale)}
-					{@const ih = Math.round(rawH * imgScale)}
-					<div class={MESSAGE_MEDIA_SUNK} style="width: {iw}px; height: {ih}px; max-width: 100%;">
+					{@const box = boxOf(att)}
+					<div class={MESSAGE_MEDIA_SUNK} style="width: {box.width}px; height: {box.height}px; max-width: 100%;">
 						{@render picture(att, name, hidden, "object-contain")}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
 						{/if}
 					</div>
 				{:else if att.content_type.startsWith("video/")}
-					{@const rawVW = att.width ?? maxWidth}
-					{@const rawVH = att.height ?? maxHeight}
-					{@const vidScale = Math.min(maxWidth / rawVW, maxHeight / rawVH, 1)}
-					{@const vw = Math.round(rawVW * vidScale)}
-					{@const vh = Math.round(rawVH * vidScale)}
-					<div class={MESSAGE_MEDIA_SUNK} style="width: {vw}px; height: {vh}px; max-width: 100%;">
+					{@const box = boxOf(att)}
+					<div class={MESSAGE_MEDIA_SUNK} style="width: {box.width}px; height: {box.height}px; max-width: 100%;">
 						{#if att.sealed}
 							<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
 								<SealedFile {preview} {att} kind="video" {hidden} />

@@ -102,6 +102,13 @@ test("in a preview, a file without a URL is its name, size and thumbnail, with n
 	expect(sealed).toMatch(/const failure = \$derived\(\s*opened\?\.status === "failed" && listed/);
 });
 
+// Step 5's review, M4 (desktop-electrobun#544): a thumbnail of its own came down whatever its file was laid out as,
+// a file only saved on a click among them, and was never drawn there.
+test("a thumbnail of its own is fetched only for a file laid out as a picture or a video", () => {
+	expect(sealed).toMatch(/const ref = \$derived\(\s*file\.thumbnail_ref && \(kind === "image" \|\| kind === "video"\)/);
+	expect(sealed).toContain("if (!near || !placeOfRef) return;");
+});
+
 // The mobile app's review (I3), for both apps: a sender writes a thumbnail's header, which can say any size.
 test("a thumbnail is drawn only once its header says it's 320 px a side at most, at its box's size", () => {
 	expect(sealed).toContain("if (!bytes || !thumbnailDrawn(bytes)) return;");

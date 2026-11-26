@@ -4,6 +4,7 @@ import {
 	DecryptedFiles,
 	downloadable,
 	MAX_DECRYPTED,
+	OPENING_BYTES_MOST,
 	OPENING_MOST,
 	type FileState,
 	type Opener,
@@ -23,7 +24,7 @@ const sha256 = async (bytes: Uint8Array) =>
 	bytesBase64(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))));
 
 /** A cache whose URLs are names it counts, and what it revoked; and the plain bytes its opener gives by file. */
-function cache(limit?: number) {
+function cache(limit?: number, inFlight?: number) {
 	const made: string[] = [];
 	const revoked: string[] = [];
 	const files = new DecryptedFiles(
@@ -34,6 +35,7 @@ function cache(limit?: number) {
 			return url;
 		},
 		(url) => revoked.push(url),
+		inFlight,
 	);
 	const plain = new Map<string, Uint8Array>();
 	const opener: Opener = {
@@ -228,6 +230,42 @@ describe("decrypted files in memory", () => {
 		await until(() => started.length === 6);
 		gates.get(all[4]!.url!)!();
 		expect((await Promise.all([...opening, clicked])).every((state) => state.status === "ready")).toBe(true);
+	});
+
+	// Step 5's review, M5 (desktop-electrobun#544): four of a bucket's large files came down and opened at once, each
+	// held several times over meanwhile. The Android app holds them to 64 MiB of sealed bytes.
+	test("files in flight are held to a budget of sealed bytes, and one past it comes down alone", async () => {
+		expect(OPENING_BYTES_MOST).toBe(64 << 20);
+		const { files, fileOf, opener } = cache(undefined, 1000);
+		const started: string[] = [];
+		const gates = new Map<string, () => void>();
+		files.useOpener({
+			...opener,
+			download: (url, most) => {
+				started.push(url);
+				return new Promise((done) => gates.set(url, () => done(new Uint8Array(most))));
+			},
+		});
+		// Three files of 416 sealed bytes, and one past the budget, though places are free for all four.
+		const small = await Promise.all(["1", "2", "3"].map((id) => fileOf(id, 400)));
+		const large = await fileOf("4", 5000);
+		const all = [...small, large];
+		const opening = all.map((file) => files.open(file, "m", { auto: true }));
+		const urlOf = (at: number) => all[at]!.url ?? "";
+		expect(sealedSize(400)).toBe(416);
+		expect(started).toEqual([urlOf(0), urlOf(1)]);
+		// One done, the third fits; the large one waits its turn, behind it, until nothing else is in flight.
+		gates.get(urlOf(0))!();
+		await until(() => started.length === 3);
+		expect(started[2]).toBe(urlOf(2));
+		gates.get(urlOf(1))!();
+		await Bun.sleep(20);
+		expect(started).toHaveLength(3);
+		gates.get(urlOf(2))!();
+		await until(() => started.length === 4);
+		expect(started[3]).toBe(urlOf(3));
+		gates.get(urlOf(3))!();
+		expect((await Promise.all(opening)).every((state) => state.status === "ready")).toBe(true);
 	});
 
 	// Task 18's review, Missing 2: decision 40 counts them, under the kind attachment.
