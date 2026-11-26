@@ -12,6 +12,7 @@
 	} from "@lucide/svelte";
 	import { base64Bytes, pngBlob } from "$lib/activity-thumbnail";
 	import { copyPicture } from "$lib/copy-picture";
+	import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 	import {
 		defaultMenuOf,
 		isMenuKey,
@@ -160,10 +161,13 @@
 		navigator.clipboard.writeText(text).catch((err: unknown) => console.error("[menu] couldn't copy:", err));
 
 	// Bun fetches the picture and the webview writes it, in the formats every app pastes (lib/copy-picture.ts, #450).
-	// Called in the menu's pick, so the clipboard's write starts in the user's gesture.
+	// Called in the menu's pick, so the clipboard's write starts in the user's gesture. A conversation's picture this
+	// device decrypted is copied from memory, as nothing outside the page can fetch its blob: URL.
 	function copyImage(src: string) {
 		void copyPicture(src, {
 			fetch: async (url) => {
+				const decrypted = decryptedFiles.blobOf(url);
+				if (decrypted) return new Uint8Array(await decrypted.arrayBuffer());
 				const rpc = await getElectrobunRpc();
 				const picture = rpc ? await rpc.request.pictureForCopy({ url }) : null;
 				return picture ? base64Bytes(picture) : null;

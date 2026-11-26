@@ -215,6 +215,9 @@ describe("a conversation's search on a device that can't run it", () => {
 		const search = () => searchConversation(conversation("c1"), { query: "hi" });
 		deviceFails = new Error("encrypted conversations aren't ready on this device");
 		expect(await rejection(search())).toMatchObject({ message: NOTICES.not_ready });
+		// As the page's engine refuses when it has none, a code that crosses to another tab (#508).
+		deviceFails = new CoreError("not_ready", "encrypted conversations aren't ready on this device");
+		expect(await rejection(search())).toMatchObject({ message: NOTICES.not_ready });
 		deviceFails = new CoreError("internal", "this tab left the core's tabs");
 		expect(await rejection(search())).toMatchObject({ message: NOTICES.not_ready });
 		useDeviceSearch(null);

@@ -12,9 +12,11 @@ import { identifyData } from "$lib/api/ws/identify";
 import { getWSHostURL } from "$lib/common/common";
 import { deviceName } from "../client";
 import { E2EEngine, systemClock } from "../engine/engine";
+import { openSealed, sealedSize, shownFile, type ShownFile } from "../engine/files";
 import type { EngineEvent, EngineEvents } from "../events";
 import { memoryStore } from "./engines";
 import { BunCoreHost } from "./host-bun";
+import { useXHR } from "./xhr";
 
 interface Account {
 	id: string;
@@ -28,6 +30,8 @@ const live = env.E2E_LIVE_API
 	: null;
 // The app reaches the API and the gateway at VITE_API_URL and VITE_WS_URL, which the preload points nowhere.
 if (live) Object.assign(globalThis, { VITE_API_URL: env.E2E_LIVE_API, VITE_WS_URL: env.E2E_LIVE_WS ?? "" });
+// A message's files go up as a form, through the XMLHttpRequest Bun lacks.
+useXHR();
 
 /** The stack's nth seeded account. */
 function account(n: number): Account {
@@ -298,6 +302,42 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		await eventually(async () => (await c.engine.messages(dm, [reply.id])).length === 0);
 		const after = (await c.client.get<DirectMessage[]>(`/api/users/@me/conversations/${dm}/messages`)).data;
 		expect(after.map((m) => m.id)).not.toContain(reply.id);
+	}, 120_000);
+
+	// Encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18): a file Carol's device seals and sends with the ID it gave
+	// it, which the API keeps as bytes it can't open, and Dave's device downloads from its signed URL and opens.
+	test("a file crosses between two users", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no conversation");
+		const { c, d, dm } = pair;
+		const picture = new Uint8Array(150_000);
+		crypto.getRandomValues(picture.subarray(0, 65_536));
+		picture.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+		const sent = (await c.engine.sendMessage({
+			...{ conversation_id: dm, nonce: crypto.randomUUID(), text: "a picture" },
+			files: [{ file: new Blob([picture]), name: "cat.png", width: 1, height: 1 }],
+		}))!;
+		// The API keeps one file, under the ID the envelope names, sealed, named nothing of it.
+		const listed = (await d.client.get<DirectMessage[]>(`/api/users/@me/conversations/${dm}/messages`)).data;
+		const [kept] = listed.find((m) => m.id === sent.id)?.attachments ?? [];
+		expect(kept).toMatchObject({
+			...{ filename: "file", content_type: "application/octet-stream" },
+			size_bytes: sealedSize(picture.length),
+		});
+		// Dave's device opens it from its signed URL: the same bytes, a picture by them.
+		let file: ShownFile | null = null;
+		await eventually(async () => {
+			const [row] = await d.engine.messages(dm, [sent.id]);
+			file = row?.status === "ok" ? shownFile(row.attachments[0]) : null;
+			return file !== null;
+		});
+		expect(file).toMatchObject({ id: kept!.id, name: "cat.png", size: picture.length });
+		const opened = await openSealed(file!, {
+			download: (most, progress) => d.routes.sealedFile(kept!.url!, most, progress),
+			open: (key, id, sealed, progress) => d.engine.openFile(key, id, sealed, progress),
+		});
+		expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(picture);
+		expect(opened.type).toBe("image/png");
 	}, 120_000);
 
 	// Devices in Settings (PLAN-E2E-CLIENTES.md, Task 24): Carol's device, which the cases above left set up, takes a

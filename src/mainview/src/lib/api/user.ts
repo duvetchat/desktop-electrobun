@@ -45,6 +45,8 @@ export interface UserAttachment {
 	height?: number | null;
 	created_at: string;
 	url?: string;
+	/** What it holds: 0 a file as uploaded, 1 a conversation's encrypted file, which only its message names. */
+	kind?: number;
 }
 
 export interface StorageStatus {
@@ -122,6 +124,16 @@ export interface UpdateBucketPayload {
 export async function getMyBuckets(): Promise<StorageBucket[]> {
 	const res = await api.get("/api/users/@me/buckets");
 	return res.data;
+}
+
+/**
+ * The most a file of the user's takes where it goes, as the API's checkUploadLimit reads it: their active bucket's limit
+ * (none when it has none), else their storage's.
+ */
+export async function myFileLimit(): Promise<number | null> {
+	const active = (await getMyBuckets()).find((bucket) => bucket.is_active);
+	if (active) return active.upload_limit_bytes ?? null;
+	return (await getMyStorageStatus()).upload_limit_bytes;
 }
 
 // The API checks a bucket it registers or edits for 30 s at most before it answers (#217).

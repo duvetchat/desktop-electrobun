@@ -36,9 +36,27 @@ export const NOTICES = {
 	device_added: "A new device was added to your account: {name}.",
 	delete_device: "Remove this device and delete its data",
 	too_long: "Message too long",
+	edit_refused: "Your edit couldn't be saved for everyone.",
+	delete_refused: "Your message couldn't be deleted for everyone.",
+	loading_message: "Loading message",
+	files_wait: "Files and voice messages can't be sent in encrypted conversations yet",
 	not_ready: "Encrypted conversations aren't ready on this device",
+	too_many_waiting: "Too many messages wait to be sent here: send or dismiss them first",
 	search_split:
 		"In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
+	// A conversation's files (task 18).
+	file_encrypted: "Encrypted file",
+	file_progress: "Downloading · {percent}%",
+	file_altered: "This file isn't the one its sender sent, so it isn't shown.",
+	file_unavailable: "This file can't be shown.",
+	file_download_failed: "Couldn't download this file. Try again.",
+	files_gone: "This message's files aren't on this device any more. Dismiss it, then send them again.",
+	gif_failed: "The GIF couldn't be sent.",
+	file_save: "Save",
+	file_save_named: "Save {name}",
+	file_play: "Play video",
+	file_show: "Show picture",
+	file_named: "{name}: {status}",
 	// The mobile app's push, when a message can't be read in time (its task 21): this app doesn't show it.
 	new_message: "New message",
 } as const;

@@ -1,4 +1,5 @@
 import { repairOggOpus } from "$lib/audio/ogg";
+import { WAVEFORM_SAMPLES } from "$lib/e2e/conventions";
 
 /** What the players of an attachment's audio know of it from its analysis (analyzeWaveform), for its next player: its
  * bars, its duration, whether this browser could decode it only once repaired, and the WAV a player made of it as it
@@ -108,10 +109,10 @@ function decodingContext(rate: number): OfflineAudioContext {
 }
 
 // What this browser decodes of some audio, at a rate, in an OfflineAudioContext, which opens no audio device; repaired
-// says it could decode it only once repaired, and so can't play it as it is either.
-async function decode(url: string, rate: number): Promise<{ decoded: AudioBuffer; repaired: boolean }> {
-	const res = await fetch(url);
-	const buf = await res.arrayBuffer();
+// says it could decode it only once repaired, and so can't play it as it is either. A Blob is a conversation's file,
+// decrypted in memory: read as it is, as no fetch takes a blob: URL under the app's connect-src.
+async function decode(source: string | Blob, rate: number): Promise<{ decoded: AudioBuffer; repaired: boolean }> {
+	const buf = typeof source === "string" ? await (await fetch(source)).arrayBuffer() : await source.arrayBuffer();
 	const ctx = decodingContext(rate);
 	try {
 		// decodeAudioData detaches the buffer it gets: the original stays for the repair.
@@ -126,18 +127,19 @@ async function decode(url: string, rate: number): Promise<{ decoded: AudioBuffer
 
 /** A WAV of some audio, held once for the caller (wavUrlOf), to play from: made as it's played, since it holds every
  * sample (96 KB a second of a mono note), where the players made one as they mounted and kept it (#316). */
-export async function makeWav(url: string): Promise<string> {
-	const { decoded } = await decode(url, WAV_RATE);
+export async function makeWav(source: string | Blob): Promise<string> {
+	const { decoded } = await decode(source, WAV_RATE);
 	return wavUrlOf(audioBufferToWav(decoded));
 }
 
 /** The bars of some audio's waveform and its duration, from what this browser decodes of it at a low rate, two at a
  * time; repaired says it could decode it only once repaired, and so can't play it as it is either. */
 export async function analyzeWaveform(
-	url: string,
+	source: string | Blob,
 	barCount: number,
 ): Promise<{ bars: number[]; duration: number; repaired: boolean }> {
-	const { decoded, repaired } = await inTurn(() => decode(url, BARS_RATE));
+	const url = typeof source === "string" ? source : "decrypted";
+	const { decoded, repaired } = await inTurn(() => decode(source, BARS_RATE));
 	const duration = decoded.duration;
 	const raw = decoded.getChannelData(0);
 
@@ -198,4 +200,29 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 		}
 	}
 	return wav;
+}
+
+/** The peak of each of `count` stretches of the samples, a byte each (0 to 255): a voice note's waveform. */
+export function peaks(samples: Float32Array, count: number): Uint8Array {
+	const out = new Uint8Array(count);
+	for (let i = 0; i < count; i++) {
+		const start = Math.floor((i * samples.length) / count);
+		const end = Math.max(start + 1, Math.floor(((i + 1) * samples.length) / count));
+		let peak = 0;
+		for (let j = start; j < end && j < samples.length; j++) peak = Math.max(peak, Math.abs(samples[j]!));
+		out[i] = Math.round(Math.min(1, peak) * 255);
+	}
+	return out;
+}
+
+/**
+ * What a voice note's message says of it (PLAN-E2E-CLIENTES.md, its conventions between clients): its length, and its
+ * waveform, the peak of each of its 64 stretches, from what this browser decodes of it at a low rate.
+ */
+export async function voiceNoteFacts(note: Blob): Promise<{ waveform: Uint8Array; duration_ms: number }> {
+	const { decoded } = await inTurn(() => decode(note, BARS_RATE));
+	return {
+		waveform: peaks(decoded.getChannelData(0), WAVEFORM_SAMPLES),
+		duration_ms: Math.round(decoded.duration * 1000),
+	};
 }

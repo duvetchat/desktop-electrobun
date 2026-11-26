@@ -4,7 +4,9 @@ import {
 	holdWav,
 	keepWaveform,
 	makeWav,
+	peaks,
 	releaseWav,
+	voiceNoteFacts,
 	waveformCache,
 	wavUrlOf,
 } from "$lib/audio/waveform";
@@ -197,5 +199,42 @@ describe("an analysis and a WAV", () => {
 		expect(await (await fetch(url)).text()).toStartWith("RIFF");
 		releaseWav(url);
 		expect(await readable(url)).toBe(false);
+	});
+
+	// A conversation's audio, decrypted in memory (lib/e2e/decrypted-files): its Blob is decoded as it is, with no fetch,
+	// which the app's connect-src takes for no blob: URL.
+	test("audio decrypted in memory is decoded from its Blob, with nothing fetched", async () => {
+		fetched?.mockRestore();
+		const asked = spyOn(globalThis, "fetch");
+		const analysis = analyzeWaveform(new Blob([new Uint8Array(32)], { type: "audio/ogg" }), 10);
+		await settle();
+		pending.shift()?.();
+		expect((await analysis).duration).toBe(2);
+		const made = makeWav(new Blob([new Uint8Array(32)], { type: "audio/ogg" }));
+		await settle();
+		pending.shift()?.();
+		releaseWav(await made);
+		expect(asked).not.toHaveBeenCalled();
+		asked.mockRestore();
+	});
+
+	// What a voice note's envelope says of it (PLAN-E2E-CLIENTES.md, its conventions between clients): its length, and
+	// 64 samples of a byte, the peak of each stretch of it.
+	test("a voice note's waveform is the peak of each of its 64 stretches, a byte each, and its duration", async () => {
+		const facts = voiceNoteFacts(new Blob([new Uint8Array(32)]));
+		await settle();
+		pending.shift()?.();
+		const { waveform, duration_ms } = await facts;
+		expect(duration_ms).toBe(2000);
+		expect(waveform).toHaveLength(64);
+		expect([...waveform].every((peak) => peak === Math.round(0.25 * 255))).toBe(true);
+		const samples = new Float32Array(128);
+		samples[1] = -1;
+		samples[66] = 0.5;
+		const peaksOf = peaks(samples, 64);
+		expect(peaksOf[0]).toBe(255);
+		expect(peaksOf[33]).toBe(128);
+		expect(peaksOf[2]).toBe(0);
+		expect(peaks(new Float32Array(10), 64)).toHaveLength(64);
 	});
 });

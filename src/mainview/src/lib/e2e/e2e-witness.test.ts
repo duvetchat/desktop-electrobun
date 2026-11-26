@@ -6,7 +6,12 @@ import { pageStore } from "./engine/store";
 import { FakeApi } from "./testing/fake-api";
 import { coreLibrary } from "./testing/host-bun";
 import { firstDevice, rejection, testHost, until, useFake } from "./testing/engines";
+import { useXHR } from "./testing/xhr";
 import * as content from "./conversation-content.svelte";
+import { decryptedFiles } from "./decrypted-files.svelte";
+import { openSealed, shownFile, type ShownFile } from "./engine/files";
+
+useXHR();
 
 // The page's engine and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
 // it's the value itself, set before they load (test-gateway.ts sets it too, with the app's connection's socket).
@@ -141,6 +146,28 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			await until(() => toasts.includes(`${witness}, toast`));
 			setSystemNotifier(null);
 
+			// A file whose name and bytes hold it: sealed and sent through the page, opened on the other device, and drawn
+			// by the page itself, through its own memory of what it decrypted.
+			const file = new File([`${witness}\n`.repeat(200)], `${witness}.txt`, { type: "text/plain" });
+			const withFile = await page.sendEncrypted({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID(), text: "a file" },
+				files: [{ file, name: file.name }],
+			});
+			if (!withFile) throw new Error("the file wasn't sent");
+			let shown: ShownFile | null = null;
+			await until(async () => {
+				const [row] = await b.engine.messages(conversation, [withFile.id]);
+				shown = row?.status === "ok" ? shownFile(row.attachments[0]) : null;
+				return shown !== null;
+			});
+			const url = withFile.attachments?.[0]?.url ?? null;
+			const opened = await openSealed(shown!, {
+				download: (most, progress) => b.api.sealedFile(url!, most, progress),
+				open: (key, id, sealed, progress) => b.engine.openFile(key, id, sealed, progress),
+			});
+			expect(await opened.blob.text()).toBe(await file.text());
+			const drawn = await decryptedFiles.open({ ...shown!, url }, withFile.id);
+			expect(drawn.status).toBe("ready");
 			// One whose request never reached the API waits on the device, with what goes with it in the clear.
 			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
 			await rejection(
@@ -163,7 +190,9 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			}
 			// The engines' records are there, and hold none of it.
 			expect(kept.some((item) => item.startsWith(`duvet.e2e.${ana}.`))).toBe(true);
-			const found = (where: string[]) => where.filter((text) => text.includes(witness) || text.includes(btoa(witness)));
+			// The witness, or the start of it in base64, as a file's bytes or a name would carry it.
+			const found = (where: string[]) =>
+				where.filter((text) => text.includes(witness) || text.includes(btoa(witness).slice(0, 40)));
 			expect(found(kept)).toEqual([]);
 			expect(found(await Promise.all(seen))).toEqual([]);
 			expect(found(written)).toEqual([]);

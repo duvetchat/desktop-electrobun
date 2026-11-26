@@ -270,14 +270,39 @@ export interface DecryptFailureCount {
  * host, as the app's requests take it, not the page's; fetched with none of the app's headers, which a redirect would
  * have carried to the storage's host, the session token among them (PLAN-E2E-API.md, I and J). */
 async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> {
-	const { url } = await route;
-	const at = url.startsWith("http") ? url : `${getHostURL()}${url}`;
-	const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.answerMs);
-	if (!res.ok) {
-		const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
-		throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
+	return download((await route).url);
+}
+
+/** How many times a download waits out the API's budget of bytes an IP downloads (a 429), and the longest wait. */
+const BUDGET_WAITS = 3;
+const BUDGET_WAIT_MOST_S = 60;
+
+/**
+ * The bytes at a signed URL, as signedFile fetches them: through the API itself (`stream=1`), which reads them from its
+ * storage, never a redirect to it; `most` at most (a RangeError past them), `progress` hearing how many came. Its first
+ * answer may wait past the API's 30 s for its storage's first byte (requestLimits.slowAnswerMs), and the API's budget
+ * of what an IP downloads (a 429) is waited out as its Retry-After says, BUDGET_WAITS times at most.
+ */
+async function download(url: string, most = Number.POSITIVE_INFINITY, progress?: (received: number) => void) {
+	const signed = url.startsWith("http") ? url : `${getHostURL()}${url}`;
+	// Appended as text: the signed query stays byte for byte as the API wrote it.
+	const at = `${signed}${signed.includes("?") ? "&" : "?"}stream=1`;
+	for (let waited = 0; ; waited++) {
+		const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.slowAnswerMs, (received) => {
+			if (received > most) throw new RangeError(`the file is larger than ${most} bytes`);
+			progress?.(received);
+		});
+		if (res.status === 429 && waited < BUDGET_WAITS) {
+			const seconds = Number(res.headers.get("Retry-After")) || 1;
+			await new Promise((done) => setTimeout(done, Math.min(Math.ceil(seconds), BUDGET_WAIT_MOST_S) * 1000));
+			continue;
+		}
+		if (!res.ok) {
+			const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
+			throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
+		}
+		return new Uint8Array(await res.arrayBuffer());
 	}
-	return new Uint8Array(await res.arrayBuffer());
 }
 
 /** The routes, for the session `client` sends its requests with. */
@@ -361,14 +386,33 @@ export function e2eApi(client: ApiClient = api) {
 					if (one !== undefined) form.append(field, typeof one === "string" ? one : JSON.stringify(one));
 				}
 			}
-			for (const file of files) form.append("files", file);
+			// Each a file named file, as the API names it: a part with no name isn't a file to Go's multipart reader.
+			for (const file of files) form.append("files", file, "file");
 			return answer(client.post<DirectMessage>(path, form, upload));
 		},
 		editMessage: (conversationId: string, messageId: string, ciphertext: string) =>
 			answer(client.patch<MessageEdited>(`${conv(conversationId)}/messages/${messageId}`, { ciphertext })),
 		deleteMessage: (conversationId: string, messageId: string, ciphertext: string) =>
 			answer(client.delete<MessageDeleted>(`${conv(conversationId)}/messages/${messageId}`, { data: { ciphertext } })),
+		/**
+		 * A message's sealed file at the signed URL its message gives it (Task 18): `most` bytes at most, as they come. Its
+		 * signature lasts 24 hours, which a view can outlast: one the API refuses (403) is signed again, once, and asked
+		 * for at its new URL (task 18's re-review, N5).
+		 */
+		sealedFile: async (url: string, most: number, progress?: (received: number) => void) => {
+			try {
+				return await download(url, most, progress);
+			} catch (error) {
+				const id = /\/attachments\/([0-9a-f-]{36})/.exec(url)?.[1];
+				if (!(error instanceof FetchError && error.response?.status === 403) || !id) throw error;
+				const { url: signed } = await answer(client.post<{ url: string }>(`/attachments/${id}/resign`));
+				return download(signed, most, progress);
+			}
+		},
 		/** The conversation's deleted encrypted messages, by ID, after `after`: 1000 at most. */
+		/** One message of the conversation, as the API has it: a message of the person's that went, which a Retry shows. */
+		message: (conversationId: string, messageId: string) =>
+			answer(client.get<DirectMessage>(`${conv(conversationId)}/messages/${messageId}`)),
 		deletedMessages: (conversationId: string, after?: string, limit?: number) =>
 			answer(client.get<{ ids: string[] }>(`${conv(conversationId)}/messages/deleted`, { params: { after, limit } })),
 

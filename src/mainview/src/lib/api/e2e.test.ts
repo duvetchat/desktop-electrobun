@@ -292,6 +292,12 @@ const ROUTES: [
 		{ id: MESSAGE, entry: { ...entry, kind: "delete" } },
 	],
 	[
+		"message",
+		(api) => api.message(CONV, MESSAGE),
+		{ method: "GET", url: `${conv}/messages/${MESSAGE}` },
+		{ id: MESSAGE, conversation_id: CONV },
+	],
+	[
 		"deletedMessages",
 		(api) => api.deletedMessages(CONV, MESSAGE, 1000),
 		{ method: "GET", url: `${conv}/messages/deleted`, config: { params: { after: MESSAGE, limit: 1000 } } },
@@ -460,8 +466,11 @@ describe("each route", () => {
 				else if (gives === "file") expect(got).toEqual(FILE);
 				else expect(got).toBe(answer);
 				const fetchedUrls: unknown[] = fetched.mock.calls.map(([input]) => urlOf(input));
+				// Through the API itself (stream=1), never a redirect to its storage.
 				expect(fetchedUrls).toEqual(
-					gives === "file" ? [typeof answer === "object" && answer && "url" in answer ? answer.url : null] : [],
+					gives === "file"
+						? [typeof answer === "object" && answer && "url" in answer ? `${answer.url}&stream=1` : null]
+						: [],
 				);
 			} finally {
 				fetched.mockRestore();
@@ -519,7 +528,8 @@ describe("each route", () => {
 // token among them. The API's is a path of its own (storage.SignedAttachmentURL), on the API's host, not the page's.
 describe("a file at its signed URL", () => {
 	const SIGNED = `/attachments/${SEGMENT}?sig=s&exp=1763000000`;
-	const FETCHED = `https://api.test${SIGNED}`;
+	// Asked of the API itself (stream=1), its signed query as the API wrote it.
+	const FETCHED = `https://api.test${SIGNED}&stream=1`;
 	const appHeaders = ["Authorization", "X-Session-Token", "X-Duvet-Client"];
 
 	test("is fetched with none of the app's headers, after the API's route with them all", async () => {
