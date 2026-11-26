@@ -29,6 +29,11 @@ export const RELISTED = "relisted";
 /** The identity a start over replaces (start-over.ts), from the person's tap until its upload is confirmed. */
 export const KEPT_RESET = "reset";
 /**
+ * This installation's device, once its user's list named it on the API (its first list went up, or it was ready): from
+ * then on no list the API serves makes its first list wait again (identity.ts' firstListWaits). Its ID, nothing secret.
+ */
+export const LISTED = "listed";
+/**
  * The generations this device joins only on its person's yes, by conversation (sync.ts): a restart's welcome its core
  * refused, a newer generation with members other than it holds. A conversation's ID and a number, nothing secret.
  */
@@ -60,7 +65,7 @@ export const BACKUP_SET_ASIDE = "backup_set_aside";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEYS_AGAIN, RELISTED, KEPT_RESET, REFUSED_GENERATIONS],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEYS_AGAIN, RELISTED, KEPT_RESET, LISTED, REFUSED_GENERATIONS],
 	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE, BACKUP_SET_ASIDE],
 ];

@@ -8,6 +8,7 @@ import { CoreError } from "../errors";
 import { coreStatus, type CoreStatus } from "./bootstrap";
 import type { Observation } from "./contacts";
 import type { EngineParts, EngineState } from "./engine";
+import { LISTED, type EngineStore } from "./store";
 
 /** What create_identity answers: what goes up, and the recovery key the person saves first. */
 export interface IdentityMade {
@@ -76,34 +77,50 @@ export async function observeOwn({ host, user }: EngineParts, served: Identity):
 
 /**
  * Whether this device took the identity the API serves (recovered, or approved: Task 26) and the API's list doesn't name
- * it yet: its first list, with its certificate, is what's left of its setup (recover.ts).
+ * it yet: its first list, with its certificate, is what's left of its setup (recover.ts). Never once the API listed it
+ * (`LISTED`): a list without it then is older than the one it holds, or a newer one that leaves it out, which the core's
+ * observation tells apart, and a first list put up on top of an older one would lose its race (step 5).
  */
-export const firstListWaits = (served: Identity, status: CoreStatus) =>
+export const firstListWaits = (served: Identity, status: CoreStatus, store: EngineStore) =>
 	status.has_identity &&
 	status.device_id !== undefined &&
+	store.read(LISTED) !== status.device_id &&
 	served.identity_key === status.identity_key &&
 	!listDevices(served.device_list)?.includes(status.device_id);
+
+/** What this device is by the list its core holds of its user: ready while it names the device, else removed. */
+const byHeldList = ({ device_id, device_list }: CoreStatus): EngineState =>
+	device_id !== undefined && device_list !== undefined && listDevices(device_list)?.includes(device_id)
+		? { name: "ready" }
+		: { name: "removed" };
 
 /**
  * What the user's identity, as served, makes of this device (step 5): none yet, a first device; one this device
  * doesn't hold, or holds without being on its list yet (its first list still to go up), a new device; its own, ready.
  * Served one this device doesn't hold while it holds another, a rotation's transfer for it may wait in the inbox
  * (`takeInbox`): without one, the user's devices went on without this one, which is off the list (`removed`; a
- * rotation off it removes it, and starting over leaves it unlisted).
+ * rotation off it removes it, and starting over leaves it unlisted). Of the identity this device holds, the list its core
+ * keeps once it observed the served one decides: a list the server rolls back changes nothing. And none served to a
+ * device whose core holds the identity the API took (no upload waits for create_identity) makes no first device of it:
+ * the core makes no second identity, so it goes on with what it holds, as the server only withholds.
  */
 export async function identityState(parts: EngineParts, takeInbox: () => Promise<unknown>): Promise<EngineState> {
 	let served = await servedIdentity(parts);
-	if (!served) return { name: "first_device", recoveryKey: null, finishing: false };
 	const status = await coreStatus(parts.host);
+	if (!served) {
+		if (status.has_identity && status.waiting_upload !== "create_identity") return byHeldList(status);
+		return { name: "first_device", recoveryKey: null, finishing: false };
+	}
 	if (!status.has_identity) return { name: "new_device" };
 	// A rotation of this device's own, cut before its upload, holds the new identity the API doesn't serve yet: it goes
 	// up again as the same rotation (Task 24, which keeps what it removes), never read as this device being off the list.
 	if (status.waiting_upload === "rotate_keys") return { name: "ready" };
-	if (firstListWaits(served, status)) return { name: "new_device" };
-	if ((await observeOwn(parts, served)) !== "not_own_identity") return { name: "ready" };
+	if (firstListWaits(served, status, parts.store)) return { name: "new_device" };
+	if ((await observeOwn(parts, served)) !== "not_own_identity") return byHeldList(await coreStatus(parts.host));
 	await takeInbox();
 	served = (await servedIdentity(parts)) ?? served;
-	return (await observeOwn(parts, served)) === "not_own_identity" ? { name: "removed" } : { name: "ready" };
+	if ((await observeOwn(parts, served)) === "not_own_identity") return { name: "removed" };
+	return byHeldList(await coreStatus(parts.host));
 }
 
 /**
