@@ -857,4 +857,88 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 		},
 		SLOW,
 	);
+
+	// #550 (step 5's engines review, Minor 5): a send inside the person's act refused for a moment (a 429 whose
+	// Retry-After asks a few seconds, as the per-user cap of 50 a second does) waits once, and the same frame goes again:
+	// the commitment to the device it missed, the offer the core made, never a new one.
+	test(
+		"an approval's send refused for a moment goes once the API lets it",
+		async () => {
+			const { fake, to, bodiesTo } = inboxSends();
+			const ana = fake.addUser();
+			const a = await firstDevice(fake, ana);
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			const moment = { "Retry-After": "1" };
+			const toA = `/api/devices/${deviceOf(a)}/inbox`;
+			fake.refuse({ method: "POST", path: toA }, 429, { error: "too many requests, try again later" }, moment);
+			await clockedOut(n, n.engine.useCode());
+			expect(setupOf(n.engine.state)).toMatchObject({ way: "code", offered: false });
+			const [commitment, again] = await bodiesTo(toA);
+			expect(again).toBe(commitment!);
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			const toN = `/api/devices/${deviceOf(n)}/inbox`;
+			fake.refuse({ method: "POST", path: toN }, 429, { error: "too many requests, try again later" }, moment);
+			await clockedOut(a, a.engine.approveDevice(deviceOf(n), questionOf(a)));
+			const [offer, resent] = await bodiesTo(toN);
+			expect(resent).toBe(offer!);
+			expect(to(toN)).toHaveLength(2);
+			await until(() => offered(n));
+			expect(approvalOf(a.engine.state)).toMatchObject({ step: "code" });
+			await Promise.all([a, n].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// #550: refused for longer than a moment (the inbox's own hundred an hour), the act stops at once, said as the rate
+	// limit it is: never as no device that can approve, nor by leaving the device out without a word.
+	test(
+		"an approval's send refused for longer is said as the rate limit, not as no approver",
+		async () => {
+			const { fake, to } = inboxSends();
+			const ana = fake.addUser();
+			const a = await firstDevice(fake, ana);
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			const toA = `/api/devices/${deviceOf(a)}/inbox`;
+			fake.refuse(
+				{ method: "POST", path: toA },
+				429,
+				{ error: "too many requests, try again later" },
+				{
+					"Retry-After": "3600",
+				},
+			);
+			expect(await rejection(n.engine.useCode())).toMatchObject({ response: { status: 429 } });
+			expect(to(toA)).toHaveLength(1);
+			// The QR its attempt replaced is made again, to show in its place.
+			expect(qrOf(n)).toEqual(expect.any(String));
+			await Promise.all([a, n].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
 });
+
+/** The fake, answering the test's requests; each send to a device's inbox, by its path, with its body. */
+function inboxSends() {
+	const fake = new FakeApi();
+	const sent: { path: string; body: Promise<string> }[] = [];
+	useFake(fake, (request) => {
+		const path = new URL(request.url).pathname;
+		if (request.method === "POST" && path.endsWith("/inbox")) sent.push({ path, body: request.text() });
+	});
+	const to = (path: string) => sent.filter((one) => one.path === path);
+	const bodiesTo = (path: string) => Promise.all(to(path).map((one) => one.body));
+	return { fake, to, bodiesTo };
+}
+
+/** The device's act, its clock moved on a quarter second at a time until it settles: a wait it asked for runs out. */
+async function clockedOut<T>(device: TestDevice, act: Promise<T>): Promise<T> {
+	let settled = false;
+	void act.then(
+		() => (settled = true),
+		() => (settled = true),
+	);
+	await until(() => (device.clock.advance(250), settled));
+	return act;
+}
