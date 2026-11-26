@@ -67,6 +67,18 @@
 		"approval_ask": "Is this device yours?",
 		"approval_confirm_after": "Confirm only after your new device accepts it",
 		"start_over_warning": "Starting over makes new security keys for your account. The history of your encrypted conversations can't be read any more, and your contacts will see that your keys changed.",
+		"share_history": "Share history",
+		"share_history_with": "Share history with {name}",
+		"share_history_line": "{name} gets the messages this device holds from the time you pick, marked as shared by you.",
+		"share_history_send": "Share",
+		"share_history_sharing": "Sharing…",
+		"share_history_truncated": "Not all of it fit: {name} gets the messages from {date} on.",
+		"share_history_limit": "You can share history 10 times an hour. Try again {when}.",
+		"share_history_failed": "Couldn't share the history. Try again.",
+		"share_history_no_device": "{name} has no device that can receive it yet.",
+		"shared_with_you": "{a} shared {range} with you",
+		"shared_add": "Add to this device",
+		"shared_add_failed": "Couldn't add the shared messages. Try again.",
 		"verify_number": "Verify security number",
 		"mark_verified": "Mark as verified",
 		"verified": "Verified",
@@ -88,6 +100,22 @@
 				"name": "{owner}"
 			},
 			"text": "{owner} can't receive encrypted messages yet. Your device will pass them on when they can."
+		},
+		{
+			"key": "shared_with_you",
+			"values": {
+				"a": "Ana",
+				"range": "the last 7 days"
+			},
+			"text": "Ana shared the last 7 days with you"
+		},
+		{
+			"key": "share_history_truncated",
+			"values": {
+				"name": "Bo",
+				"date": "November 19, 2026"
+			},
+			"text": "Not all of it fit: Bo gets the messages from November 19, 2026 on."
 		}
 	],
 	"envelopes": [

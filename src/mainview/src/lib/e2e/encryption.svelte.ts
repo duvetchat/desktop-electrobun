@@ -4,12 +4,14 @@
 // menu there too, whose Verify security number waits for a ready engine.
 import { writable } from "svelte/store";
 import type { ContactsShown } from "./engine/contacts";
-import type { EngineState } from "./engine/engine";
+import type { EngineState, SharedOffer } from "./engine/engine";
 import type { ConversationState } from "./engine/sync";
 
 export const encryption = $state<{
 	state: EngineState;
 	conversations: Record<string, ConversationState>;
+	/** The members' shares of each conversation's history this device offers, until the person adds them (Task 30). */
+	offers: Record<string, SharedOffer[]>;
 	/** The cutover's instant, as the API gives it: a conversation from before it says when its messages went. */
 	cutoverAt: string | null;
 	/** The person's contacts as the engine holds them (contacts.ts): their changed keys, and whom they verified. */
@@ -17,6 +19,7 @@ export const encryption = $state<{
 }>({
 	state: { name: "starting" },
 	conversations: {},
+	offers: {},
 	cutoverAt: null,
 	contacts: { changes: {}, verified: {} },
 });

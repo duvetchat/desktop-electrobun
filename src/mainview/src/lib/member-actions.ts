@@ -2,7 +2,7 @@
 // friendship, a direct conversation and its call, the user's display name. A refusal shows in a toast, or in the
 // confirmation it asks first.
 
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { getApiError } from "$lib/api/api";
 import { acceptFriendRequest, getSentRequests, sendFriendRequest, unfriend } from "$lib/api/friends";
 import { updateUser } from "$lib/api/user";
@@ -11,6 +11,12 @@ import { currentUser, directChatRequest, friends, pendingFriendRequests, sentFri
 import { confirmAction } from "$lib/stores/confirm.svelte";
 import { promptDialog } from "$lib/stores/prompt.svelte";
 import { toast } from "$lib/stores/toast.svelte";
+
+/**
+ * Whom the person shares a conversation's history with (Task 30): a member's menu sets it, and ShareHistoryDialog, one
+ * for the app, takes it as it opens. Here, not in the dialog, as a menu's page (Space settings) never loads the engine.
+ */
+export const shareHistoryRequest = writable<{ conversationId: string; userId: string; name: string } | null>(null);
 
 /** Sends them a friend request. */
 export async function addFriend(userId: string): Promise<void> {

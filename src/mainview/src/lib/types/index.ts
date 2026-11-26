@@ -124,6 +124,8 @@ export const MessageType = {
 	PinNotice: 2,
 	/** A conversation's notice that a call in it ended, by its caller; no content, and its call says who was in it. */
 	Call: 3,
+	/** A conversation's notice that its author shared its history with another member; its history_share says whom. */
+	HistoryShare: 4,
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -426,6 +428,8 @@ export interface Message {
 	loading?: boolean;
 	/** Who shared a conversation's message with this device, when a shared history brought it. */
 	shared_by?: string | null;
+	/** A shared history's notice (MessageType.HistoryShare): whom its author shared it with, and how far back. */
+	history_share?: { to_user_id: string; range: string };
 }
 
 export interface GatewayMessageDelete {
@@ -1088,15 +1092,15 @@ export interface IdentityUpdateEvent {
 }
 
 /** A shared history as its recipient gets it (HISTORY_SHARE_CREATE, GET …/history-shares; PLAN-E2E-API.md, I): a
- * share or a catch-up, from whom, how far back (`range`) and from when (`starts_at`, an RFC 3339 time), its size and its
- * parts.
+ * share or a catch-up, from whom, how far back (`range`: day, week, month or all; null for a catch-up) and from when
+ * (`starts_at`, an RFC 3339 time), its size and its parts.
  * Its key comes by the inbox. */
 export interface HistoryShare {
 	id: string;
 	conversation_id: string;
 	from_user_id: string;
 	kind: "share" | "catch_up";
-	range: string;
+	range: string | null;
 	starts_at: string;
 	size: number;
 	parts: number;
@@ -1497,10 +1501,14 @@ export function isEphemeral(message: Pick<Message, "flags">): boolean {
 	return ((message.flags ?? 0) & MessageFlag.Ephemeral) !== 0;
 }
 
-/** Whether a message is a notice the API posts, a pin's or a call's, rather than one someone wrote: nobody edits or
- * pins it, and a reply to it mentions nobody. */
+/** Whether a message is a notice the API posts, a pin's, a call's or a shared history's, rather than one someone wrote:
+ * nobody edits or pins it, and a reply to it mentions nobody. */
 export function isNotice(message: Pick<Message, "type">): boolean {
-	return message.type === MessageType.PinNotice || message.type === MessageType.Call;
+	return (
+		message.type === MessageType.PinNotice ||
+		message.type === MessageType.Call ||
+		message.type === MessageType.HistoryShare
+	);
 }
 
 /** When a message was sent, as the chat shows it and orders it by: its creation, but a call notice's call's end, when
@@ -1607,6 +1615,7 @@ export function directMessageToMessage(
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 		pinned_at: msg.pinned_at ?? null,
 		call: msg.call,
+		history_share: msg.history_share,
 		...text,
 	};
 }

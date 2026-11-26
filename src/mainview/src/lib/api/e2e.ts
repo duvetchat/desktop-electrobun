@@ -16,6 +16,7 @@ import api, {
 } from "$lib/api/api";
 import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
 import { getHostURL } from "$lib/common/common";
+import { SHARE_PART } from "$lib/e2e/host";
 import type { AllowedMentions, HistoryShare, MessageReference, MlsEntry, UserDevice } from "$lib/types";
 
 /** GET /api/e2e: the API's external sender (its key, base64), the cutover's instant, whether conversations' writes are
@@ -272,8 +273,8 @@ export interface DecryptFailureCount {
 /** A file's bytes at the signed URL its route answered: the API's own path (storage.SignedAttachmentURL) on the API's
  * host, as the app's requests take it, not the page's; fetched with none of the app's headers, which a redirect would
  * have carried to the storage's host, the session token among them (PLAN-E2E-API.md, I and J). */
-async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> {
-	return download((await route).url);
+async function signedFile(route: Promise<{ url: string }>, most?: number): Promise<Uint8Array> {
+	return download((await route).url, most);
 }
 
 /** How many times a download waits out the API's budget of bytes an IP downloads (a 429), and the longest wait. */
@@ -440,8 +441,9 @@ export function e2eApi(client: ApiClient = api) {
 			done(client.post(`${conv(conversationId)}/history-shares/${shareId}/complete`)),
 		/** The packages for the user that this device hasn't acknowledged. */
 		shares: () => answer(client.get<HistoryShare[]>("/api/users/@me/history-shares")),
+		/** A part of a package, as many bytes as a part holds at most: one past them isn't a part (a RangeError). */
 		sharePart: (shareId: string, n: number) =>
-			signedFile(answer(client.get<{ url: string }>(`/api/history-shares/${shareId}/parts/${n}`))),
+			signedFile(answer(client.get<{ url: string }>(`/api/history-shares/${shareId}/parts/${n}`)), SHARE_PART),
 		ackShare: (shareId: string) => done(client.post(`/api/history-shares/${shareId}/ack`)),
 
 		// J. The encrypted backup.

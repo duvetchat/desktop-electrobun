@@ -232,6 +232,8 @@ export class Conversations {
 	 */
 	readonly #deviceless = new Map<string, { users: string[]; from: string[] }>();
 	readonly #catchUps: CatchUps;
+	/** A conversation this device is no longer in: what else waits for it goes too (the packages it was handed). */
+	readonly #dropped: (conversationId: string) => void;
 	/** A minute has passed since the start (SETTLE_MS). */
 	#settled = false;
 	#settleTimer: (() => void) | null = null;
@@ -242,12 +244,14 @@ export class Conversations {
 		failures: Failures,
 		changed: (conversationId: string, state: ConversationState | null) => void,
 		messagesChanged: (conversationId: string, ids: string[], through: number | null, deleted?: string[]) => void,
+		dropped: (conversationId: string) => void = () => {},
 	) {
 		this.#parts = parts;
 		this.#soon = soon;
 		this.#failures = failures;
 		this.#changed = changed;
 		this.#messagesChanged = messagesChanged;
+		this.#dropped = dropped;
 		this.#catchUps = new CatchUps(parts, soon);
 		this.#refused = keptRefusals(parts.store);
 	}
@@ -1198,6 +1202,7 @@ export class Conversations {
 		this.#accepted.delete(id);
 		this.#deviceless.delete(id);
 		this.#catchUps.forget(id);
+		this.#dropped(id);
 		this.#set(id, null);
 	}
 

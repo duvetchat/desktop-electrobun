@@ -10,6 +10,7 @@
 		LoaderCircle as SpinnerIcon,
 		MessagesSquare as ThreadIcon,
 		Pencil as PencilIcon,
+		History as HistoryIcon,
 		Phone as PhoneIcon,
 		PhoneMissed as PhoneMissedIcon,
 		Pin as PinIcon,
@@ -55,6 +56,7 @@
 	import { belowIndicator } from "$lib/jumps";
 	import { threadNow, withHeld } from "$lib/threads";
 	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
+	import { sharedLine } from "$lib/e2e/sharing";
 	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
 	import { t } from "$lib/i18n";
 	import { keepPlace, takePlace } from "$lib/kept-places";
@@ -293,6 +295,9 @@
 		menuTarget = { kind: "message", id: message.id };
 		return true;
 	}
+
+	// A member's name as the list shows them, by their user ID: the start of the ID for one it doesn't know.
+	const memberName = (userId: string) => members.find((m) => m.id === userId)?.username ?? userId.slice(0, 8);
 
 	// The author a menu is about, as the member menu takes them: the member the list has, else (one who left, or whose
 	// page isn't here) the name their message has.
@@ -1218,8 +1223,12 @@
 						!!$currentUser &&
 						editingMessageId !== message.id}
 					{@const cursorOn = keyboard.cursor === message.id}
-					{#if message.type === MessageType.PinNotice || callLine}
-						<!-- A notice: who pinned which message, or a call of the conversation that ended -->
+					{@const shareLine =
+						message.type === MessageType.HistoryShare && message.history_share
+							? sharedLine(message.author_name, message.history_share, $currentUser?.id, memberName)
+							: null}
+					{#if message.type === MessageType.PinNotice || callLine || shareLine}
+						<!-- A notice: who pinned which message, a call of the conversation that ended, or its history shared -->
 						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
@@ -1234,12 +1243,16 @@
 								<PhoneMissedIcon class="text-duvet-danger size-3.5 shrink-0" />
 							{:else if callLine}
 								<PhoneIcon class="text-duvet-ink2 size-3.5 shrink-0" />
+							{:else if shareLine}
+								<HistoryIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{:else}
 								<PinIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{/if}
 							<p class="min-w-0 text-center">
 								{#if callLine}
 									{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
+								{:else if shareLine}
+									{shareLine}
 								{:else}
 									<span class="text-duvet-ink font-medium">{message.author_name}</span>
 									pinned
@@ -1588,7 +1601,7 @@
 			<!-- A conversation's message a shared history brought to this device -->
 			<span class="text-duvet-ink2 px-1 text-[11px]"
 				>{t("e2e_shared_by", {
-					name: members.find((m) => m.id === message.shared_by)?.username ?? message.shared_by.slice(0, 8),
+					name: memberName(message.shared_by),
 				})}</span
 			>
 		{/if}
@@ -1831,6 +1844,7 @@
 		onProfile={member ? () => openAuthorProfile(member, anchor, messageId) : undefined}
 		{onMention}
 		onRemoveFromGroup={onRemoveMember}
+		conversationId={isConversation ? channelId : null}
 	/>
 {/snippet}
 

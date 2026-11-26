@@ -130,6 +130,7 @@
 	import ConversationState from "$lib/components/e2e/ConversationState.svelte";
 	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
 	import KeyChangeNotice from "$lib/components/e2e/KeyChangeNotice.svelte";
+	import SharedHistoryOffer from "$lib/components/e2e/SharedHistoryOffer.svelte";
 	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
 	import { safetyNumberRequest } from "$lib/e2e/encryption.svelte";
 	import { changedIn, waitingForYes, type KeyChange } from "$lib/e2e/engine/contacts";
@@ -142,9 +143,11 @@
 		keyChangesIn,
 		deleteEncrypted,
 		discardEncrypted,
+		dismissShared,
 		editEncrypted,
 		encryption,
 		heldBeforeEncrypted,
+		importShared,
 		leaveConversation,
 		openConversation,
 		pendingEncrypted,
@@ -442,6 +445,8 @@
 	$effect(() => {
 		const convId = conversation.id;
 		const oldest = oldestSeq;
+		// Asked again as the rows the device holds change: a shared history brings older ones (Task 30).
+		void drawn.rows.length;
 		if (!beforeJoining || oldest === null) {
 			olderHeld = false;
 			return;
@@ -1260,6 +1265,16 @@
 		{memberName}
 		onRestart={restartEncryption}
 		onAccept={() => acceptMembers(conversation.id)}
+	/>
+	<!-- What other members shared of its history with this person, added on their word (Task 30) -->
+	<SharedHistoryOffer
+		offers={encryption.offers[conversation.id] ?? []}
+		nameOf={(userId) => {
+			const member = conversation.members.find((m) => m.user_id === userId)?.user;
+			return member?.alias ?? member?.username ?? userId.slice(0, 8);
+		}}
+		onAdd={(shareId) => importShared(conversation.id, shareId).then(() => {})}
+		onDismiss={(shareId) => dismissShared(conversation.id, shareId)}
 	/>
 {/snippet}
 
