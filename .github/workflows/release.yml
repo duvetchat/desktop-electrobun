@@ -1,23 +1,43 @@
 name: Release
 
-# The desktop's stable build for Windows, signed and published to the rolling desktop-stable release of the public
-# duvetchat/releases, where the app's updater and duvet.chat/download look (#456). Electrobun builds only for the system
-# it runs on, so this runs on GitHub's Windows runner: the organisation's own runners are Linux. A tag v<package.json's
-# version> on main publishes that version; any other tag stops before the build.
+# The desktop's builds for Windows, on GitHub's Windows runner: Electrobun builds only for the system it runs on, and the
+# organisation's own runners are Linux.
+#   - A tag v<package.json's version> on main publishes that version (#456): the stable build, signed and published to
+#     the rolling desktop-stable release of the public duvetchat/releases, where the app's updater and
+#     duvet.chat/download look. Any other tag stops before the build.
+#   - By hand (workflow_dispatch), the test channel (PLAN-E2E-CLIENTES.md, Task 34 and Ruling 9): the canary build of
+#     the branch it's given, pointed at the API it's given (lib/common/common.ts's targets; `local` is a stack on the
+#     same computer, at localhost:9876 and localhost:8765, as docs/e2e-on-windows.md brings it up), whose installer goes
+#     into a prerelease of this repository with the job's own token. It signs no update and never reaches
+#     desktop-stable: a canary doesn't update itself (src/bun/updates.ts).
+# Before either builds, the core's DLL it ships is checked against native/core/SOURCE.json.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The branch, tag or commit to build (empty, the one the workflow runs from)
+        required: false
+        default: ""
+      target:
+        description: The API and gateway the build talks to
+        type: choice
+        options: [local, duvet, n128, andremor]
+        default: local
 
 permissions:
   contents: read
 
-# One release at a time: a second waits, never cancels one halfway through its uploads.
+# One release at a time: a second waits, never cancels one halfway through its uploads. Test builds wait in a line of
+# their own, so one never takes a waiting release's place.
 concurrency:
-  group: release
+  group: ${{ github.event_name == 'workflow_dispatch' && 'release-test' || 'release' }}
   cancel-in-progress: false
 
 jobs:
   windows:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     timeout-minutes: 30
     # The actions are pinned by commit, as this job signs: a tag moved upstream can't change what runs here.
@@ -41,6 +61,9 @@ jobs:
             echo "::error::v$version isn't on main"
             exit 1
           fi
+      # The DLL the build copies into the app (src/bun/e2e/library.ts), there and byte for byte the core's release.
+      - name: The core's artifacts, as native/core/SOURCE.json records them
+        run: bun test ./src/bun/core-artifacts.test.ts
       # svelte-kit starts with node (its shebang).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -59,3 +82,48 @@ jobs:
         run: bun scripts/publish-release.ts
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+
+  test-channel:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    # Its token makes this repository's prerelease, and nothing else: it gets no secret of the stable channel's.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          # The branch's own scripts run below: none of them finds the job's token in the checkout.
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: The core's artifacts, as native/core/SOURCE.json records them
+        run: bun test ./src/bun/core-artifacts.test.ts
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      - run: bun run build:canary
+        env:
+          VITE_DOMAIN_TARGET_ENV: ${{ inputs.target }}
+      # The installer, and the build's update.json, whose hash the installed app's Resources/version.json has.
+      - name: Into a prerelease of this repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILT: ${{ inputs.ref || github.ref_name }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          tag="test-$GITHUB_RUN_NUMBER"
+          files=(artifacts/canary-win-x64-*Setup*.zip artifacts/canary-win-x64-update.json)
+          ls -l "${files[@]}"
+          notes="The canary build of $BUILT at $sha, unsigned, talking to the $TARGET target's API and gateway"
+          notes="$notes (local: localhost:9876 and localhost:8765). Extract the zip and run Duvet-Setup-canary.exe:"
+          notes="$notes it installs over the canary this computer has, keeping its data folder. It never updates itself."
+          gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$sha" \
+            --title "Test build $GITHUB_RUN_NUMBER: $BUILT (${sha:0:7}, $TARGET)" --notes "$notes"
