@@ -547,10 +547,19 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 		const segment = await a.host.handle<{ data: string; key_id: string; complete: boolean; version: number }>({
 			...{ cmd: "backup_segment", conversation_id: conversation, day },
 		});
-		const bytes = base64Bytes(segment.data);
 		const path = `/api/users/@me/backup/segments/${conversation}/${day}`;
-		const first = await call(fake, a.token, "PUT", `${path}?replaces=none`, bytes);
+		const first = await call(fake, a.token, "PUT", `${path}?replaces=none`, base64Bytes(segment.data));
 		expect(first.status).toBe(201);
+		// The same bytes again are that copy, sent again (a lost answer): its ID, whatever replaces says, as the API's.
+		expect(await call(fake, a.token, "PUT", `${path}?replaces=none`, base64Bytes(segment.data))).toMatchObject({
+			status: 201,
+			body: { id: first.body.id },
+		});
+		// Another build of the day, sealed under a nonce of its own, must name the copy there.
+		const built = await a.host.handle<{ data: string; key_id: string; complete: boolean; version: number }>({
+			...{ cmd: "backup_segment", conversation_id: conversation, day },
+		});
+		const bytes = base64Bytes(built.data);
 		expect(await call(fake, a.token, "PUT", `${path}?replaces=none`, bytes)).toMatchObject({
 			status: 409,
 			body: { current: first.body.id },
@@ -561,8 +570,8 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 			cmd: "backup_uploaded",
 			conversation_id: conversation,
 			day,
-			complete: segment.complete,
-			version: segment.version,
+			complete: built.complete,
+			version: built.version,
 		});
 
 		expect(
@@ -573,14 +582,14 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 					id: second.body.id,
 					conversation_id: conversation,
 					day,
-					complete: segment.complete,
-					key_id: segment.key_id,
+					complete: built.complete,
+					key_id: built.key_id,
 				},
 				...{ size: bytes.length, created_at: expect.any(String) },
 			},
 		]);
 		expect(bytesBase64(await download(fake, a.token, `/api/users/@me/backup/segments/${second.body.id}`))).toBe(
-			segment.data,
+			built.data,
 		);
 		// The header names its conversation and its day: another route's isn't taken.
 		expect(
@@ -594,6 +603,62 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 				)
 			).status,
 		).toBe(400);
+	});
+
+	// As the API's dayOf (Task 32): the re-encryption after a change of keys leans on these refusals.
+	test("a segment under a key that isn't the user's, or retired on or before its day, is refused", async () => {
+		const { fake, ana, a, conversation } = await dmWithGroup();
+		await send(fake, a, conversation, "before the change of keys");
+		const dayOf = (at: number) => new Date(at).toISOString().slice(0, 10);
+		const [today, yesterday] = [dayOf(Date.now()), dayOf(Date.now() - 24 * 3600 * 1000)];
+		const seal = (day: string) =>
+			a.host.handle<{ data: string; key_id: string }>({ cmd: "backup_segment", conversation_id: conversation, day });
+		const put = (day: string, data: string | Uint8Array, replaces = "none") =>
+			call(
+				fake,
+				a.token,
+				"PUT",
+				`/api/users/@me/backup/segments/${conversation}/${day}?replaces=${replaces}`,
+				typeof data === "string" ? base64Bytes(data) : data,
+			);
+		const listed = async () =>
+			(await call(fake, a.token, "GET", "/api/users/@me/backup/segments")).body.map((s: { day: string }) => s.day);
+		const [old, older] = [await seal(today), await seal(yesterday)];
+		expect((await put(today, old.data)).status).toBe(201);
+
+		// A key_id the user never had, in the clear in the header: the API reads it, and refuses it.
+		const other = base64Bytes(old.data);
+		const name = new TextEncoder().encode("key_id");
+		// Past its name and the head of its 8 bytes.
+		const at = other.findIndex((_, i) => name.every((byte, j) => other[i + j] === byte)) + name.length + 1;
+		other[at] = other[at]! ^ 0xff;
+		expect(await put(today, other)).toMatchObject({ status: 400, body: { error: "unknown backup key" } });
+
+		// A change of keys retires the first one now.
+		const served = (await call(fake, a.token, "GET", `/api/users/${ana}/identity`)).body;
+		const r = await a.host.handle<Record<string, any>>({
+			...{ cmd: "rotate_keys", remove: [], certificates: served.certificates },
+		});
+		expect(
+			await call(fake, a.token, "PUT", "/api/users/@me/identity", {
+				...{ identity_key: r.identity_key, device_list: r.device_list, certificate: r.certificate, transfers: [] },
+				...{ encrypted_identity: r.encrypted_identity, wrapped_backup_key: r.wrapped_backup_key },
+				...{ wrapped_previous_backup_keys: r.wrapped_previous_backup_keys, replaces: served.identity_key },
+			}),
+		).toMatchObject({ status: 200 });
+		await a.host.handle({ cmd: "identity_uploaded" });
+
+		// From the day it was retired on, the old key seals nothing: its copy of today isn't shown, nor taken again.
+		expect(await listed()).toEqual([]);
+		expect(await put(today, old.data)).toMatchObject({ status: 400, body: { error: "retired backup key" } });
+		// A day before it, it still seals: the backup went on with the new identity, and that day is shown.
+		expect((await put(yesterday, older.data)).status).toBe(201);
+		expect(await listed()).toEqual([yesterday]);
+		// Under the new key, today goes up in the place of the copy no longer shown, whatever it names.
+		const rebuilt = await seal(today);
+		expect(rebuilt.key_id).not.toBe(old.key_id);
+		expect((await put(today, rebuilt.data)).status).toBe(201);
+		expect((await listed()).sort()).toEqual([today, yesterday].sort());
 	});
 
 	test("a shared history goes up in parts, for its recipient's devices", async () => {

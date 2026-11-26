@@ -1,6 +1,6 @@
 <script module lang="ts">
 	import { t } from "$lib/i18n";
-	import { formatList } from "$lib/i18n/format";
+	import { formatList, formatNumber } from "$lib/i18n/format";
 	/**
 	 * What a change of keys that can't finish says, by why (duvetchat/e2e#49): another device's change kept a device it
 	 * takes off; devices the API no longer has hold it, by their IDs' start (their names went with them), which it goes
@@ -20,7 +20,7 @@
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
-	import type { EngineState } from "$lib/e2e/engine/engine";
+	import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
 	import DeviceSetupCard from "./DeviceSetupCard.svelte";
@@ -28,7 +28,8 @@
 	import UpdateNotice from "./UpdateNotice.svelte";
 
 	// What the app says of its encrypted conversations by the engine's state (PLAN-E2E-CLIENTES.md, «El motor», its
-	// states): nothing while it starts or once it's ready. A first device's recovery key, once made, is a dialog only
+	// states): nothing while it starts or once it's ready, but a new device's restore as it goes (Task 32), a bar with
+	// nothing to press. A first device's recovery key, once made, is a dialog only
 	// "I saved it" and its upload close (decision 23, Ruling 13), and so are the new one of a change of keys (Task 24)
 	// and starting over's (Task 26), which, made before the app closed, are a bar whose Finish brings them back. A new
 	// device's bar opens its setup in a sheet (Task 26), and another device's request to be approved is a question of
@@ -37,6 +38,7 @@
 	// other bottom bars. What deletes the device's data asks first.
 	let {
 		encryption,
+		backup = { state: "uploading" },
 		web,
 		onMakeIdentity,
 		onKeySaved,
@@ -48,6 +50,8 @@
 		approvalActions,
 	}: {
 		encryption: EngineState;
+		/** What the encrypted backup shows, of which the gate says a new device's restore alone. */
+		backup?: BackupShown;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
 		web: boolean;
 		onMakeIdentity: () => Promise<void>;
@@ -81,6 +85,8 @@
 	} = $props();
 
 	let hiddenFor = $state<string | null>(null);
+	// What the × hides: the state's bar, or a restore's, whose dismissal leaves a later bar of the ready state shown.
+	const barKey = $derived(encryption.name === "ready" && backup.state === "restoring" ? "restoring" : encryption.name);
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
@@ -130,9 +136,14 @@
 		switch (encryption.name) {
 			case "ready": {
 				const { rotation } = encryption;
-				// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
-				if (!rotation)
-					return encryption.keysAgain ? { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys } : null;
+				if (!rotation) {
+					// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
+					if (encryption.keysAgain) return { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys };
+					if (backup.state !== "restoring") return null;
+					return {
+						text: t("e2e_backup_restoring", { done: formatNumber(backup.done), total: formatNumber(backup.total) }),
+					};
+				}
 				if (rotation.recoveryKey) return null;
 				if (!rotation.stuck) return { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onChangeKeys };
 				// A change that can't finish (I1) says why and what to do: going on without the devices gone, where that's
@@ -191,7 +202,7 @@
 			<RecoveryKeySheet recoveryKey={shownKey ?? ""} onContinue={onKeySaved} {onLater} />
 		{/snippet}
 	</Dialog>
-{:else if hiddenFor !== encryption.name && (bar || encryption.name === "update")}
+{:else if hiddenFor !== barKey && (bar || encryption.name === "update")}
 	<div
 		class="{GLASS} animate-toast-in text-duvet-ink flex w-[min(30rem,calc(100vw-2rem))] items-center gap-3 rounded-[18px] py-2 pr-2 pl-3.5 text-[13px]"
 		role="region"
@@ -210,7 +221,7 @@
 			type="button"
 			class={iconButtonClass("sm")}
 			aria-label={t("e2e_dismiss")}
-			onclick={() => (hiddenFor = encryption.name)}
+			onclick={() => (hiddenFor = barKey)}
 		>
 			<XIcon size={14} />
 		</button>

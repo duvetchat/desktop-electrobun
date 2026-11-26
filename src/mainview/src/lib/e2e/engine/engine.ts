@@ -26,6 +26,7 @@ import {
 	type KeysMade,
 } from "./devices";
 import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
+import { Backups, type BackupShown } from "./backup";
 import { Contacts, type ContactsShown, type KeyChange, type SafetyNumber, type ShownChange } from "./contacts";
 import { Failures } from "./failures";
 import { fileNames } from "./files";
@@ -65,6 +66,7 @@ export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
 export type { SharedOffer, ShareOutcome, ShareRange } from "./history";
 export type { ContactsShown, KeyChange, SafetyNumber, ShownChange } from "./contacts";
+export type { BackupPause, BackupShown } from "./backup";
 
 /**
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
@@ -130,8 +132,8 @@ export interface EngineParts {
  * `stuck`, one that can't finish, as another device took off a device it keeps or changed the keys first: `gone`, the
  * devices the API no longer has that hold it, which it goes on without on the person's yes; `relisted`, another device's
  * change kept a device it takes off (duvetchat/e2e#49). `keysAgain`: a change that went on without devices went up, and
- * another one is offered, as one of them may still hold the keys. `failed` with `lostKey` is a database its key no
- * longer opens.
+ * another one is offered, as one of them may still hold the keys. What the encrypted backup shows (Task 32) is apart
+ * from it: backup() and onBackup(). `failed` with `lostKey` is a database its key no longer opens.
  */
 export type EngineState =
 	| { name: "starting" }
@@ -150,6 +152,8 @@ export type EngineState =
 	| { name: "update"; minimum: string | null };
 
 const DAY = 24 * 3600 * 1000;
+/** How long the app is quiet before the backup's pass: no work of the engine's for a minute («Lo periódico»). */
+const QUIET_MS = 60_000;
 const NOT_READY = "encrypted conversations aren't ready on this device";
 /** A start that failed goes again after 2 s, then twice as long each time, up to a minute apart. */
 const RETRY_MS = 2_000;
@@ -253,6 +257,10 @@ export class E2EEngine {
 	/** The person's contacts: whom they verified, and their changed keys (Task 28). */
 	readonly #contacts: Contacts;
 	readonly #contactListeners = new Set<() => void>();
+	/** The encrypted backup (Task 32), the minute without work it waits for (calls it off), and who hears what it shows. */
+	readonly #backups: Backups;
+	#quiet: (() => void) | null = null;
+	readonly #backupListeners = new Set<() => void>();
 
 	constructor(given: EngineParts) {
 		this.#contacts = new Contacts(given.store, given.user, () => {
@@ -271,6 +279,16 @@ export class E2EEngine {
 		const messagesChanged = (id: string, ids?: string[], through?: number | null, deleted?: string[]) => {
 			for (const listener of this.#messageListeners) listener(id, ids, through, deleted);
 		};
+		// Its core calls take the engine's turn without counting as the app's work, so its own never keep it from quiet.
+		this.#backups = new Backups(parts, this.#failures, {
+			turn: (work) => this.#backingUp(work),
+			inbox: async () => void (await this.#queue(() => this.#inbox(), true)),
+			changed: (id) => messagesChanged(id),
+			shown: () => {
+				for (const listener of this.#backupListeners) listener();
+			},
+			update: (error) => this.#set({ name: "update", minimum: error.minimum }),
+		});
 		this.#groups = new Conversations(
 			parts,
 			soon,
@@ -326,6 +344,17 @@ export class E2EEngine {
 	onContacts(listener: () => void): () => void {
 		this.#contactListeners.add(listener);
 		return () => void this.#contactListeners.delete(listener);
+	}
+
+	/** What the views show of the encrypted backup (backup.ts): a ready device's restore, pause, or how far it's up. */
+	backup(): BackupShown {
+		return this.#backups.shown();
+	}
+
+	/** Each change of what the views show of the encrypted backup. */
+	onBackup(listener: () => void): () => void {
+		this.#backupListeners.add(listener);
+		return () => void this.#backupListeners.delete(listener);
 	}
 
 	/**
@@ -674,12 +703,13 @@ export class E2EEngine {
 	}
 
 	/**
-	 * What the conversations' sends and catch-ups do now, settled: their requests run outside the engine's turn, so what
-	 * the turn took on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
+	 * What the conversations' sends and catch-ups, and the backup's pass, do now, settled: their requests run outside the
+	 * engine's turn, so what the turn took on can still be sending after it. A test's wait (testing/engines.ts'
+	 * turnEnded).
 	 */
 	sendsSettled(): Promise<void> {
 		const all = [this.#sends.settled(), this.#groups.settled(), this.#shares.settled(), this.#received.settled()];
-		return Promise.all(all).then(() => {});
+		return Promise.all([...all, this.#backups.settled()]).then(() => {});
 	}
 
 	/**
@@ -928,12 +958,15 @@ export class E2EEngine {
 		this.#retry = null;
 		this.#daily?.();
 		this.#daily = null;
+		this.#quiet?.();
+		this.#quiet = null;
 		this.#groups.stop();
 		this.#sends.stop();
 		this.#shares.stop();
 		this.#received.stop();
 		this.#failures.stop();
 		this.#approvals.stop();
+		this.#backups.stop();
 	}
 
 	/**
@@ -1173,8 +1206,12 @@ export class E2EEngine {
 		};
 	}
 
-	/** Runs `work` once the flow before it ended (nothing once stopped). What it throws rejects this call alone. */
-	#queue<T>(work: () => Promise<T>): Promise<T | undefined> {
+	/**
+	 * Runs `work` once the flow before it ended (nothing once stopped). What it throws rejects this call alone. The app's
+	 * work puts the backup's pass off until a minute after it; the backup's own and #quietly's waits (`quiet`) don't.
+	 */
+	#queue<T>(work: () => Promise<T>, quiet = false): Promise<T | undefined> {
+		if (!quiet) this.#notQuiet();
 		this.#waiting++;
 		const run = this.#turn.then(() => {
 			this.#waiting--;
@@ -1194,8 +1231,11 @@ export class E2EEngine {
 	#quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
 		return this.#queue(async () => {
 			if (this.#waiting > 0) return null;
-			return { value: this.state.name === "ready" ? await work() : undefined };
-		}).then((ran) => (ran === null ? this.#quietly(work) : ran?.value));
+			if (this.state.name !== "ready") return { value: undefined };
+			// What it brings in is the engine's work: the backup waits for a minute after it, as after any other.
+			this.#notQuiet();
+			return { value: await work() };
+		}, true).then((ran) => (ran === null ? this.#quietly(work) : ran?.value));
 	}
 
 	/**
@@ -1215,6 +1255,31 @@ export class E2EEngine {
 		});
 		if (!done) throw new Error("the encryption engine stopped");
 		return done.value;
+	}
+
+	/**
+	 * A core call of the backup's (Task 32), in the turn without counting as the app's work: only while this device backs
+	 * up, ready with no change of keys waiting for its upload (the API takes no segment under the key that change made).
+	 */
+	async #backingUp<T>(work: () => Promise<T>): Promise<T> {
+		const done = await this.#queue(async () => {
+			const { state } = this;
+			if (state.name !== "ready" || state.rotation) throw new CoreError("not_ready", "this device doesn't back up now");
+			return { value: await work() };
+		}, true);
+		if (!done) throw new CoreError("not_ready", "the encryption engine stopped");
+		return done.value;
+	}
+
+	/** The app has work: the backup's pass waits for a minute after it (none once stopped). */
+	#notQuiet() {
+		this.#quiet?.();
+		this.#quiet = this.#stopped
+			? null
+			: this.#parts.clock.later(QUIET_MS, () => {
+					this.#quiet = null;
+					this.#backups.quiet();
+				});
 	}
 
 	/** Work an event asks for: what fails is logged, and goes again with the next event that asks for it. */
@@ -1413,6 +1478,8 @@ export class E2EEngine {
 	 * installation starts again as a new device (Ruling 26), and the person sets it up again.
 	 */
 	async #listThisDevice(signOff: boolean): Promise<void> {
+		// Set up as a new device: what it holds of before comes from the backup, once it's ready (Task 32).
+		this.#backups.restoreDue();
 		let listed: FirstList;
 		try {
 			listed = await putFirstList(this.#parts, signOff);
@@ -1545,6 +1612,8 @@ export class E2EEngine {
 		});
 		await this.#tellInactive().catch((error: unknown) => console.error("[e2e] The devices weren't read:", error));
 		this.#daily ??= this.#everyDay();
+		// A new device's restore starts now; the rest of the backup waits for the app to be quiet.
+		this.#backups.wake();
 	}
 
 	/** This device holds the identity the API serves, and the API's list doesn't name it yet. */
@@ -1593,6 +1662,7 @@ export class E2EEngine {
 		const { api, host, user, store } = this.#parts;
 		const old = (await api.devices()).find((device) => device.current)?.id ?? null;
 		await host.destroy(user);
+		this.#backups.forget();
 		for (const key of DEVICE_RECORD) store.write(key, null);
 		this.#contacts.forget();
 		this.#made = null;

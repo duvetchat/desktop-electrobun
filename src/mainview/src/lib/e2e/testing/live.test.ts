@@ -4,6 +4,7 @@
 // skipped. Each engine task adds its cases here, on the core the desktop carries (native/core).
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { base64Bytes } from "$lib/activity-thumbnail";
 import api, { sessionApi } from "$lib/api/api";
 import type { DirectMessage } from "$lib/api/conversations";
 import { logIn } from "$lib/api/auth";
@@ -530,6 +531,43 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await eventually(async () => (await second.engine.messages(dm, [sent.id]))[0]?.text === text);
 		} finally {
 			await second.end();
+		}
+	}, 180_000);
+
+	// The encrypted backup (PLAN-E2E-CLIENTES.md, Task 32): what Carol sent before it, a device Dave recovers can't read
+	// from its queue, so it comes from the backup. The API dates messages by its own clock, so no day of theirs has ended
+	// for an engine to back up: Dave's first device seals today's by hand, as its engine seals a day, and the new device's
+	// engine restores it, through the real API and storage.
+	test("a recovered device restores what the first one backed up", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no conversation");
+		const { c, d, dm } = pair;
+		const dave = account(3);
+		const key = recoveryKeys.get(dave.id);
+		if (!key) throw new Error("the groups' case kept no recovery key");
+		const text = "before your new device";
+		const before = (await c.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text }))!;
+		await eventually(async () => (await d.engine.messages(dm, [before.id]))[0]?.text === text);
+		const day = new Date(before.sent_at!).toISOString().slice(0, 10);
+		const { ids: deleted } = await d.routes.deletedMessages(dm);
+		const built = await d.host.handle<{ data: string; complete: boolean; version: number }>({
+			...{ cmd: "backup_segment", conversation_id: dm, day, deleted },
+		});
+		await d.routes.putSegment(dm, day, new Blob([base64Bytes(built.data)]), null);
+		const { complete, version } = built;
+		await d.host.handle({ cmd: "backup_uploaded", conversation_id: dm, day, complete, version });
+		expect((await d.routes.segments({ conversation_id: dm })).map((segment) => segment.day)).toContain(day);
+
+		const fresh = await deviceOf(dave);
+		try {
+			await fresh.engine.start();
+			expect(fresh.engine.state).toEqual({ name: "new_device" });
+			await fresh.engine.recover(key);
+			await eventually(async () => (await fresh.engine.messages(dm, [before.id]))[0]?.text === text);
+			// Restored, its backup shows no restore any more, and no pause.
+			await eventually(async () => ["uploading", "up_to_date"].includes(fresh.engine.backup().state));
+		} finally {
+			await fresh.end();
 		}
 	}, 180_000);
 

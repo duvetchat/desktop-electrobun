@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "svelte/server";
-import type { EngineState } from "$lib/e2e/engine/engine";
+import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 import { NOTICES } from "$lib/e2e/notices";
 import en from "../../../../messages/en.json";
 import { tags } from "../server-render";
@@ -15,8 +15,9 @@ import { tags } from "../server-render";
 Object.assign(globalThis, { $state: <T>(value: T) => value });
 const { default: EncryptionGate } = await import("./EncryptionGate.svelte");
 
-const props = (state: EngineState, web = false) => ({
+const props = (state: EngineState, web = false, backup?: BackupShown) => ({
 	encryption: state,
+	...(backup ? { backup } : {}),
 	web,
 	onMakeIdentity: async () => {},
 	onKeySaved: async () => {},
@@ -35,11 +36,11 @@ const props = (state: EngineState, web = false) => ({
 	},
 	approvalActions: { approve: async () => {}, decline: async () => {}, confirm: async () => {} },
 });
-const drawn = (state: EngineState, web = false) =>
-	render(EncryptionGate, { props: props(state, web) }).body.replace(/<!--[^]*?-->/g, "");
+const drawn = (state: EngineState, web = false, backup?: BackupShown) =>
+	render(EncryptionGate, { props: props(state, web, backup) }).body.replace(/<!--[^]*?-->/g, "");
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
-const buttons = async (state: EngineState, web = false) =>
-	(await tags(EncryptionGate, props(state, web))).filter((tag) => tag.name === "button");
+const buttons = async (state: EngineState, web = false, backup?: BackupShown) =>
+	(await tags(EncryptionGate, props(state, web, backup))).filter((tag) => tag.name === "button");
 
 describe("the encryption gate", () => {
 	test("says nothing while the engine starts, nor once it's ready", () => {
@@ -186,5 +187,22 @@ describe("the encryption gate", () => {
 		const html = drawn({ name: "new_device", setup: { way: "finishing", leavingOut: ["01a21626", "01a21627"] } });
 		expect(html).toContain(en.e2e_first_list_leaves_out.replace("{devices}", "01a21626 and 01a21627"));
 		expect(html).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+	});
+
+	test("a new device's restore shows as it goes, with nothing to press but its ×", async () => {
+		const restoring: BackupShown = { state: "restoring", done: 3, total: 40 };
+		expect(drawn({ name: "ready" }, false, restoring)).toContain("Restoring your messages: 3 of 40");
+		const pressed = await buttons({ name: "ready" }, false, restoring);
+		expect(pressed.map((button) => button.attributes["aria-label"])).toEqual(["Dismiss"]);
+		// The rest of the backup is Settings' to say: the gate says nothing.
+		for (const backup of [
+			{ state: "uploading" },
+			{ state: "up_to_date" },
+			{ state: "paused", reason: "full" },
+		] as const) {
+			expect(drawn({ name: "ready" }, false, backup).trim()).toBe("");
+		}
+		// Nor of a device that isn't ready: its own state's bar shows.
+		expect(drawn({ name: "new_device" }, false, restoring)).not.toContain("Restoring your messages");
 	});
 });

@@ -3,6 +3,7 @@
 // no engine, reads it without loading the engine or the gateway's connection. Space settings' members list a member's
 // menu there too, whose Verify security number waits for a ready engine.
 import { writable } from "svelte/store";
+import type { BackupShown } from "./engine/backup";
 import type { ContactsShown } from "./engine/contacts";
 import type { EngineState, SharedOffer } from "./engine/engine";
 import type { ConversationState } from "./engine/sync";
@@ -16,12 +17,15 @@ export const encryption = $state<{
 	cutoverAt: string | null;
 	/** The person's contacts as the engine holds them (contacts.ts): their changed keys, and whom they verified. */
 	contacts: ContactsShown;
+	/** What a ready device's encrypted backup shows (backup.ts): until the engine says, nothing is known to be up. */
+	backup: BackupShown;
 }>({
 	state: { name: "starting" },
 	conversations: {},
 	offers: {},
 	cutoverAt: null,
 	contacts: { changes: {}, verified: {} },
+	backup: { state: "uploading" },
 });
 
 /**

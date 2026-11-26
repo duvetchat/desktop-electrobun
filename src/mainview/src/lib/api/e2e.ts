@@ -9,6 +9,7 @@
 import api, {
 	FetchError,
 	fetchWithin,
+	MAX_REQUEST_BYTES,
 	requestLimits,
 	type ApiClient,
 	type FetchResponse,
@@ -457,8 +458,9 @@ export function e2eApi(client: ApiClient = api) {
 					params: { replaces: replaces ?? "none" },
 				}),
 			),
+		/** A day's segment, as many bytes as the API keeps of one at most (its 32 MiB): one past them isn't (a RangeError). */
 		segment: (segmentId: string) =>
-			signedFile(answer(client.get<{ url: string }>(`/api/users/@me/backup/segments/${segmentId}`))),
+			signedFile(answer(client.get<{ url: string }>(`/api/users/@me/backup/segments/${segmentId}`)), MAX_REQUEST_BYTES),
 
 		// K. Decryption failures: counted by kind, with no ID and no content.
 		reportDecryptFailure: (kind: DecryptFailureKind, count?: number) =>
