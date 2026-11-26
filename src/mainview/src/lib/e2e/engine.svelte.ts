@@ -307,6 +307,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
 			removeDevice: ({ deviceId, changeKeys }: DeviceParams) => live().removeDevice(deviceId, { changeKeys }),
 			changeKeys: () => live().changeKeys(),
+			finishKeysWithout: () => live().finishKeysWithout(),
 			alsoRemoved: () => live().alsoRemoved(),
 			removeThisDevice: async () => {
 				await live().removeThisDevice();
@@ -623,6 +624,8 @@ export const removeDevice = (deviceId: string, changeKeys = false) =>
 	onDevices("removeDevice", { deviceId, changeKeys }, (made) => made.removeDevice(deviceId, { changeKeys }));
 /** Change security keys, or Finish a change made before the app closed: its new recovery key shows next. */
 export const changeKeys = () => onDevices("changeKeys", undefined, (made) => made.changeKeys());
+/** A change of keys that can't finish, gone on with without the devices another device took off (duvetchat/e2e#49). */
+export const finishKeysWithout = () => onDevices("finishKeysWithout", undefined, (made) => made.finishKeysWithout());
 /** What an earlier removal that never went up takes along with the next list or change of keys (M3). */
 export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 

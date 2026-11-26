@@ -53,14 +53,17 @@ const forLater = ({ code, field }: CoreError) =>
  * keeps it; one it couldn't keep stays in the inbox. A transfer the core keeps for later (`not_found` `code`: an
  * approval whose code wasn't accepted yet) is kept in the record, as is one the core can't take yet (`forLater`), which
  * each round tries again first; one no core here can read goes, as does one whose call is cut five rounds running
- * (`tries`, by its ID). One that doesn't open is counted for the API as a failure to decrypt (`direct`). True when the
- * inbox brought a rotation's transfer, after which the own user is observed (the core's rule).
+ * (`tries`, by its ID). One that doesn't open is counted for the API as a failure to decrypt (`direct`). A rotation's
+ * transfer that keeps a device this device's own waiting change takes off is refused (`removed_device_listed`,
+ * duvetchat/e2e#49), which `relisted` hears: that change can never finish. True when the inbox brought a rotation's
+ * transfer, after which the own user is observed (the core's rule).
  */
 export async function takeInbox(
 	parts: EngineParts,
 	tries: Map<string, number>,
 	failures?: Failures,
 	onKey: (key: ShareKey) => boolean = () => true,
+	relisted?: () => void,
 ): Promise<boolean> {
 	const { api, host, store, user } = parts;
 	let rotated = false;
@@ -124,6 +127,9 @@ export async function takeInbox(
 			} else if (forLater(error)) {
 				if (!keep(store, KEPT_LATER, message)) return false;
 				later = true;
+			} else if (error.code === "rule_violation" && error.rule === "removed_device_listed") {
+				console.warn("[e2e] Another device's change of keys keeps a device this one's change takes off, and goes.");
+				relisted?.();
 			} else {
 				if (error.code === "decrypt_failed") failures?.note("direct");
 				console.warn(`[e2e] A message from another device can't be read here (${error.code}), and goes.`);

@@ -39,6 +39,8 @@ const PHONE = device("0193a4b2-0000-7000-8000-0000000000a2", "Pixel 8 Pro", {
 	last_seen_at: seen(50),
 });
 const BROWSER = device("0193a4b2-0000-7000-8000-0000000000a3", "Firefox on Linux", { listed: false });
+/** A device another one took off, whose registration went with its name. */
+const GONE = "0193b7c1-0000-7000-8000-0000000000a4";
 
 const props = (more: Record<string, unknown> = {}) => ({
 	devices: [THIS, PHONE, BROWSER],
@@ -127,6 +129,18 @@ describe("Settings' devices", () => {
 		const stuck = drawn({ encryption: { name: "ready", rotation: { recoveryKey: null, stuck: true } } });
 		expect(stuck).toContain(en.e2e_rotation_stuck);
 		expect(buttons(stuck, en.e2e_finish)).toBe(0);
+		expect(buttons(stuck, en.e2e_finish_without)).toBe(0);
+		// duvetchat/e2e#49: one held by devices the API no longer has goes on without them, named by their IDs' start (their
+		// names went with them); one another device's change made impossible says so, with nothing to press.
+		const gone = drawn({ encryption: { name: "ready", rotation: { recoveryKey: null, stuck: true, gone: [GONE] } } });
+		expect(gone).toContain(en.e2e_rotation_gone.replace("{devices}", GONE.slice(0, 8)));
+		expect(buttons(gone, en.e2e_finish_without)).toBe(1);
+		expect(buttons(gone, en.e2e_finish)).toBe(0);
+		const relisted = drawn({
+			encryption: { name: "ready", rotation: { recoveryKey: null, stuck: true, gone: [GONE], relisted: true } },
+		});
+		expect(relisted).toContain(en.e2e_rotation_relisted);
+		expect(buttons(relisted, en.e2e_finish_without)).toBe(0);
 		// A key on screen is its own dialog's.
 		const shown = drawn({ encryption: { name: "ready", rotation: { recoveryKey: "1".repeat(48) } } });
 		expect(shown).not.toContain(en.e2e_finish_keys);
@@ -158,6 +172,13 @@ describe("Settings' devices", () => {
 		expect(alone).not.toContain(BROWSER.name);
 		const along = removalNotes(PHONE, [BROWSER.id], [THIS, PHONE, BROWSER]).join(" ");
 		expect(along).toContain(BROWSER.name);
+	});
+
+	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.
+	test("offer another change of keys after one that went on without devices", () => {
+		expect(drawn({ encryption: { name: "ready", keysAgain: true } })).toContain(en.e2e_keys_again);
+		expect(drawn()).not.toContain(en.e2e_keys_again);
+		expect(buttons(drawn({ encryption: { name: "ready", keysAgain: true } }), en.e2e_change_keys)).toBe(1);
 	});
 
 	test("ask before changing the keys, naming what an earlier removal takes along", () => {

@@ -13,6 +13,8 @@ export interface CoreStatus {
 	certificate?: string;
 	device_list?: string;
 	waiting_upload?: "create_identity" | "rotate_keys";
+	/** While `waiting_upload` is rotate_keys: the devices that change takes off, which it takes run again. */
+	waiting_remove?: string[];
 	has_identity: boolean;
 }
 

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { InboxMessage } from "$lib/api/e2e";
-import { listDevices } from "../cbor";
+import { base64Bytes } from "$lib/activity-thumbnail";
+import { asBytes, asMap, cbor, listDevices } from "../cbor";
 import { approvalFrameMessage, readApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
+import conventions from "../testing/e2e-conventions.json";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
@@ -264,6 +266,25 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 		},
 		SLOW,
 	);
+
+	// Task 27's review: the conventions' approval_qr, which both apps' tests draw, is a QR the core writes: a CBOR map of
+	// the fields a fresh approval_begin gives, each of its size.
+	test("the conventions' approval QR has the fields of the core's", async () => {
+		const fake = new FakeApi();
+		const ana = fake.addUser();
+		useFake(fake);
+		const a = await firstDevice(fake, ana);
+		const n = await newDevice(fake, ana);
+		await n.engine.beginApproval();
+		// Each field's name, with its byte string's length or its value.
+		const fields = (qr: string) => {
+			const map = asMap(cbor(base64Bytes(qr)));
+			return map && Object.fromEntries([...map].map(([name, value]) => [name, asBytes(value)?.length ?? value]));
+		};
+		expect(fields(conventions.approval_qr.qr)).toEqual(fields(qrOf(n)!));
+		expect(fields(qrOf(n)!)).toEqual({ v: 1, user: 16, device: 16, signature_key: 32, hpke_key: 32, key: 32 });
+		await Promise.all([a.engine.stop(), n.engine.stop()]);
+	});
 
 	test(
 		"approval by QR needs no code",

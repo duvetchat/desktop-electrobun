@@ -11,9 +11,11 @@ import {
 	approvedDevice,
 	firstDevice,
 	rejection,
+	restarted,
 	shownKey,
 	testDevice,
 	testHost,
+	turnEnded,
 	until,
 	useFake,
 	watchedHost,
@@ -22,7 +24,7 @@ import {
 import { inactiveDevice, onlyDevice } from "./devices";
 import type { DeviceNotice, EngineState } from "./engine";
 import { LEGACY_RECORDS } from "./legacy";
-import { DEVICE_RECORD, EXTERNAL_SENDER, TOLD_ADDED, TOLD_INACTIVE } from "./store";
+import { DEVICE_RECORD, EXTERNAL_SENDER, KEPT_ROTATION, TOLD_ADDED, TOLD_INACTIVE } from "./store";
 
 // Devices in Settings (PLAN-E2E-CLIENTES.md, Task 24; decisions 13 and 52): the user's devices, those not seen in 45
 // days, another one taken off the list, one lost taken off with new keys, and this one's data deleted, on real cores
@@ -39,7 +41,13 @@ const rotationKey = (state: EngineState) => (state.name === "ready" ? (state.rot
 const deviceOf = (device: TestDevice) => device.registered.at(-1)!;
 const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 const statusOf = (device: TestDevice) =>
-	device.host.handle<{ device_id?: string; identity_key?: string; waiting_upload?: string }>({ cmd: "status" });
+	device.host.handle<{
+		device_id?: string;
+		identity_key?: string;
+		device_list?: string;
+		waiting_upload?: string;
+		waiting_remove?: string[];
+	}>({ cmd: "status" });
 const deviceIds = async (device: TestDevice) => (await device.api.devices()).map(({ id }) => id).sort();
 
 describe.skipIf(!coreLibrary)("the user's devices", () => {
@@ -317,10 +325,37 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 		SLOW,
 	);
 
-	// I1: another device takes off a device a waiting change keeps, which neither its upload nor its Finish can then
-	// leave out (the core's same rotation). The page says so, until another device's change ends it.
+	// I1, with the core's duvetchat/e2e#49: another device's change of keys went up first. Its transfer, checked against
+	// the identity this device's own change replaced, ends that change, and this device goes on with the other's keys.
 	test(
-		"a change of keys that can't finish says so, until this device's data goes",
+		"another device's change of keys ends a change of this device's that waits",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const b = await approvedDevice(fake, a);
+			await a.engine.changeKeys();
+			expect(rotationKey(a.engine.state)).toMatch(RECOVERY_KEY);
+			await b.engine.changeKeys();
+			await b.engine.keySaved();
+			// Its upload: the API holds the other device's keys (409), and the inbox brings their transfer.
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready" });
+			const served = await a.api.identity(ana);
+			const status = await statusOf(a);
+			expect(status.identity_key).toBe(served.identity_key);
+			expect(status.waiting_upload).toBeUndefined();
+			expect(listDevices(served.device_list)?.sort()).toEqual([deviceOf(a), deviceOf(b)].sort());
+			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// I1: another device takes off a device a waiting change keeps, which neither its upload nor its Finish can then
+	// leave out (the core's same rotation). It says so, and another device's change of keys ends it (duvetchat/e2e#49).
+	test(
+		"a change of keys a removal elsewhere holds says so, and another device's change of keys ends it",
 		async () => {
 			const fake = new FakeApi();
 			const ana = fake.addUser();
@@ -332,58 +367,212 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			await b.engine.removeDevice(deviceOf(kept));
 			// Its upload: the API refuses a transfer to a device it removed (400).
 			await a.engine.keySaved();
-			expect(a.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+			const stuck: EngineState = {
+				name: "ready",
+				rotation: { recoveryKey: null, stuck: true, gone: [deviceOf(kept)] },
+			};
+			expect(a.engine.state).toEqual(stuck);
 
 			// After a restart, its Finish can't run it either: the core has no certificate for that device.
-			await a.engine.stop();
-			const again = testDevice(fake, ana, { host: a.host, store: a.store, token: a.token });
-			await again.engine.start();
+			const again = await restarted(fake, a);
 			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null } });
 			await again.engine.changeKeys();
-			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+			expect(again.engine.state).toEqual(stuck);
 
-			// Another device's change of keys doesn't end it: the core refuses its transfer while this change waits
-			// (invalid_signature, duvetchat/e2e#49), and the inbox lets it go.
+			// Another device's change of keys ends it: the core takes its transfer over the change that waits.
 			await b.engine.changeKeys();
 			await b.engine.keySaved();
-			await until(async () => (await again.api.inbox()).length === 0);
-			await again.engine.changeKeys();
-			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
-			expect((await statusOf(again)).waiting_upload).toBe("rotate_keys");
-			// Deleting this device's data does.
-			await again.engine.removeThisDevice();
-			expect(again.engine.state).toEqual({ name: "starting" });
+			const served = await b.api.identity(ana);
+			await until(async () => (await statusOf(again)).identity_key === served.identity_key);
+			await turnEnded(again);
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect((await statusOf(again)).waiting_upload).toBeUndefined();
 			await Promise.all([again.engine.stop(), b.engine.stop(), kept.engine.stop()]);
 		},
 		SLOW,
 	);
 
-	// I1: another device's change of keys went up first, whose transfer the core can't take while this change waits.
+	// duvetchat/e2e#49: the change goes on without the devices the API no longer has, on the person's yes (Bun's box on
+	// the desktop), the list the API serves its proof. A no, or the core's refusal, changes nothing.
 	test(
-		"a change of keys another device's change went before says it can't finish",
+		"a change of keys goes on without the devices another device took off, on the person's yes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const asked: Record<string, unknown>[] = [];
+			const answers: Error[] = [
+				new CoreError("refused", "the person didn't confirm it"),
+				new CoreError("bad_command", "the served list isn't newer", { field: "served_list" }),
+			];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd !== "rotate_keys" || command.gone === undefined) return null;
+				asked.push(command);
+				return answers.shift() ?? null;
+			});
+			const a = await firstDevice(fake, ana, { host });
+			const [b, kept] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			await a.engine.changeKeys();
+			const key = rotationKey(a.engine.state);
+			await b.engine.removeDevice(deviceOf(kept));
+			await a.engine.keySaved();
+			const stuck: EngineState = {
+				name: "ready",
+				rotation: { recoveryKey: null, stuck: true, gone: [deviceOf(kept)] },
+			};
+			expect(a.engine.state).toEqual(stuck);
+			const before = await statusOf(a);
+
+			// The person's no in Bun's box, then the core's refusal: nothing changes.
+			await a.engine.finishKeysWithout();
+			expect(await rejection(a.engine.finishKeysWithout())).toMatchObject({
+				code: "bad_command",
+				field: "served_list",
+			});
+			expect(a.engine.state).toEqual(stuck);
+			expect(await statusOf(a)).toEqual(before);
+
+			// Their yes: the same change, its list signed again without that device, the served list its proof, and the same
+			// recovery key shown to be saved.
+			const served = await a.api.identity(ana);
+			await a.engine.finishKeysWithout();
+			expect(asked).toHaveLength(3);
+			expect(asked.at(-1)).toMatchObject({ remove: [], gone: [deviceOf(kept)], served_list: served.device_list });
+			expect(rotationKey(a.engine.state)).toBe(key);
+			const made = await statusOf(a);
+			expect(made.identity_key).toBe(before.identity_key);
+			expect(listDevices(made.device_list!)?.sort()).toEqual([deviceOf(a), deviceOf(b)].sort());
+
+			// Saved, it goes up and is confirmed: the core keeps nothing for an upload, and the other device takes the keys.
+			await a.engine.keySaved();
+			const after = await a.api.identity(ana);
+			expect(after.identity_key).toBe(before.identity_key!);
+			expect(listDevices(after.device_list)?.sort()).toEqual([deviceOf(a), deviceOf(b)].sort());
+			expect((await statusOf(a)).waiting_upload).toBeUndefined();
+			await until(async () => (await statusOf(b)).identity_key === after.identity_key);
+			await Promise.all([a, b, kept].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// The core's R1, its open case: a device a gone dropped may still hold the change's keys, should the API work with
+	// whoever has it, and only a new change shuts it out. Once the gone went up it's offered, until one is made.
+	test(
+		"after a change of keys that went on without devices, another one is offered until one is made",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			let refuse = false;
+			const host = watchedHost(testHost(), [], (cmd) =>
+				cmd === "rotate_keys" && refuse
+					? ((refuse = false), new CoreError("refused", "the person didn't confirm it"))
+					: null,
+			);
+			const a = await firstDevice(fake, ana, { host });
+			const [b, kept] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			await a.engine.changeKeys();
+			await b.engine.removeDevice(deviceOf(kept));
+			await a.engine.keySaved();
+			// Not before the change without them went up.
+			await a.engine.finishKeysWithout();
+			expect(a.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: expect.stringMatching(RECOVERY_KEY) } });
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready", keysAgain: true });
+
+			// Still offered after a restart; a no in Bun's box keeps it, and a change made takes it up.
+			const again = await restarted(fake, a);
+			expect(again.engine.state).toEqual({ name: "ready", keysAgain: true });
+			refuse = true;
+			await again.engine.changeKeys();
+			expect(again.engine.state).toEqual({ name: "ready", keysAgain: true });
+			await again.engine.changeKeys();
+			expect(again.engine.state).toEqual({
+				name: "ready",
+				rotation: { recoveryKey: expect.stringMatching(RECOVERY_KEY) },
+			});
+			await again.engine.keySaved();
+			expect(again.engine.state).toEqual({ name: "ready" });
+			const third = await restarted(fake, again);
+			expect(third.engine.state).toEqual({ name: "ready" });
+			await Promise.all([third, b, kept].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// duvetchat/e2e#49: another device's change of keys kept a device this one's change takes off. Taking its transfer
+	// would put that device back on this device's list, so the core refuses it (removed_device_listed): it's said, and
+	// what this device holds stays as it was.
+	test(
+		"another device's change of keys keeping a device this one takes off is refused, said, and changes nothing",
 		async () => {
 			const fake = new FakeApi();
 			const ana = fake.addUser();
 			useFake(fake);
 			const a = await firstDevice(fake, ana);
-			const b = await approvedDevice(fake, a);
-			await a.engine.changeKeys();
-			expect(rotationKey(a.engine.state)).toMatch(RECOVERY_KEY);
+			const [b, lost] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			const earlier = await a.api.identity(ana);
+			await a.engine.removeDevice(deviceOf(lost), { changeKeys: true });
+			const key = rotationKey(a.engine.state);
+			expect(key).toMatch(RECOVERY_KEY);
+			const before = await statusOf(a);
+			// Another device changes the keys first, keeping the device this one takes off.
 			await b.engine.changeKeys();
 			await b.engine.keySaved();
-			// Its upload: the API holds the other device's keys (409), every time.
-			await a.engine.keySaved();
-			expect(a.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+			expect(listDevices((await b.api.identity(ana)).device_list)).toContain(deviceOf(lost));
 
-			// After a restart, its Finish can't run it either: the certificates served are signed by the other change.
+			// This one's upload: 409; the inbox brings that change's transfer, which the core refuses, and which goes.
+			await a.engine.keySaved();
+			const relisted: EngineState = { name: "ready", rotation: { recoveryKey: null, stuck: true, relisted: true } };
+			expect(a.engine.state).toEqual(relisted);
+			expect(await statusOf(a)).toEqual(before);
+			expect(await a.api.inbox()).toEqual([]);
+			// The change that waits is the one it was, its recovery key with it.
+			const same = await a.host.handle<{ recovery_key: string }>({
+				cmd: "rotate_keys",
+				remove: [deviceOf(lost)],
+				certificates: earlier.certificates,
+			});
+			expect(same.recovery_key).toBe(key!);
+
+			// A start after says why too, though the transfer is gone.
+			const again = await restarted(fake, a);
+			expect(again.engine.state).toEqual(relisted);
+			await Promise.all([again, b, lost].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// Task 25's review, M5: run again, a change takes only its own removal, which the record keeps. One whose record was
+	// lost, signed on a list of this device's the API never took, takes the core's (status' waiting_remove), never the
+	// lists' difference, which also names what that earlier list left out.
+	test(
+		"a change of keys whose record was lost runs again with its removal",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			fake.refuse(LIST, 500, { error: "internal server error" });
+			await rejection(a.engine.removeDevice(deviceOf(b)));
+			await a.engine.removeDevice(deviceOf(c), { changeKeys: true });
+			const key = rotationKey(a.engine.state);
+			expect((await statusOf(a)).waiting_remove).toEqual([deviceOf(c)]);
+			// The app closes before the key was saved, and the page's storage loses the change's record.
 			await a.engine.stop();
+			a.store.write(KEPT_ROTATION, null);
 			const again = testDevice(fake, ana, { host: a.host, store: a.store, token: a.token });
 			await again.engine.start();
 			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null } });
+
+			// Its Finish is the same change, which takes along what the earlier list left out.
 			await again.engine.changeKeys();
-			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
-			expect((await statusOf(again)).waiting_upload).toBe("rotate_keys");
-			await Promise.all([again.engine.stop(), b.engine.stop()]);
+			expect(rotationKey(again.engine.state)).toBe(key);
+			await again.engine.keySaved();
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect(await deviceIds(again)).toEqual([deviceOf(a)]);
+			await Promise.all([again, b, c].map((device) => device.engine.stop()));
 		},
 		SLOW,
 	);

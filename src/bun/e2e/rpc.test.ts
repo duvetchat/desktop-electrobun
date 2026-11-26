@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
-import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, type Question } from "./confirm";
+import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, rotationQuestion, type Question } from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 
 // Bun's half of the desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it, and Task 7): what the page may ask the
@@ -495,6 +495,31 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 				code: "bad_command",
 				field: "remove",
 			});
+		}
+		expect(asked).toHaveLength(4);
+	});
+
+	// duvetchat/e2e#49: run again, rotate_keys goes on without the devices gone names, as the server no longer has them,
+	// so a server that stops serving a device's certificate would have this device drop one that's still there.
+	test("rotate_keys names the devices gone leaves out, and runs on a yes alone", async () => {
+		// The identity's yes, the change's, then the no and the yes to going on without a device.
+		const { asked, confirm } = person(true, true, false, true);
+		const approver = await approverOf(confirm);
+		expect((await approver.run({ cmd: "rotate_keys", remove: [] })).ok).toHaveProperty("recovery_key");
+		const before = (await approver.run({ cmd: "status" })).ok;
+		const without = { cmd: "rotate_keys", remove: [], gone: [NEW_A], served_list: "AAAA" };
+
+		expect((await approver.run(without)).error).toMatchObject({ code: "refused" });
+		expect(asked[2]).toEqual(rotationQuestion([], true, [NEW_A]));
+		expect(asked[2].message).toContain(NEW_A);
+		expect(asked[2].title).not.toBe(rotationQuestion([], true).title);
+		expect((await approver.run({ cmd: "status" })).ok).toEqual(before);
+		// On the yes, the core judges it: that device isn't one the change keeps.
+		expect((await approver.run(without)).error).toMatchObject({ code: "bad_command", field: "gone" });
+
+		// What Bun can't name, it doesn't ask about.
+		for (const gone of ["x", [7], ["not a device"], Array.from({ length: 21 }, () => NEW_A)]) {
+			expect((await approver.run({ ...without, gone })).error).toMatchObject({ code: "bad_command", field: "gone" });
 		}
 		expect(asked).toHaveLength(4);
 	});

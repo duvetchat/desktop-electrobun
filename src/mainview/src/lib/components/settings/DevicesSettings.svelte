@@ -16,6 +16,8 @@
 		readonly encryption: { readonly state: EngineState };
 		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
 		changeKeys(): Promise<void>;
+		/** A change of keys that can't finish, gone on with without the devices another device took off. */
+		finishKeysWithout(): Promise<void>;
 		/** What an earlier removal that never went up takes along with the next list or change of keys. */
 		alsoRemoved(): Promise<string[]>;
 		removeThisDevice(): Promise<void>;
@@ -87,6 +89,7 @@
 	} from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import { stuckText } from "$lib/components/e2e/EncryptionGate.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
 	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
@@ -107,6 +110,7 @@
 		onReload,
 		onRemove,
 		onChangeKeys,
+		onFinishWithout = async () => {},
 		onAlsoRemoved = async () => [],
 		onRemoveThis,
 	}: {
@@ -124,6 +128,8 @@
 		onRemove: (deviceId: string, changeKeys: boolean) => Promise<void>;
 		/** Also Finish, for a change that waits. */
 		onChangeKeys: () => Promise<void>;
+		/** A change of keys that can't finish, gone on with without the devices another device took off. */
+		onFinishWithout?: () => Promise<void>;
 		/** What an earlier removal that never went up takes along with the next one. */
 		onAlsoRemoved?: () => Promise<string[]>;
 		onRemoveThis: () => Promise<void>;
@@ -244,14 +250,22 @@
 	{#if ready || hasData || waiting}
 		<SettingsGroup>
 			{#if waiting?.stuck}
-				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_rotation_stuck")} icon={KeyIcon} />
+				<SettingsRow label={t("e2e_change_keys")} line={stuckText(waiting)} icon={KeyIcon}>
+					{#if waiting.gone?.length && !waiting.relisted}
+						<Button size="sm" onclick={() => void onFinishWithout()}>{t("e2e_finish_without")}</Button>
+					{/if}
+				</SettingsRow>
 			{:else if waiting}
 				<SettingsRow label={t("e2e_finish_keys")} icon={KeyIcon}>
 					<Button size="sm" onclick={() => void onChangeKeys()}>{t("e2e_finish")}</Button>
 				</SettingsRow>
 			{/if}
 			{#if ready}
-				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_change_keys_line")} icon={KeyIcon}>
+				<SettingsRow
+					label={t("e2e_change_keys")}
+					line={encryption.name === "ready" && encryption.keysAgain ? t("e2e_keys_again") : t("e2e_change_keys_line")}
+					icon={KeyIcon}
+				>
 					<Button variant="secondary" size="sm" onclick={() => void askToChange()}>
 						{t("e2e_change_keys")}
 					</Button>
