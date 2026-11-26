@@ -46,10 +46,11 @@ export const KEY_CHANGES = "key_changes";
 /** Whom the person verified on this device (contacts.ts), from their tap: user IDs, so a lost change is found again. */
 export const VERIFIED_CONTACTS = "verified_contacts";
 /**
- * The encrypted backup's (backup.ts), IDs, times and counts alone: a restore that's due, with the conversations it's
- * done with; the ID of the key this device last saw itself seal with, and how far the move of other keys' segments went
- * (the last segment it went past); since when a full storage paused it; and the days and segments that failed, by
- * conversation and day or by segment, with how many passes in a row did and since when one is set aside.
+ * The encrypted backup's (backup.ts), IDs, times and counts alone: a restore that's due, with the conversations it went
+ * through and whether only what it set aside is left; the ID of the key this device last saw itself seal with, and how
+ * far the move of other keys' segments went (the last segment it went past); since when a full storage paused it; and
+ * what failed, by conversation and day, by conversation or by segment, with how many passes in a row did and since when
+ * it's set aside.
  */
 export const BACKUP_RESTORE = "backup_restore";
 export const BACKUP_KEY_SEEN = "backup_key_seen";

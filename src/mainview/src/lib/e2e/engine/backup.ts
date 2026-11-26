@@ -4,16 +4,17 @@
 // has been quiet a minute, and at the latest 30 minutes after the last one ended, or as a UTC day ends. It takes the
 // inbox first, whose change of keys brings the key the work seals with, then goes in this order:
 // - a restore, on a device set up as a new one (recovered or approved): every segment, the newest conversation first
-//   and each day of it newest first, taken in with what the API saw deleted; one that doesn't open is skipped;
+//   and each day of it newest first, taken in with what the API saw deleted; one that doesn't open is skipped, and
+//   what a passing outage stops is tried again a day later, while the rest comes in;
 // - each day backup_due lists: built without what the API saw deleted, put in the place of the copy this device knows
 //   of it, and confirmed with the version its build answered. Another copy there (409) is another device's: taken in
 //   first, then the day built again over it, never overwritten unseen;
 // - what isn't under the current key (a change of keys', or any a new installation finds): each such segment sealed
 //   anew under the current key, in the place of the copy it was, the record keeping how far the move went.
-// A full storage (413) pauses it for a day. A day too large to keep is set aside, and so is one that failed three passes
-// in a row: each is tried again a day later, while the rest goes on. A segment that failed three passes in a row is
-// passed over by its restore or move. Any other failure waits a minute, then twice as long each time, up to an hour.
-// What waits is never confirmed, so it stays due.
+// A full storage (413) pauses it for a day. A day too large to keep is set aside, and so is a day, or a restore's day or
+// conversation, that failed three passes in a row: each is tried again a day later, while the rest goes on. A move's
+// segment that failed three passes in a row is passed over. Any other failure waits a minute, then twice as long each
+// time, up to an hour. What waits is never confirmed, so it stays due.
 import { FetchError, TooLargeError, UpdateRequiredError } from "$lib/api/api";
 import type { BackupSegment } from "$lib/api/e2e";
 import { base64Bytes } from "$lib/activity-thumbnail";
@@ -85,8 +86,10 @@ interface Built {
 }
 
 /**
- * A day or a segment the backup counts failures of, by `day:<conversation>/<day>`, or `restore:` or `move:` and the
- * segment's ID: how many passes in a row failed on it, since when it's set aside, and whether it's a day too large.
+ * What the backup counts failures of: a day it backs up (`day:<conversation>/<day>`), a restore's day or conversation
+ * (`restore:<conversation>/<day>`, `restore:<conversation>` for its deleted messages), or a move's segment
+ * (`move:<segment ID>`). How many passes in a row failed on it, since when it's set aside, and whether it's a day too
+ * large.
  */
 interface Aside {
 	fails: number;
@@ -384,11 +387,11 @@ export class Backups {
 		if (this.#tooLargeAside() !== tooLargeBefore) this.#work.shown();
 	}
 
-	/** Whether the pass leaves the item alone: a day for a day after it was set aside, a segment for its whole restore or move. */
+	/** Whether the pass leaves the item alone: a move's segment for the whole move, anything else for a day after it was set aside. */
 	#isAside(item: string): boolean {
 		const at = this.#asideRecord()[item]?.at;
 		if (at === undefined) return false;
-		return !item.startsWith("day:") || this.#parts.clock.now() < at + DAY;
+		return item.startsWith("move:") || this.#parts.clock.now() < at + DAY;
 	}
 
 	/** A pass failed on the item: one more in a row, and set aside once they're FAILS. */
@@ -399,10 +402,11 @@ export class Backups {
 		this.#writeAside(generation, entries);
 	}
 
-	/** A day too large to keep, set aside now. */
-	#setAsideTooLarge(generation: number, item: string) {
+	/** The item set aside now, for a day: a day too large to keep, or a restore's day under a key this device lacks. */
+	#setAside(generation: number, item: string, oversized = false) {
 		const entries = this.#asideRecord();
-		entries[item] = { fails: entries[item]?.fails ?? 0, at: this.#parts.clock.now(), tooLarge: true };
+		const at = this.#parts.clock.now();
+		entries[item] = { fails: entries[item]?.fails ?? 0, at, ...(oversized ? { tooLarge: true } : {}) };
 		this.#writeAside(generation, entries);
 	}
 
@@ -429,65 +433,102 @@ export class Backups {
 		if (changed) this.#work.shown();
 	}
 
-	/** The record of a restore that's due: the conversations it's done with. Null when none is due. */
-	#restoreRecord(): Set<string> | null {
-		const kept = this.#parts.store.read<{ done?: unknown }>(BACKUP_RESTORE);
+	/**
+	 * The record of a restore that's due: the conversations it went through, and whether only what it set aside is left
+	 * (`waiting`). Null when none is due.
+	 */
+	#restoreRecord(): { done: Set<string>; waiting: boolean } | null {
+		const kept = this.#parts.store.read<{ done?: unknown; waiting?: unknown }>(BACKUP_RESTORE);
 		if (typeof kept !== "object" || kept === null) return null;
 		const done = Array.isArray(kept.done) ? kept.done.filter((id): id is string => typeof id === "string") : [];
-		return new Set(done);
+		return { done: new Set(done), waiting: kept.waiting === true };
 	}
 
 	/**
-	 * The restore that's due: the segments of the conversations it isn't done with, the newest conversation first (by
-	 * its newest day), each of its days newest first. The record keeps the conversations done, so an app closed midway
-	 * takes up from the next one; a segment that failed FAILS passes in a row is passed over.
+	 * The restore that's due: the segments of the conversations it didn't go through yet, and the days it set aside whose
+	 * day came, the newest conversation first (by its newest day), each of its days newest first. The record keeps the
+	 * conversations gone through, so an app closed midway takes up from the next one. What a passing outage stops waits a
+	 * day, while the rest comes in: a day whose segment failed FAILS passes in a row, or is under a key this device
+	 * doesn't hold even after its inbox, and a conversation whose deleted messages didn't come FAILS passes in a row, none
+	 * of whose days comes in without them. It's over once all that's left is what no core reads, or what the API no
+	 * longer has.
 	 */
 	async #restore(generation: number): Promise<void> {
-		const done = this.#restoreRecord();
-		if (!done) return;
-		const segments = (await this.#listed(generation)).filter((segment) => !done.has(segment.conversation_id));
+		const record = this.#restoreRecord();
+		if (!record) return;
+		const { done } = record;
+		const setAside = () => Object.keys(this.#asideRecord()).filter((item) => item.startsWith("restore:"));
+		const waits = new Set(setAside());
+		// All of it was gone through, and none of what waits is due yet: nothing to list.
+		if (record.waiting && waits.size && [...waits].every((item) => this.#isAside(item))) return;
+		const listed = await this.#listed(generation);
 		const byConversation = new Map<string, BackupSegment[]>();
-		for (const segment of segments) {
+		for (const segment of listed) {
 			byConversation.set(segment.conversation_id, [...(byConversation.get(segment.conversation_id) ?? []), segment]);
 		}
 		const order = [...byConversation.values()]
 			.map((days) => days.toSorted(newestFirst))
-			.toSorted((a, b) => newestFirst(a[0]!, b[0]!));
-		const total = segments.length;
+			.toSorted((a, b) => newestFirst(a[0]!, b[0]!))
+			.map((days) => {
+				const conversation = days[0]!.conversation_id;
+				// Its deleted messages wait for their day: none of its days comes in meanwhile.
+				if (this.#isAside(`restore:${conversation}`)) return { conversation, due: null };
+				const due = days.filter((segment) => {
+					const item = `restore:${conversation}/${segment.day}`;
+					return (!done.has(conversation) || waits.has(item)) && !this.#isAside(item);
+				});
+				return { conversation, due };
+			});
+		const total = order.reduce((sum, { due }) => sum + (due?.length ?? 0), 0);
 		let restored = 0;
 		this.#progress(total ? { done: 0, total } : null);
-		for (const days of order) {
-			const conversation = days[0]!.conversation_id;
-			const deleted = await this.#deleted(generation, conversation);
-			for (const segment of days) {
-				const item = `restore:${segment.id}`;
-				if (!this.#isAside(item)) {
+		for (const { conversation, due } of order) {
+			if (!due) continue;
+			if (due.length) {
+				const whole = `restore:${conversation}`;
+				this.#item = whole;
+				const deleted = await this.#deleted(generation, conversation);
+				this.#item = null;
+				this.#cleared(generation, whole);
+				for (const segment of due) {
+					const item = `restore:${conversation}/${segment.day}`;
 					this.#item = item;
-					if (await this.#import(generation, segment, deleted)) this.#work.changed(conversation);
+					const imported = await this.#import(generation, segment, deleted);
 					this.#item = null;
-					this.#cleared(generation, item);
+					if (imported === "no_key") {
+						this.#setAside(generation, item);
+					} else {
+						this.#cleared(generation, item);
+						if (imported) this.#work.changed(conversation);
+					}
+					this.#progress({ done: ++restored, total });
 				}
-				this.#progress({ done: ++restored, total });
 			}
-			done.add(conversation);
-			this.#write(generation, BACKUP_RESTORE, { done: [...done] });
+			if (!done.has(conversation)) {
+				done.add(conversation);
+				this.#write(generation, BACKUP_RESTORE, { done: [...done] });
+			}
 		}
-		this.#write(generation, BACKUP_RESTORE, null);
-		this.#forgetAside(generation, "restore:");
+		// What waits of a day or a conversation the API no longer lists has nothing left to restore.
+		const still = listed.flatMap(({ conversation_id: id, day }) => [`restore:${id}`, `restore:${id}/${day}`]);
+		this.#forgetAside(generation, "restore:", new Set(still));
+		this.#write(generation, BACKUP_RESTORE, setAside().length ? { done: [...done], waiting: true } : null);
 		this.#progress(null);
 	}
 
 	/**
-	 * A segment taken in: how many of its records changed something here. None for one the API no longer shows, or that
-	 * doesn't open here, which nobody reads (the core's rule), or not with any key this device holds after its inbox.
+	 * A segment taken in: how many of its records changed something here, or `no_key` for one under a key this device
+	 * doesn't hold even after its inbox. None for one the API no longer shows, or that doesn't open here, which nobody
+	 * reads (the core's rule).
 	 */
-	async #import(generation: number, segment: BackupSegment, deleted: string[]): Promise<number> {
+	async #import(generation: number, segment: BackupSegment, deleted: string[]): Promise<number | "no_key"> {
 		const data = await this.#download(segment.id);
 		if (!data) return 0;
 		const opened = await this.#opened(generation, () =>
 			this.#parts.host.handle<{ imported: number }>({ cmd: "backup_import", data, deleted }),
 		);
-		if (typeof opened !== "object") return 0;
+		if (opened === "no_key") return opened;
+		if (opened === "unread") return 0;
 		this.#known.set(`${segment.conversation_id}/${segment.day}`, segment.id);
 		return opened.value.imported;
 	}
@@ -610,7 +651,7 @@ export class Backups {
 				if (!tooLarge(error)) throw error;
 				console.warn("[e2e] A day of the encrypted backup is too large to keep: it's tried again tomorrow.", error);
 				this.#item = null;
-				this.#setAsideTooLarge(generation, item);
+				this.#setAside(generation, item, true);
 				continue;
 			}
 			this.#item = null;

@@ -918,10 +918,11 @@ const refusal = (status: number, error: string) =>
 		},
 	);
 
-const segmentOf = (id: string, day: string, key_id = "current"): BackupSegment => ({
-	...{ id, conversation_id: C, day, complete: true, key_id },
+const segmentOf = (id: string, day: string, key_id = "current", conversation_id = C): BackupSegment => ({
+	...{ id, conversation_id, day, complete: true, key_id },
 	...{ size: 3, created_at: "2026-11-01T00:00:00Z" },
 });
+const [S1, S2] = ["0193a4b2-0000-7000-8000-000000050001", "0193a4b2-0000-7000-8000-000000050002"];
 
 /**
  * The backup on a stub core and API, on a clock of the test's. `log` tells, in order, each core command, request and
@@ -1036,12 +1037,59 @@ describe("the backup's rules", () => {
 		);
 	});
 
-	// The review's M7: a download that never comes whole stops the restore at its conversation no more.
-	test("a segment that fails three passes in a row is passed over, by the restore and by the move", async () => {
-		const segments = [segmentOf("0193a4b2-0000-7000-8000-000000050001", "2026-11-21", "older")];
-		segments.push(segmentOf("0193a4b2-0000-7000-8000-000000050002", "2026-11-20", "older"));
+	// Round 3: a passing outage loses a restore no day. A download that never came whole is tried again a day later.
+	test("a restore's segment that failed three passes in a row is tried again a day later, while the rest comes in", async () => {
+		const [newer, older] = [segmentOf(S1, "2026-11-21"), segmentOf(S2, "2026-11-20")];
+		let broken = true;
 		const imported: string[] = [];
-		const put: string[] = [];
+		const stub = onAStub({
+			core: {
+				backup_import: ({ data }) => {
+					imported.push(data);
+					return { imported: 1 };
+				},
+			},
+			api: {
+				segments: async () => [newer, older],
+				segment: async (id) => {
+					if (id !== newer.id) return new Uint8Array([2, 2, 2]);
+					if (broken) throw new TypeError("the stream ended before the file did");
+					return new Uint8Array([1, 1, 1]);
+				},
+			},
+		});
+		stub.store.write(BACKUP_RESTORE, { done: [] });
+		stub.backups.wake();
+		await stub.backups.settled();
+		// Each pass stops at it, waiting a minute, then two.
+		await moveOn(stub, MINUTE);
+		await moveOn(stub, 2 * MINUTE);
+		expect(imported).toEqual([]);
+		// Set aside after the third: the restore takes the rest, and stays due for the day it set aside.
+		await moveOn(stub, 4 * MINUTE);
+		expect(imported).toEqual(["AgIC"]);
+		expect(stub.store.read<unknown>(BACKUP_RESTORE)).toEqual({ done: [C], waiting: true });
+		// Until its day comes, a pass neither tries it again nor lists the backup for it.
+		const listings = () => stub.log.filter((line) => line === "segments").length;
+		const listed = listings();
+		await moveOn(stub, 60 * MINUTE);
+		expect(listings()).toBe(listed);
+		expect(imported).toEqual(["AgIC"]);
+		// A day later the storage answers again: the day comes in, and the restore is over.
+		broken = false;
+		await moveOn(stub, DAY);
+		expect(imported).toEqual(["AgIC", "AQEB"]);
+		expect(stub.store.read(BACKUP_RESTORE)).toBeNull();
+		expect(stub.store.read(BACKUP_SET_ASIDE)).toBeNull();
+	});
+
+	// Round 3: never imported without its deleted messages, nor left out of the restore for a passing outage.
+	test("a conversation whose deleted messages didn't come three passes in a row is restored a day later, the others meanwhile", async () => {
+		const [first, second] = ["0193a4b2-0000-7000-8000-0000000c0011", "0193a4b2-0000-7000-8000-0000000c0012"];
+		// The first conversation's day is the newer one: the restore comes to it first.
+		const segments = [segmentOf(S1, "2026-11-21", "current", first), segmentOf(S2, "2026-11-20", "current", second)];
+		let down = true;
+		const imported: string[] = [];
 		const stub = onAStub({
 			core: {
 				backup_import: ({ data }) => {
@@ -1051,8 +1099,70 @@ describe("the backup's rules", () => {
 			},
 			api: {
 				segments: async () => segments,
+				segment: async (id) => (id === S1 ? new Uint8Array([1, 1, 1]) : new Uint8Array([2, 2, 2])),
+				deletedMessages: async (conversation) => {
+					if (conversation === first && down) throw new TypeError("fetch failed");
+					return { ids: [] };
+				},
+			},
+		});
+		stub.store.write(BACKUP_RESTORE, { done: [] });
+		stub.backups.wake();
+		await stub.backups.settled();
+		await moveOn(stub, MINUTE);
+		await moveOn(stub, 2 * MINUTE);
+		expect(imported).toEqual([]);
+		// Set aside after the third: the other conversation comes in, and nothing of the first without its list.
+		await moveOn(stub, 4 * MINUTE);
+		expect(imported).toEqual(["AgIC"]);
+		expect(stub.log.filter((line) => line === "segment")).toHaveLength(1);
+		expect(stub.store.read<unknown>(BACKUP_RESTORE)).toEqual({ done: [second], waiting: true });
+		// A day later its list comes: its day comes in, and the restore is over.
+		down = false;
+		await moveOn(stub, DAY);
+		expect(imported).toEqual(["AgIC", "AQEB"]);
+		expect(stub.store.read(BACKUP_RESTORE)).toBeNull();
+		expect(stub.store.read(BACKUP_SET_ASIDE)).toBeNull();
+	});
+
+	// Round 3: a key this device doesn't hold yet may still come, with a change of keys' transfer.
+	test("a restore's segment under a key this device doesn't hold is tried again a day later", async () => {
+		let held = false;
+		const imported: string[] = [];
+		const stub = onAStub({
+			core: {
+				backup_import: ({ data }) => {
+					if (!held) throw new CoreError("not_found", "no such backup key", { what: "backup_key" });
+					imported.push(data);
+					return { imported: 1 };
+				},
+			},
+			api: { segments: async () => [segmentOf(S1, "2026-11-21")] },
+		});
+		stub.store.write(BACKUP_RESTORE, { done: [] });
+		stub.backups.wake();
+		await stub.backups.settled();
+		// Its inbox first, then once more: still no key, so the day is set aside, and the restore stays due for it.
+		expect(stub.log.filter((line) => line === "inbox")).toHaveLength(2);
+		expect(imported).toEqual([]);
+		expect(stub.store.read<unknown>(BACKUP_RESTORE)).toEqual({ done: [C], waiting: true });
+		// A day later the key is here: the day comes in, and the restore is over.
+		held = true;
+		await moveOn(stub, DAY);
+		expect(imported).toEqual(["AAAA"]);
+		expect(stub.store.read(BACKUP_RESTORE)).toBeNull();
+	});
+
+	// The review's M7: a move's segment that never comes down whole stops the move no more; it stays under its key,
+	// which the older keys a device holds still open.
+	test("a move's segment that failed three passes in a row is passed over", async () => {
+		const segments = [segmentOf(S1, "2026-11-21", "older"), segmentOf(S2, "2026-11-20", "older")];
+		const put: string[] = [];
+		const stub = onAStub({
+			api: {
+				segments: async () => segments,
 				segment: async (id) => {
-					if (id === segments[0]!.id) throw new TypeError("the stream ended before the file did");
+					if (id === S1) throw new TypeError("the stream ended before the file did");
 					return new Uint8Array([1, 2, 3]);
 				},
 				putSegment: async (_conversation, day, _segment, replaces) => {
@@ -1061,22 +1171,14 @@ describe("the backup's rules", () => {
 				},
 			},
 		});
-		stub.store.write(BACKUP_RESTORE, { done: [] });
 		stub.store.write(BACKUP_KEY_SEEN, "older");
-		stub.backups.wake();
+		stub.backups.quiet();
 		await stub.backups.settled();
 		await moveOn(stub, MINUTE);
-		expect(imported).toEqual([]);
 		await moveOn(stub, 2 * MINUTE);
-		// The third pass passed over it in the restore, which took the other day and ended; the move then counts it anew.
+		expect(put).toEqual([]);
 		await moveOn(stub, 4 * MINUTE);
-		expect(imported).toEqual(["AQID"]);
-		expect(stub.store.read(BACKUP_RESTORE)).toBeNull();
-		await moveOn(stub, 8 * MINUTE);
-		await moveOn(stub, 16 * MINUTE);
-		await moveOn(stub, 32 * MINUTE);
-		// Passed over by the move too: the other day moved, and the move ended.
-		expect(put).toEqual([`2026-11-20 ${segments[1]!.id}`]);
+		expect(put).toEqual([`2026-11-20 ${S2}`]);
 		expect(stub.store.read(BACKUP_REENCRYPT)).toBeNull();
 		expect(stub.store.read(BACKUP_SET_ASIDE)).toBeNull();
 	});
