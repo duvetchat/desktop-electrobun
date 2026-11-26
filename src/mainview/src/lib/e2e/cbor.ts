@@ -30,7 +30,8 @@ export function cbor(bytes: Uint8Array): Cbor | null {
 			case 2:
 				return take(uint(info)).slice();
 			case 3:
-				return new TextDecoder("utf-8", { fatal: true }).decode(take(uint(info)));
+				// A leading byte order mark is the text's, as the core reads it: TextDecoder drops one unless told not to.
+				return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(take(uint(info)));
 			case 4: {
 				// Item by item: a length taken at its word (Array.from's) is memory for items that may not be there.
 				const list: Cbor[] = [];

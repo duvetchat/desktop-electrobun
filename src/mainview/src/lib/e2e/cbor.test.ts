@@ -54,4 +54,13 @@ describe("the CBOR reader", () => {
 		expect(listDevices(base64(signed([0xa1, ...devices])))).toBeNull();
 		expect(listDevices(base64(signed([0xa2, ...devices, ...version, 0x61, ...ascii("1")])))).toBeNull();
 	});
+
+	test("a text's byte order mark is the text's, as the core reads it: a key with one is another key", () => {
+		const mark = [0xef, 0xbb, 0xbf];
+		expect(cbor(Uint8Array.from([0x63, ...mark]))).toBe(String.fromCharCode(0xfeff));
+		// {"<mark>a": 1, "a": 2}: two keys, not one twice.
+		expect(cbor(Uint8Array.from([0xa2, 0x64, ...mark, 0x61, 0x01, 0x61, 0x61, 0x02]))?.constructor).toBe(Map);
+		// A certificate whose device is under "<mark>device", which the core doesn't read as its device.
+		expect(certificateDevice(base64(signed([0xa1, 0x69, ...mark, ...ascii("device"), ...ID])))).toBeNull();
+	});
 });

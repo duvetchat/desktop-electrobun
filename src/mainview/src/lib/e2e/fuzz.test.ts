@@ -1158,9 +1158,9 @@ const PICKED = {
 			[deep(34, () => true), false],
 			[deep(33, () => false), true],
 			[deep(34, () => false), false],
-			// A text's byte order mark, which both apps' UTF-8 decoders drop (the core's doesn't): {"<BOM>a": 1} is {"a": 1}.
+			// A text's byte order mark, which the core keeps and Dart's utf8.decode drops: {"<mark>a": 1, "a": 2} has two keys.
 			[Uint8Array.of(0xa1, 0x64, 0xef, 0xbb, 0xbf, 0x61, 0x01), true],
-			[Uint8Array.of(0xa2, 0x64, 0xef, 0xbb, 0xbf, 0x61, 0x01, 0x61, 0x61, 0x02), false],
+			[Uint8Array.of(0xa2, 0x64, 0xef, 0xbb, 0xbf, 0x61, 0x01, 0x61, 0x61, 0x02), true],
 			[Uint8Array.of(0xa2, 0x61, 0x61, 0x01, 0x61, 0x61, 0x02), false],
 			[Uint8Array.of(0xa1, 0x01, 0x02), false],
 			[Uint8Array.of(0xc0, 0x00), false],
@@ -1216,7 +1216,7 @@ const PICKED = {
 			base64(cborBytes(new Map<string, CborValue>([["body", wrapped]]))),
 			commitment,
 			...notCanonical(commitment),
-			// A certificate whose device is under a key with a byte order mark: read as "device" by both apps.
+			// A certificate whose device is under a key with a byte order mark, another key to the core: it names none.
 			base64(signed(new Map<string, CborValue>([["\uFEFFdevice", ID]]))),
 		];
 	},
