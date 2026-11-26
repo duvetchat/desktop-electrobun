@@ -5,6 +5,7 @@
 		BadgeCheck,
 		Ban,
 		Copy,
+		History,
 		MessageCircle,
 		Pencil,
 		Phone,
@@ -27,6 +28,7 @@
 		chatWith,
 		removeFriend,
 		removeFromGroup,
+		shareHistoryRequest,
 	} from "$lib/member-actions";
 	import { banRequest, kickFromSpace } from "$lib/moderation";
 	import {
@@ -43,6 +45,7 @@
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import MenuSub from "$lib/components/ui/MenuSub.svelte";
 	import { userFlagsRequest } from "$lib/components/UserFlagsSheet.svelte";
+	import { t } from "$lib/i18n";
 
 	// A member's menu (#423): the items of a person in any list of them, inside that list's menu (a ContextMenu on a
 	// right-click, or a message menu's author submenu). What it offers is lib/member-menu.ts's call; what the list does
@@ -54,10 +57,13 @@
 		onProfile = undefined,
 		onMention = undefined,
 		onRemoveFromGroup = undefined,
+		conversationId = null,
 	}: {
 		person: MenuPerson;
 		/** The Space the list is of: its roles, Kick and Ban. A conversation's list has none. */
 		space?: GatewaySpace | null;
+		/** The conversation the list is of, whose history the user may share with its other members (Task 30). */
+		conversationId?: string | null;
 		/** Opens their profile beside them. */
 		onProfile?: () => void;
 		/** Mentions them in the list's chat's message box. */
@@ -82,7 +88,14 @@
 					})
 				: STRANGER,
 			busy: $activeCall !== null,
-			can: { profile: !!onProfile, mention: !!onMention, removeFromGroup: !!onRemoveFromGroup },
+			can: {
+				...{ profile: !!onProfile, mention: !!onMention, removeFromGroup: !!onRemoveFromGroup },
+				// Of a member of the conversation: whether this device can share now, the dialog says (Space settings'
+				// window shows this menu, and never loads the engine).
+				shareHistory:
+					!!conversationId &&
+					!!$conversations.find((c) => c.id === conversationId)?.members.some((m) => m.user_id === person.id),
+			},
 		}),
 	);
 
@@ -90,7 +103,7 @@
 	// call), the friendship, what's theirs in the Space or the user's own (roles, the display name), what removes them,
 	// their ID, and staff's editor. A line comes before each group shown after another.
 	const groups = $derived([
-		items.profile || items.mention || items.message || items.call,
+		items.profile || items.mention || items.message || items.call || items.shareHistory,
 		items.friend !== null,
 		items.roles.length > 0 || items.displayName,
 		!!items.moderation || items.removeFromGroup,
@@ -143,6 +156,12 @@
 {/if}
 {#if items.call}
 	<MenuItem icon={Phone} onSelect={() => chatWith(person.id, true)}>Call</MenuItem>
+{/if}
+{#if items.shareHistory && conversationId}
+	{@const shared = { conversationId, userId: person.id, name: person.name }}
+	<MenuItem icon={History} onSelect={() => afterClose(() => shareHistoryRequest.set(shared))}>
+		{t("e2e_share_history")}
+	</MenuItem>
 {/if}
 
 {#if lineBefore(1)}<MenuSeparator />{/if}

@@ -560,6 +560,24 @@ describe("a file at its signed URL", () => {
 		}
 	});
 
+	// Task 30: a package's part is a megabyte and its tag at most, as the core seals it; a server that sends more makes
+	// the page hold nothing past that.
+	test("of a package's part, past a part's size, is refused", async () => {
+		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) =>
+			urlOf(input) === FETCHED
+				? new Response(new Uint8Array((1 << 20) + 17))
+				: Response.json({ url: SIGNED })) as typeof fetch);
+		try {
+			expect(
+				await e2eApi()
+					.sharePart(SHARE, 0)
+					.catch((e: unknown) => e),
+			).toBeInstanceOf(RangeError);
+		} finally {
+			fetched.mockRestore();
+		}
+	});
+
 	test("that the storage refuses fails with its status", async () => {
 		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) =>
 			urlOf(input) === FETCHED

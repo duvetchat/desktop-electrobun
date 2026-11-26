@@ -440,4 +440,49 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			dave.id,
 		]);
 	}, 180_000);
+
+	// History shared (PLAN-E2E-CLIENTES.md, Task 30; decision 26), through the API's routes, its notice and its limits:
+	// Carol and Dave write in a group, then Carol adds Alice, whose device can't read what came before her. Carol shares
+	// the last week with her; Alice's device offers it, takes it in on her word, and shows it as shared by Carol.
+	test("a member who just joined gets a week from another, and reads it", async () => {
+		const [pair, both] = [carolAndDave, aliceAndBob];
+		if (!pair || !both) throw new Error("the cases before left no devices");
+		const { c, d } = pair;
+		const { a } = both;
+		const [alice, carol, dave] = [account(0), account(2), account(3)];
+		const group = await c.engine.createConversation({ type: 2, name: "live history", user_ids: [dave.id] });
+		const holds = async (device: Device) =>
+			!!(await device.host.handle({ cmd: "group", conversation_id: group.id }).catch(() => null));
+		await eventually(async () => (await holds(c)) && (await holds(d)));
+		const nonce = () => crypto.randomUUID();
+		const fromCarol = await c.engine.sendMessage({ conversation_id: group.id, nonce: nonce(), text: "from Carol" });
+		await eventually(async () => (await d.engine.messages(group.id, [fromCarol!.id])).length === 1);
+		const fromDave = await d.engine.sendMessage({ conversation_id: group.id, nonce: nonce(), text: "from Dave" });
+		const before = [fromCarol!.id, fromDave!.id];
+		await eventually(async () => (await c.engine.messages(group.id, before)).length === 2);
+
+		// Alice comes in by her welcome, without what was written before her.
+		await c.engine.addMember(group.id, alice.id);
+		await eventually(() => holds(a));
+		expect(await a.engine.messages(group.id, before)).toEqual([]);
+
+		// Carol shares the week; Alice's device offers it once its key is in, and takes it in on her word.
+		expect(await c.engine.shareHistory(group.id, alice.id, "week")).toMatchObject({ sent: true, truncated: false });
+		await eventually(async () => a.engine.offers(group.id).length === 1, 60_000);
+		const [offer] = a.engine.offers(group.id);
+		expect(offer).toMatchObject({ from_user_id: carol.id, range: "week" });
+		expect(await a.engine.importShared(offer!.share_id)).toBe(2);
+		const rows = await a.engine.messages(group.id, before);
+		const of = (id: string) => rows.find((row) => row.message_id === id);
+		expect(of(fromCarol!.id)).toMatchObject({
+			status: "ok",
+			text: "from Carol",
+			user_id: carol.id,
+			shared_by: carol.id,
+		});
+		expect(of(fromDave!.id)).toMatchObject({ status: "ok", text: "from Dave", user_id: dave.id, shared_by: carol.id });
+		expect(a.engine.offers(group.id)).toEqual([]);
+		// The API let it go from Alice's list once her device took it in.
+		expect(await a.routes.shares()).toEqual([]);
+	}, 180_000);
 });

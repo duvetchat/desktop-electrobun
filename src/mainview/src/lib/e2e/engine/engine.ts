@@ -26,6 +26,7 @@ import {
 } from "./devices";
 import { Failures } from "./failures";
 import { fileNames } from "./files";
+import { Received, Shares, type SharedOffer, type ShareOutcome, type ShareRange } from "./history";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
@@ -39,6 +40,7 @@ export type { ConversationState } from "./sync";
 export type { Outgoing, Pending } from "./send";
 export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
+export type { SharedOffer, ShareOutcome, ShareRange } from "./history";
 
 /**
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
@@ -108,6 +110,7 @@ export type EngineState =
 	| { name: "update"; minimum: string | null };
 
 const DAY = 24 * 3600 * 1000;
+const NOT_READY = "encrypted conversations aren't ready on this device";
 /** A start that failed goes again after 2 s, then twice as long each time, up to a minute apart. */
 const RETRY_MS = 2_000;
 const RETRY_MOST_MS = 60_000;
@@ -185,6 +188,12 @@ export class E2EEngine {
 	readonly #refusedListeners = new Set<(conversationId: string, messageId: string, kind: "edit" | "delete") => void>();
 	readonly #sentListeners = new Set<(conversationId: string, nonce: string, message: DirectMessage) => void>();
 	readonly #deviceListeners = new Set<(notice: DeviceNotice) => void>();
+	/** The person's shares of a conversation's history going up, and the packages this device is handed (Task 30). */
+	readonly #shares: Shares;
+	readonly #received: Received;
+	readonly #offerListeners = new Set<(conversationId: string, offers: SharedOffer[]) => void>();
+	/** The flows queued in the turn and not begun: quiet work waits for none (#quietly). */
+	#waiting = 0;
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
@@ -201,7 +210,20 @@ export class E2EEngine {
 				for (const listener of this.#conversationListeners) listener(id, state);
 			},
 			messagesChanged,
+			(id) => this.#received.forget(id),
 		);
+		this.#shares = new Shares(parts);
+		this.#received = new Received(parts, {
+			turn: (work) => this.#act(work),
+			quiet: (work) => this.#quietly(work),
+			sync: (id) => this.#groups.sync(id),
+			// What an import brought: any of the conversation's rows may have changed.
+			changed: (id) => messagesChanged(id),
+			offered: (id) => {
+				const offers = this.#received.offers(id);
+				for (const listener of this.#offerListeners) listener(id, offers);
+			},
+		});
 		this.#sends = new Sends(
 			parts,
 			this.#groups,
@@ -438,7 +460,41 @@ export class E2EEngine {
 	 * the turn took on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
 	 */
 	sendsSettled(): Promise<void> {
-		return Promise.all([this.#sends.settled(), this.#groups.settled()]).then(() => {});
+		const all = [this.#sends.settled(), this.#groups.settled(), this.#shares.settled(), this.#received.settled()];
+		return Promise.all(all).then(() => {});
+	}
+
+	/**
+	 * The person's share of the conversation's history with another member (Task 30; decision 26), as far back as `range`,
+	 * of what this device holds once the conversation's queue is applied: settled once the API took the package, whose
+	 * parts and keys go on up outside the engine's turn, or with why it didn't go.
+	 */
+	async shareHistory(conversationId: string, userId: string, range: ShareRange): Promise<ShareOutcome> {
+		const { answer } = await this.#act(async () => {
+			await this.#groups.sync(conversationId);
+			return this.#shares.make(conversationId, userId, range);
+		});
+		return answer;
+	}
+
+	/** The members' shares of the conversation this device offers, until the person adds them (Ruling 22). */
+	offers(conversationId: string): SharedOffer[] {
+		return this.#received.offers(conversationId);
+	}
+
+	/** What each conversation offers, as it changes. */
+	onOffers(listener: (conversationId: string, offers: SharedOffer[]) => void): () => void {
+		this.#offerListeners.add(listener);
+		return () => void this.#offerListeners.delete(listener);
+	}
+
+	/**
+	 * The person's yes to a share another member made: it comes in now, after what's coming in already, its rows told to
+	 * the views. How many messages it brought; refused while this device isn't ready.
+	 */
+	importShared(shareId: string): Promise<number> {
+		if (this.state.name !== "ready") return Promise.reject(new CoreError("not_ready", NOT_READY));
+		return this.#received.add(shareId);
 	}
 
 	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
@@ -522,6 +578,8 @@ export class E2EEngine {
 		this.#daily = null;
 		this.#groups.stop();
 		this.#sends.stop();
+		this.#shares.stop();
+		this.#received.stop();
 		this.#failures.stop();
 	}
 
@@ -690,19 +748,38 @@ export class E2EEngine {
 	#set(state: EngineState) {
 		const was = this.state.name;
 		this.state = state;
-		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups).
-		if (state.name === "ready" && was !== "ready") this.#groups.ready();
+		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups, and the
+		// packages that came meanwhile).
+		if (state.name === "ready" && was !== "ready") {
+			this.#groups.ready();
+			this.#received.again();
+		}
 		for (const listener of this.#listeners) listener(state);
 	}
 
 	/** Runs `work` once the flow before it ended (nothing once stopped). What it throws rejects this call alone. */
 	#queue<T>(work: () => Promise<T>): Promise<T | undefined> {
-		const run = this.#turn.then(() => (this.#stopped ? undefined : work()));
+		this.#waiting++;
+		const run = this.#turn.then(() => {
+			this.#waiting--;
+			return this.#stopped ? undefined : work();
+		});
 		this.#turn = run.then(
 			() => {},
 			(error: unknown) => console.error("[e2e] The engine's work failed:", error),
 		);
 		return run;
+	}
+
+	/**
+	 * Work for when the app is quiet (a catch-up coming in, Task 30): in the turn, once nothing else waits there, as the
+	 * person's acts and the events' work go first; and only while ready. Undefined when it isn't then, or once stopped.
+	 */
+	#quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
+		return this.#queue(async () => {
+			if (this.#waiting > 0) return null;
+			return { value: this.state.name === "ready" ? await work() : undefined };
+		}).then((ran) => (ran === null ? this.#quietly(work) : ran?.value));
 	}
 
 	/**
@@ -712,8 +789,7 @@ export class E2EEngine {
 	async #act<T>(work: () => Promise<T>): Promise<T> {
 		const done = await this.#queue(async () => {
 			// A code of its own, which crosses to another tab, for the view to say it (#508).
-			if (this.state.name !== "ready")
-				throw new CoreError("not_ready", "encrypted conversations aren't ready on this device");
+			if (this.state.name !== "ready") throw new CoreError("not_ready", NOT_READY);
 			try {
 				return { value: await work() };
 			} catch (error) {
@@ -758,7 +834,12 @@ export class E2EEngine {
 					this.#soon(() => this.#whenReady(() => this.#groups.all()));
 					// What waits to be sent goes once the queues are applied («Enviar»).
 					this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
+					// The packages for this device: some may have come, or gone, meanwhile.
+					this.#soon(() => this.#whenReady(() => this.#received.listed()));
 				}
+				break;
+			case "HISTORY_SHARE_CREATE":
+				this.#received.heard(event.data);
 				break;
 			case "DM_MESSAGE_CREATE":
 				// The person's message made again goes under a new nonce, which only the engine knows it by.
@@ -807,7 +888,7 @@ export class E2EEngine {
 	 * of (another device's took its place) is forgotten.
 	 */
 	async #identity(): Promise<EngineState> {
-		const state = await identityState(this.#parts, () => takeInbox(this.#parts, this.#tries, this.#failures));
+		const state = await identityState(this.#parts, () => this.#takeInbox());
 		if (state.name === "ready" && (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") {
 			const recoveryKey = this.#keys?.recovery_key ?? null;
 			return { name: "ready", rotation: this.#stuck ? { recoveryKey, stuck: true } : { recoveryKey } };
@@ -843,7 +924,12 @@ export class E2EEngine {
 
 	/** The inbox; once it brought a rotation's transfer, the own user observed, which may change what this device is. */
 	async #inbox(): Promise<void> {
-		if (await takeInbox(this.#parts, this.#tries, this.#failures)) this.#set(await this.#identity());
+		if (await this.#takeInbox()) this.#set(await this.#identity());
+	}
+
+	/** The inbox read and handled, a package's key kept by what receives them. */
+	#takeInbox(): Promise<boolean> {
+		return takeInbox(this.#parts, this.#tries, this.#failures, (key) => this.#received.keyCame(key));
 	}
 
 	/** «Arranque»: the API's configuration, the user's database, this installation's device and the session bound to it. */
@@ -903,6 +989,10 @@ export class E2EEngine {
 		}
 		// What waits to be sent goes once the queues are applied, before anything new («Enviar»).
 		await this.#whenReady(() => this.#sends.resendAll());
+		// The packages of history for this device, now that its groups are in (Task 30).
+		await this.#whenReady(() => this.#received.listed()).catch((error: unknown) => {
+			console.error("[e2e] The packages for this device wait for the next READY:", error);
+		});
 		await this.#keyPackages();
 		await this.#whenReady(() => this.#groups.renew()).catch((error: unknown) => {
 			console.error("[e2e] The leaf renewals wait for tomorrow's:", error);
@@ -958,6 +1048,8 @@ export class E2EEngine {
 		this.#tries.clear();
 		this.#groups.forget();
 		this.#sends.stop();
+		this.#shares.stop();
+		this.#received.stop();
 		this.#daily?.();
 		this.#daily = null;
 		this.#set({ name: "starting" });

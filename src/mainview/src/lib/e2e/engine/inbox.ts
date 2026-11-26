@@ -9,6 +9,7 @@ import { readApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineParts } from "./engine";
 import type { Failures } from "./failures";
+import { isShareKey, type ShareKey } from "./history";
 import { withIdentities } from "./identity";
 import { KEPT_APPROVALS, KEPT_LATER, KEPT_TRANSFERS, type EngineStore } from "./store";
 
@@ -48,13 +49,19 @@ const forLater = ({ code, field }: CoreError) =>
  * Reads the inbox and handles each message. An approval's step from one of the user's own devices is kept for its flow
  * (Task 26), so deleting the inbox through it loses nothing, and another user's is dropped. Anything else goes to
  * receive_direct, with the identity the API serves for the user today (what a rotation's transfer is checked against)
- * and its sender's certificate, from the sender's served identity. A transfer the core keeps for later (`not_found`
- * `code`: an approval whose code wasn't accepted yet) is kept in the record, as is one a later task takes (`forLater`);
- * one no core here can read goes, as does one whose call is cut five rounds running (`tries`, by its ID). One that
- * doesn't open is counted for the API as a failure to decrypt (`direct`). True when the inbox brought a rotation's
- * transfer, after which the own user is observed (the core's rule).
+ * and its sender's certificate, from the sender's served identity. A package's key goes to `onKey` (Task 30), which
+ * keeps it; one it couldn't keep stays in the inbox. A transfer the core keeps for later (`not_found` `code`: an
+ * approval whose code wasn't accepted yet) is kept in the record, as is one the core can't take yet (`forLater`), which
+ * each round tries again first; one no core here can read goes, as does one whose call is cut five rounds running
+ * (`tries`, by its ID). One that doesn't open is counted for the API as a failure to decrypt (`direct`). True when the
+ * inbox brought a rotation's transfer, after which the own user is observed (the core's rule).
  */
-export async function takeInbox(parts: EngineParts, tries: Map<string, number>, failures?: Failures): Promise<boolean> {
+export async function takeInbox(
+	parts: EngineParts,
+	tries: Map<string, number>,
+	failures?: Failures,
+	onKey: (key: ShareKey) => boolean = () => true,
+): Promise<boolean> {
 	const { api, host, store, user } = parts;
 	let rotated = false;
 	// Users' identities as served, read once a round when a message needs one: null for one that can't be read.
@@ -73,9 +80,12 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 
 	/**
 	 * Whether the message is done with: handled, kept, or one that never will be. One the record couldn't keep isn't: it
-	 * stays in the inbox for the next round, as its sender won't send it again (a catch-up's key).
+	 * stays in the inbox for the next round, as its sender won't send it again (a catch-up's key). `later`, whether it's
+	 * one the core can't take yet, which the record keeps.
 	 */
+	let later = false;
 	const handle = async (message: InboxMessage): Promise<boolean> => {
+		later = false;
 		try {
 			if (readApprovalFrame(message.message)) {
 				// Approvals are between the user's own devices.
@@ -94,6 +104,8 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 				}),
 			);
 			if (received.type === "rotation.transfer") rotated = true;
+			// The core keeps a package's key, which the engine must know of once the inbox lets it go.
+			if (isShareKey(received) && !onKey(received)) return false;
 		} catch (error) {
 			if (!(error instanceof CoreError)) {
 				console.error("[e2e] The inbox waits for its next round:", error);
@@ -111,6 +123,7 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 				if (!keep(store, KEPT_TRANSFERS, message)) return false;
 			} else if (forLater(error)) {
 				if (!keep(store, KEPT_LATER, message)) return false;
+				later = true;
 			} else {
 				if (error.code === "decrypt_failed") failures?.note("direct");
 				console.warn(`[e2e] A message from another device can't be read here (${error.code}), and goes.`);
@@ -119,6 +132,15 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 		tries.delete(message.id);
 		return true;
 	};
+
+	// What the core couldn't take before (a key whose sender it didn't know yet), first: one done with leaves the record.
+	for (const message of keptIn(store, KEPT_LATER)) {
+		if (!(await handle(message)) || later) continue;
+		store.write(
+			KEPT_LATER,
+			keptIn(store, KEPT_LATER).filter((one) => one?.id !== message.id),
+		);
+	}
 
 	let after: string | undefined;
 	for (;;) {

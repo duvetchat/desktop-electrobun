@@ -29,6 +29,9 @@ import {
 	type EngineState,
 	type Outgoing,
 	type Pending,
+	type SharedOffer,
+	type ShareOutcome,
+	type ShareRange,
 	type ShownMessage,
 } from "./engine/engine";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
@@ -41,11 +44,14 @@ import { BrowserTabs, type BrowserTabsOptions } from "./web/tabs";
 export const encryption = $state<{
 	state: EngineState;
 	conversations: Record<string, ConversationState>;
+	/** The members' shares of each conversation's history this device offers, until the person adds them (Task 30). */
+	offers: Record<string, SharedOffer[]>;
 	/** The cutover's instant, as the API gives it: a conversation from before it says when its messages went. */
 	cutoverAt: string | null;
 }>({
 	state: { name: "starting" },
 	conversations: {},
+	offers: {},
 	cutoverAt: null,
 });
 
@@ -53,6 +59,12 @@ export const encryption = $state<{
 function showConversation(conversationId: string, state: ConversationState | null) {
 	if (state) encryption.conversations[conversationId] = state;
 	else delete encryption.conversations[conversationId];
+}
+
+/** What a conversation offers, shown: none goes. */
+function showOffers(conversationId: string, offers: SharedOffer[]) {
+	if (offers.length) encryption.offers[conversationId] = offers;
+	else delete encryption.offers[conversationId];
 }
 
 /** What the page's engine runs on: the page's own, or a test's (a host of its own, task 8's locks and channel). */
@@ -127,6 +139,11 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		tabs?.changed(conversationId, deleted);
 	});
 	made.onSent(showSent);
+	// What a conversation offers changed: shown here, and asked again by the other tabs.
+	made.onOffers((conversationId, offers) => {
+		showOffers(conversationId, offers);
+		tabs?.changed(conversationId);
+	});
 	// An edit or a deletion the API refused for good shows on this device alone: the person is told.
 	made.onChangeRefused((_conversationId, _messageId, kind) => {
 		toast(t(kind === "edit" ? "e2e_edit_refused" : "e2e_delete_refused"), "error");
@@ -225,6 +242,10 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			removeMember: ({ conversationId, userId: user }: MessageParams) =>
 				live().removeMember(conversationId, user ?? ""),
 			leaveConversation: (id: string) => live().leaveConversation(id),
+			shareHistory: ({ conversationId, userId: user, range }: MessageParams) =>
+				live().shareHistory(conversationId, user ?? "", range ?? "week"),
+			importShared: ({ shareId }: MessageParams) => live().importShared(shareId ?? ""),
+			offers: (id: string) => engine?.offers(id) ?? [],
 			cutoverAt: () => engine?.cutoverAt ?? null,
 			sendMessage: (message: Outgoing) => {
 				const stop = new AbortController();
@@ -286,11 +307,13 @@ async function follow(): Promise<void> {
 	if (encryption.state.name === "ready") refreshAll();
 }
 
-/** A tab that doesn't lead shows what the leader says of a conversation it says changed. */
+/** A tab that doesn't lead shows what the leader says of a conversation it says changed, and what it offers. */
 async function followConversation(conversationId: string): Promise<void> {
 	if (!tabs || tabs.leader) return;
 	const state = await tabs.call<ConversationState | null>("conversation", conversationId).catch(() => undefined);
 	if (state !== undefined) showConversation(conversationId, state);
+	const offers = await tabs.call<SharedOffer[]>("offers", conversationId).catch(() => undefined);
+	if (offers !== undefined) showOffers(conversationId, offers);
 }
 
 type ConversationTap = "openConversation" | "acceptMembers";
@@ -325,6 +348,8 @@ interface MessageParams {
 	seq?: number;
 	userId?: string;
 	leaving?: string[];
+	range?: ShareRange;
+	shareId?: string;
 }
 
 const NOT_READY = "encrypted conversations aren't ready on this device";
@@ -376,6 +401,19 @@ export const heldBeforeEncrypted = (conversationId: string, seq: number) =>
 /** The person's messages of the conversation still being sent, in their order. */
 export const pendingEncrypted = (conversationId: string) =>
 	onMessages<Pending[]>("pendingMessages", conversationId, (made) => made.pendingMessages(conversationId));
+/**
+ * The person's share of the conversation's history with another member (Task 30), as far back as `range`: once the API
+ * took it, whether it was cut to the newest; or why it didn't go.
+ */
+export const shareHistory = (conversationId: string, userId: string, range: ShareRange) =>
+	onMessages<ShareOutcome>("shareHistory", { conversationId, userId, range }, (made) =>
+		made.shareHistory(conversationId, userId, range),
+	);
+/** The person's yes to a share another member made of the conversation: it comes in on this device. */
+export const importShared = (conversationId: string, shareId: string) =>
+	onMessages<number>("importShared", { conversationId, shareId }, (made) => made.importShared(shareId)).finally(() =>
+		followConversation(conversationId),
+	);
 
 /**
  * The person's new conversation (PLAN-E2E-CLIENTES.md, Task 22), by the engine of this tab or of the one that leads,
@@ -443,6 +481,7 @@ export async function stopEngine(): Promise<void> {
 	engine = null;
 	started = false;
 	toOpen.clear();
+	encryption.offers = {};
 	// What the device's database showed goes from memory, nothing searches it, and what it decrypted goes too.
 	useReader(null);
 	useDeviceSearch(null);

@@ -20,10 +20,15 @@ export const KEPT_ROTATION = "rotation";
  * refused, a newer generation with members other than it holds. A conversation's ID and a number, nothing secret.
  */
 export const REFUSED_GENERATIONS = "refused_generations";
+/**
+ * The packages of history whose key this device's core holds (history.ts): their IDs, conversations, sharers and kinds,
+ * as the inbox brought them, which the inbox deletes once read. Nothing secret: the key stays in the core.
+ */
+export const SHARE_KEYS = "share_keys";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, REFUSED_GENERATIONS],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, REFUSED_GENERATIONS, SHARE_KEYS],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";

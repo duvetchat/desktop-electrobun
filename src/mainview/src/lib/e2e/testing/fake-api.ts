@@ -583,6 +583,8 @@ export class FakeApi {
 	 * request from a client below it, or of a platform it doesn't name, gets a 426. Day one's platforms, any version.
 	 */
 	minClients: Record<string, string> = { "desktop-windows": "0.0.0", web: "0.0.0", android: "0.0.0" };
+	/** What the API's clock is off by as it stamps a message (sent_at): a test's way to a message of days ago. */
+	sentAtOffset = 0;
 
 	#users = new Set<string>();
 	/** A new password's links, by their token: whose they are. */
@@ -600,6 +602,8 @@ export class FakeApi {
 	#shares = new Map<string, Share>();
 	/** Who sent a catch-up to whom in which conversation (sender:conversation:recipient): the API takes one a day. */
 	#catchUpsSent = new Set<string>();
+	/** When each user's shares (not catch-ups) went up this past hour: the API takes ten an hour (HistoryShareLimit). */
+	#sharesSent = new Map<string, number[]>();
 	#files = new Map<string, Uint8Array<ArrayBuffer>>();
 	/** Messages' files, by the ID their client gave them: whose they are, and what they're on (none yet). */
 	#fileRows = new Map<string, { owner: string; row: FileRow }>();
@@ -1991,13 +1995,14 @@ export class FakeApi {
 		// allowed_mentions say not to, or that's a notice), each once, of the members, never its own author.
 		const members = conv.members.map((m) => m.user_id);
 		const mentionReplied = body?.allowed_mentions == null || body.allowed_mentions.replied_user === true;
-		const notice = replied?.type === 2 || replied?.type === 3;
+		const notice = replied?.type === 2 || replied?.type === 3 || replied?.type === 4;
 		const named: string[] = [...listed, ...(replied && mentionReplied && !notice ? [replied.author_id] : [])];
 		const mentions = [...new Set(named)].filter((user) => user !== session.user && members.includes(user));
 		const at = now();
 		const message: Message = {
 			...{ id: this.#id(), conversation_id: conv.id, author_id: session.user, content: null, type: 0 },
-			...{ created_at: at, updated_at: at, nonce, ciphertext: body.ciphertext, seq: ++conv.seq, sent_at: Date.now() },
+			...{ created_at: at, updated_at: at, nonce, ciphertext: body.ciphertext, seq: ++conv.seq },
+			sent_at: Date.now() + this.sentAtOffset,
 			...{ generation: framed.generation!, epoch: framed.epoch!, sender_device_id: device!.id, edited_at: null },
 			...{ mentions, message_reference: body.message_reference ?? null },
 			sticker_attachment_id: body.sticker_attachment_id ?? null,
@@ -2152,8 +2157,9 @@ export class FakeApi {
 		return this.#fileRows.has(id) ? this.#files.get(id) : undefined;
 	}
 
+	/** A package as clients get it: a catch-up has no range (null, as the API's *string gives it). */
 	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share) {
-		return { id, conversation_id, from_user_id, kind, range, starts_at, size, parts };
+		return { id, conversation_id, from_user_id, kind, range: range || null, starts_at, size, parts };
 	}
 
 	#putShare(ctx: Context): Answer {
@@ -2191,6 +2197,19 @@ export class FakeApi {
 			throw new Refusal({ status: 429, body: { error: "too many requests" }, headers: { "Retry-After": "86400" } });
 		}
 		if (share.kind === "catch_up") this.#catchUpsSent.add(sent);
+		// A new share counts toward its sender's ten an hour: the eleventh is a 429 until the oldest of them is an hour old.
+		if (share.kind === "share") {
+			const at = Date.now();
+			const hour = (this.#sharesSent.get(session.user) ?? []).filter((sentAt) => sentAt > at - 3600_000);
+			if (hour.length >= 10) {
+				const wait = Math.max(1, Math.ceil((hour[0]! + 3600_000 - at) / 1000));
+				throw new Refusal({
+					...{ status: 429, body: { error: "too many requests, try again later" } },
+					headers: { "Retry-After": String(wait) },
+				});
+			}
+			this.#sharesSent.set(session.user, [...hour, at]);
+		}
 		this.#shares.set(share.id, share);
 		return ok(this.#shareView(share), 201);
 	}
