@@ -3,6 +3,8 @@ import { sessionApi } from "$lib/api/api";
 import { resetPassword } from "$lib/api/auth";
 import { e2eApi } from "$lib/api/e2e";
 import { listDevices } from "../cbor";
+import { CoreError } from "../errors";
+import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
@@ -19,6 +21,8 @@ import {
 } from "../testing/engines";
 import { inactiveDevice, onlyDevice } from "./devices";
 import type { DeviceNotice, EngineState } from "./engine";
+import { LEGACY_RECORDS } from "./legacy";
+import { DEVICE_RECORD, EXTERNAL_SENDER, TOLD_ADDED, TOLD_INACTIVE } from "./store";
 
 // Devices in Settings (PLAN-E2E-CLIENTES.md, Task 24; decisions 13 and 52): the user's devices, those not seen in 45
 // days, another one taken off the list, one lost taken off with new keys, and this one's data deleted, on real cores
@@ -199,11 +203,56 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			// A device on the list: its data goes, and its listing stays for the user's other devices to take off, as
 			// the API takes no list without the session's device.
 			const b = await approvedDevice(fake, a);
+			// Its record goes with it (M4), and what the installation keeps stays: the external sender it pinned
+			// (Ruling 32) and the first members it saw of its conversations from before the cutover (Ruling 14).
+			const forgotten = [...DEVICE_RECORD, TOLD_INACTIVE, TOLD_ADDED];
+			for (const key of forgotten) b.store.write(key, ["kept"]);
+			b.store.write(LEGACY_RECORDS, { kept: true });
+			const pinned = b.store.read(EXTERNAL_SENDER);
+			expect(pinned).toEqual(expect.any(String));
 			await b.engine.removeThisDevice();
+			expect(forgotten.filter((key) => b.store.read(key) !== null)).toEqual([]);
+			expect([b.store.read(EXTERNAL_SENDER), b.store.read(LEGACY_RECORDS)]).toEqual([pinned, { kept: true }]);
 			expect(await deviceIds(a)).toEqual([deviceOf(a), deviceOf(b)].sort());
 			await b.host.open(ana);
 			expect((await statusOf(b)).device_id).toBeUndefined();
 			await Promise.all([a.engine.stop(), fresh.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// M5: the database goes first, so a deletion that can't take it leaves the device as it was, its session too.
+	test(
+		"a deletion whose database can't go leaves the device, its registration and its session as they were",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			let refusals = 1;
+			const host = testHost();
+			const refusing: CoreHost = new Proxy(host, {
+				get(target, name) {
+					if (name === "destroy") {
+						return async (user: string) => {
+							if (refusals-- > 0) throw new CoreError("locked", "another instance holds the database");
+							return target.destroy(user);
+						};
+					}
+					const value = Reflect.get(target, name);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			const fresh = testDevice(fake, ana, { host: refusing });
+			await fresh.engine.start();
+			expect(await rejection(fresh.engine.removeThisDevice())).toMatchObject({ code: "locked" });
+			expect(await deviceIds(a)).toContain(deviceOf(fresh));
+			expect((await fresh.api.devices()).find(({ current }) => current)?.id).toBe(deviceOf(fresh));
+			expect(fresh.engine.state).toEqual({ name: "new_device" });
+			// Asked again, it goes: the database, then its registration.
+			await fresh.engine.removeThisDevice();
+			expect(await deviceIds(a)).toEqual([deviceOf(a)]);
+			await Promise.all([a.engine.stop(), fresh.engine.stop()]);
 		},
 		SLOW,
 	);
@@ -264,6 +313,99 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			expect(await deviceIds(a)).toEqual([deviceOf(a), deviceOf(b)].sort());
 			await until(async () => (await statusOf(b)).identity_key === after.identity_key);
 			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// I1: another device takes off a device a waiting change keeps, which neither its upload nor its Finish can then
+	// leave out (the core's same rotation). The page says so, until another device's change ends it.
+	test(
+		"a change of keys that can't finish says so, until this device's data goes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const [b, kept] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			await a.engine.changeKeys();
+			expect(rotationKey(a.engine.state)).toMatch(RECOVERY_KEY);
+			await b.engine.removeDevice(deviceOf(kept));
+			// Its upload: the API refuses a transfer to a device it removed (400).
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+
+			// After a restart, its Finish can't run it either: the core has no certificate for that device.
+			await a.engine.stop();
+			const again = testDevice(fake, ana, { host: a.host, store: a.store, token: a.token });
+			await again.engine.start();
+			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null } });
+			await again.engine.changeKeys();
+			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+
+			// Another device's change of keys doesn't end it: the core refuses its transfer while this change waits
+			// (invalid_signature, duvetchat/e2e#49), and the inbox lets it go.
+			await b.engine.changeKeys();
+			await b.engine.keySaved();
+			await until(async () => (await again.api.inbox()).length === 0);
+			await again.engine.changeKeys();
+			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+			expect((await statusOf(again)).waiting_upload).toBe("rotate_keys");
+			// Deleting this device's data does.
+			await again.engine.removeThisDevice();
+			expect(again.engine.state).toEqual({ name: "starting" });
+			await Promise.all([again.engine.stop(), b.engine.stop(), kept.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// I1: another device's change of keys went up first, whose transfer the core can't take while this change waits.
+	test(
+		"a change of keys another device's change went before says it can't finish",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const b = await approvedDevice(fake, a);
+			await a.engine.changeKeys();
+			expect(rotationKey(a.engine.state)).toMatch(RECOVERY_KEY);
+			await b.engine.changeKeys();
+			await b.engine.keySaved();
+			// Its upload: the API holds the other device's keys (409), every time.
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+
+			// After a restart, its Finish can't run it either: the certificates served are signed by the other change.
+			await a.engine.stop();
+			const again = testDevice(fake, ana, { host: a.host, store: a.store, token: a.token });
+			await again.engine.start();
+			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null } });
+			await again.engine.changeKeys();
+			expect(again.engine.state).toEqual({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+			expect((await statusOf(again)).waiting_upload).toBe("rotate_keys");
+			await Promise.all([again.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// M3: a list of this device's that the API never took holds a removal the next list or change takes along.
+	test(
+		"what an earlier removal that failed takes along is told before the next change",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			expect(await a.engine.alsoRemoved()).toEqual([]);
+			fake.refuse(LIST, 500, { error: "internal server error" });
+			await rejection(a.engine.removeDevice(deviceOf(b)));
+			expect(await a.engine.alsoRemoved()).toEqual([deviceOf(b)]);
+			// The next removal takes it along, and then nothing waits.
+			await a.engine.removeDevice(deviceOf(c));
+			expect(await deviceIds(a)).toEqual([deviceOf(a)]);
+			expect(await a.engine.alsoRemoved()).toEqual([]);
+			await Promise.all([a, b, c].map((device) => device.engine.stop()));
 		},
 		SLOW,
 	);

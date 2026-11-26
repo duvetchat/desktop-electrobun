@@ -13,7 +13,13 @@ import en from "../../../../messages/en.json";
 // The confirmation's store, a .svelte.ts module, uses $state, which only Svelte's compiler knows: here it's the value
 // itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { default: DevicesSettings } = await import("./DevicesSettings.svelte");
+const {
+	default: DevicesSettings,
+	askToChangeKeys,
+	askToDeleteThisDevice,
+	removalNotes,
+} = await import("./DevicesSettings.svelte");
+const { confirmStore } = await import("$lib/stores/confirm.svelte");
 
 const DAY = 24 * 3600 * 1000;
 const NOW = Date.parse("2026-11-25T12:00:00Z");
@@ -99,6 +105,58 @@ describe("Settings' devices", () => {
 		const failed = drawn({ devices: null, failed: true });
 		expect(failed).toContain(en.e2e_devices_failed);
 		expect(buttons(failed, en.e2e_try_again)).toBe(1);
+	});
+
+	// M1 and I1: a change that waits, with no key on screen, is finished from here too; one that can't finish says so.
+	test("offer to finish a change of keys that waits, or say why it can't and what to do", () => {
+		const waiting = drawn({ encryption: { name: "ready", rotation: { recoveryKey: null } } });
+		expect(waiting).toContain(en.e2e_finish_keys);
+		expect(buttons(waiting, en.e2e_finish)).toBe(1);
+		const stuck = drawn({ encryption: { name: "ready", rotation: { recoveryKey: null, stuck: true } } });
+		expect(stuck).toContain(en.e2e_rotation_stuck);
+		expect(buttons(stuck, en.e2e_finish)).toBe(0);
+		// A key on screen is its own dialog's.
+		const shown = drawn({ encryption: { name: "ready", rotation: { recoveryKey: "1".repeat(48) } } });
+		expect(shown).not.toContain(en.e2e_finish_keys);
+		expect(drawn()).not.toContain(en.e2e_finish_keys);
+	});
+
+	// I2 and M6: the confirmation says what's lost for each case, and names the recovery key on every listed device.
+	test("ask before deleting this device's data in its case's words", () => {
+		const asked = (devices: Device[] | null) => {
+			void askToDeleteThisDevice(devices, async () => {});
+			const message = confirmStore.pending?.message;
+			confirmStore.cancel();
+			return message;
+		};
+		expect(asked([THIS, BROWSER])).toBe(en.e2e_delete_only_device_confirm);
+		expect(asked([THIS, PHONE, BROWSER])).toBe(en.e2e_delete_listed_device_confirm);
+		expect(asked([{ ...THIS, listed: false }, PHONE])).toBe(en.e2e_delete_device_confirm);
+		expect(asked(null)).toBe(en.e2e_delete_only_device_confirm);
+		for (const listed of [en.e2e_delete_only_device_confirm, en.e2e_delete_listed_device_confirm]) {
+			expect(listed).toContain("recovery key");
+		}
+		expect(en.e2e_delete_listed_device_confirm).toContain("device list");
+	});
+
+	// M7 and M3: the dialog names the device as Bun's box does, by its ID, and what an earlier removal takes along.
+	test("name a device in its removal by its ID's start, and what an earlier removal takes along", () => {
+		const alone = removalNotes(PHONE, [], [THIS, PHONE, BROWSER]).join(" ");
+		expect(alone).toContain(PHONE.id.slice(0, 8));
+		expect(alone).not.toContain(BROWSER.name);
+		const along = removalNotes(PHONE, [BROWSER.id], [THIS, PHONE, BROWSER]).join(" ");
+		expect(along).toContain(BROWSER.name);
+	});
+
+	test("ask before changing the keys, naming what an earlier removal takes along", () => {
+		void askToChangeKeys([THIS, PHONE, BROWSER], [], async () => {});
+		expect(confirmStore.pending?.message).toBe(en.e2e_change_keys_confirm);
+		confirmStore.cancel();
+		void askToChangeKeys([THIS, PHONE, BROWSER], [PHONE.id], async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(en.e2e_change_keys_confirm);
+		expect(message).toContain(PHONE.name);
 	});
 
 	// Both apps say the notices word for word (lib/e2e/notices.ts, which the mobile app's test holds to the same table).

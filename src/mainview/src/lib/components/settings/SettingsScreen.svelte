@@ -1657,6 +1657,7 @@
 				await loadDevices();
 			}}
 			onChangeKeys={engine.changeKeys}
+			onAlsoRemoved={engine.alsoRemoved}
 			onRemoveThis={engine.removeThisDevice}
 		/>
 	{:else if activeSection === "audio"}

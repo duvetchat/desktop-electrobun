@@ -259,7 +259,10 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			if (underWay === null) throw refused("refused", "this device can't tell what it would approve");
 			question = approvalQuestion(underWay);
 		} else if (cmd === "sign_device_list") {
-			question = removalQuestion(devices(command.remove));
+			const remove = devices(command.remove);
+			// A list that takes off no device would be a box that names none (M8).
+			if (remove.length === 0) throw bad("remove", "a device list is signed to take off at least one device");
+			question = removalQuestion(remove);
 		} else {
 			const remove = cmd === "rotate_keys" ? devices(command.remove) : [];
 			// Run again before its upload, the command makes nothing new: it hands back what it made.

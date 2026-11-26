@@ -17,6 +17,7 @@ import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import {
 	addedToTell,
 	confirmKeys,
+	devicesAlong,
 	inactiveToTell,
 	makeKeys,
 	publishKeys,
@@ -30,7 +31,7 @@ import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
-import { DEVICE_RECORD, EXTERNAL_SENDER, type EngineStore } from "./store";
+import { DEVICE_RECORD, EXTERNAL_SENDER, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
 import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
@@ -90,14 +91,15 @@ export interface EngineParts {
  * What the views show (PLAN-E2E-CLIENTES.md, «El motor», its states). A first device waits for the person's tap to
  * make its identity, then shows its recovery key (`recoveryKey`) until it's saved; `finishing` when an identity it made
  * before the app closed still waits for its upload. A ready device changing its keys (Task 24) shows their new recovery
- * key the same way (`rotation`), or, with none, one made before the app closed that the person's Finish brings back.
+ * key the same way (`rotation`), or, with none, one made before the app closed that the person's Finish brings back;
+ * `stuck`, one that can't finish, as another device took off a device it keeps or changed the keys first.
  * `failed` with `lostKey` is a database its key no longer opens.
  */
 export type EngineState =
 	| { name: "starting" }
 	| { name: "first_device"; recoveryKey: string | null; finishing: boolean }
 	| { name: "new_device" }
-	| { name: "ready"; rotation?: { recoveryKey: string | null } }
+	| { name: "ready"; rotation?: { recoveryKey: string | null; stuck?: true } }
 	| { name: "removed" }
 	| { name: "locked" }
 	| { name: "unsupported" }
@@ -161,6 +163,8 @@ export class E2EEngine {
 	#made: IdentityMade | null = null;
 	/** What rotate_keys answered, until it's uploaded: never kept elsewhere, as the core runs the same change again. */
 	#keys: KeysMade | null = null;
+	/** The change of keys under way can't finish (stuckKeys): until the core lets it go, Finish says so. */
+	#stuck = false;
 	/** This installation's device, as its database names it, whether or not the session is bound to it yet. */
 	#self: string | null = null;
 	/** How many rounds each inbox message's call was cut (inbox.ts). */
@@ -252,30 +256,44 @@ export class E2EEngine {
 	}
 
 	/**
-	 * This device's data deleted, on the person's word (decision 13): its registration first when it's off the list, then
-	 * its database with its key, and its record; the engine does nothing more, and the page signs out after. On the list,
-	 * it stays there for the user's other devices to take off, as the API takes no list without the session's device.
+	 * The devices of the user's that a list of this device's the API never took leaves out (M3): the next list or change
+	 * of keys takes them along, which the page names before it asks.
+	 */
+	alsoRemoved(): Promise<string[]> {
+		return this.#act(() => devicesAlong(this.#parts));
+	}
+
+	/**
+	 * This device's data deleted, on the person's word (decision 13): its database with its key, then its record, and
+	 * the engine does nothing more; then its registration, when it's off the list, which the API takes away. The page
+	 * signs out after. On the list, it stays there for the user's other devices to take off, as the API takes no list
+	 * without the session's device. The database goes first: a deletion that can't take it leaves the device as it was,
+	 * its session too, for the person to try again.
 	 */
 	removeThisDevice(): Promise<void> {
 		return this.#queue(async () => {
 			const { api, host, store, user } = this.#parts;
-			if (this.#device) {
-				const own = await api.devices().catch((error: unknown) => {
-					console.error("[e2e] This device's registration wasn't read:", error);
-					return [];
-				});
-				if (own.some(({ current, listed }) => current && !listed)) {
-					await api.deleteDevice(this.#device).catch((error: unknown) => {
-						console.error("[e2e] This device's registration stays for the user's other devices to take off:", error);
-					});
-				}
-			}
+			const device = this.#device;
+			const unlisted =
+				device !== null &&
+				(await api.devices().then(
+					(own) => own.some(({ current, listed }) => current && !listed),
+					(error: unknown) => {
+						console.error("[e2e] This device's registration wasn't read:", error);
+						return false;
+					},
+				));
 			await host.destroy(user);
-			for (const key of DEVICE_RECORD) store.write(key, null);
+			for (const key of [...DEVICE_RECORD, TOLD_INACTIVE, TOLD_ADDED]) store.write(key, null);
 			this.#halt();
 			this.#made = null;
 			this.#keys = null;
+			this.#stuck = false;
 			this.#set({ name: "starting" });
+			if (!unlisted || !device) return;
+			await api.deleteDevice(device).catch((error: unknown) => {
+				console.error("[e2e] This device's registration stays for the user's other devices to take off:", error);
+			});
 		});
 	}
 
@@ -533,15 +551,34 @@ export class E2EEngine {
 			this.#keys = await makeKeys(this.#parts, remove);
 		} catch (error) {
 			if (error instanceof CoreError && error.code === "refused") return;
+			// The same change again needs the served certificate of each device it keeps, signed by the identity it
+			// replaces: one taken off meanwhile has none, and another device's change signed them all anew (I1).
+			const refusedAgain =
+				error instanceof CoreError &&
+				((error.code === "bad_command" && error.field === "certificates") || error.code === "invalid_signature");
+			if (refusedAgain && (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") {
+				return this.#stuckKeys();
+			}
 			throw error;
 		}
 		this.#set({ name: "ready", rotation: { recoveryKey: this.#keys.recovery_key } });
 	}
 
 	/**
+	 * A change of keys that can't finish (I1): another device took off a device it keeps, or changed the keys first, and
+	 * the core runs only the same change again until its upload, refusing another change's transfer meanwhile
+	 * (invalid_signature; duvetchat/e2e#49). Only deleting this device's data ends it; the views say so.
+	 */
+	#stuckKeys() {
+		this.#keys = null;
+		this.#stuck = true;
+		this.#set({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+	}
+
+	/**
 	 * The person saved the new recovery key: the keys go up, and only once the API took them are they confirmed. A refusal
 	 * or a lost answer rejects, the key still shown, and the same bytes go next time. Another device's change of keys
-	 * there first (409) ends this one once its transfer comes (the core lets its own go): the inbox is read for it.
+	 * there first (409) leaves this one unable to finish, unless the inbox's transfer let it go.
 	 */
 	async #keysSaved(made: KeysMade): Promise<void> {
 		try {
@@ -551,9 +588,21 @@ export class E2EEngine {
 				this.#keys = null;
 				return this.#set({ name: "update", minimum: error.minimum });
 			}
+			// A transfer to a device the API took away, which the same change can't leave out.
+			const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
+			if (
+				statusOf(error) === 400 &&
+				typeof refusal === "string" &&
+				/isn't a registered device of yours/.test(refusal)
+			) {
+				return this.#stuckKeys();
+			}
 			if (statusOf(error) !== 409) throw error;
 			this.#keys = null;
 			await this.#inbox();
+			// The API holds another device's keys, whose transfer the core can't take while this change waits: the same
+			// bytes are refused every time (I1).
+			if ((await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") return this.#stuckKeys();
 		}
 		this.#keys = null;
 		this.#set(await this.#identity());
@@ -699,9 +748,11 @@ export class E2EEngine {
 	async #identity(): Promise<EngineState> {
 		const state = await identityState(this.#parts, () => takeInbox(this.#parts, this.#tries, this.#failures));
 		if (state.name === "ready" && (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") {
-			return { name: "ready", rotation: { recoveryKey: this.#keys?.recovery_key ?? null } };
+			const recoveryKey = this.#keys?.recovery_key ?? null;
+			return { name: "ready", rotation: this.#stuck ? { recoveryKey, stuck: true } : { recoveryKey } };
 		}
 		this.#keys = null;
+		this.#stuck = false;
 		return state;
 	}
 

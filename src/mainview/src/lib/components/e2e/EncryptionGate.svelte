@@ -54,9 +54,11 @@
 	const bar = $derived.by((): { text: string; label?: string; run?: () => Promise<void> } | null => {
 		switch (encryption.name) {
 			case "ready":
-				return encryption.rotation && !encryption.rotation.recoveryKey
-					? { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys }
-					: null;
+				// A change that can't finish (I1) says why and what to do, with nothing to press here.
+				if (!encryption.rotation || encryption.rotation.recoveryKey) return null;
+				return encryption.rotation.stuck
+					? { text: t("e2e_rotation_stuck") }
+					: { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys };
 			case "first_device":
 				return encryption.finishing
 					? { text: t("e2e_first_device_finish"), label: t("e2e_finish"), run: onMakeIdentity }

@@ -79,6 +79,13 @@ describe("the encryption gate", () => {
 		expect(finishing).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
 	});
 
+	// I1: a change of keys a removal elsewhere left unable to finish says why, and the two ways out.
+	test("a change of keys that can't finish says why and what to do, and offers no Finish", () => {
+		const stuck = drawn({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+		expect(stuck).toContain(en.e2e_rotation_stuck);
+		expect(stuck).not.toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+	});
+
 	test("says it in the notices' words", () => {
 		expect(en.e2e_removed_device).toBe(NOTICES.removed_device);
 		expect(en.e2e_locked).toBe(NOTICES.locked);

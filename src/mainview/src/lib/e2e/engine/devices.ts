@@ -126,6 +126,21 @@ export async function signWithout(parts: EngineParts, device: string): Promise<v
 }
 
 /**
+ * The devices the served list names that the list this device holds doesn't, the own user observed first: an earlier
+ * list of its own that the API never took leaves them out, and the core signs the next list or change of keys on top of
+ * it, so it takes them along (M3). None while a change of keys waits, whose list is another identity's.
+ */
+export async function devicesAlong(parts: EngineParts): Promise<string[]> {
+	const served = await servedIdentity(parts);
+	if (!served) return [];
+	await observeOwn(parts, served);
+	const status = await coreStatus(parts.host);
+	if (status.waiting_upload === "rotate_keys") return [];
+	const held = heldDevices(status);
+	return (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
+}
+
+/**
  * Takes another device of the user's off their account: one off the list by its registration, which the API deletes
  * (one listed meanwhile, 409, goes by a list), and one on it by a list without it.
  */

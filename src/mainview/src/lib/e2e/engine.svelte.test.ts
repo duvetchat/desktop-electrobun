@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { sessionApi } from "$lib/api/api";
 import { e2eApi } from "$lib/api/e2e";
@@ -226,15 +226,66 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			const ana = signedIn(fake);
 			const token = localStorage.getItem("duvet_session_token")!;
 			const host = testHost();
-			await readyOnDesktop(ana, host);
+			const { device_id } = await readyOnDesktop(ana, host);
+			// The device every identify names (lib/e2e/client.ts): it goes with the data (M4).
+			expect(localStorage.getItem(`duvet.e2e.${ana}.device`)).toBe(device_id);
 
 			const went = await withWindow(() => page.removeThisDevice());
 			// Signed out: the page went to sign in, and the API ended its session.
 			expect(went).toContain("sign-in");
 			expect(localStorage.getItem("duvet_session_token")).toBeNull();
+			expect(localStorage.getItem(`duvet.e2e.${ana}.device`)).toBeNull();
 			const ended = e2eApi(sessionApi({ token, sessionToken: null })).devices();
 			expect(await rejection(ended)).toMatchObject({ response: { status: 401 } });
 			// Its data is gone: its folder holds a new database, of no device.
+			const left = await reopened(host, ana);
+			expect(left.status).not.toHaveProperty("device_id");
+			await left.host.close();
+		},
+		SLOW,
+	);
+
+	// M9: the tab that leads deleted the data for another tab; its engine and its lock mustn't outlive the session.
+	test(
+		"on the web, the tab that leads signs out once it deleted its data for another tab, and lets the lock go",
+		async () => {
+			const fake = new FakeApi();
+			// The leader's sign-out takes its request's round trip before it lets the lock go, as over a network: its
+			// answer reaches the other tab first.
+			spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+				const request = new Request(input, init);
+				if (new URL(request.url).pathname === "/api/auth/logout") await Bun.sleep(50);
+				return fake.fetch(request);
+			}) as typeof fetch);
+			const ana = signedIn(fake);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			const host = testHost();
+			await page.startEngine(
+				ana,
+				platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: async () => host }),
+			);
+			await until(() => page.encryption.state.name === "first_device");
+			await page.makeIdentity();
+			await page.keySaved();
+			expect(page.encryption.state).toEqual({ name: "ready" });
+			// Another tab of the user's, waiting for the lock this page holds, asks it to delete the device's data.
+			const other = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: {},
+				lead: async () => {},
+			});
+			const location = { href: "" };
+			Object.defineProperty(globalThis, "window", { value: { location }, configurable: true });
+			try {
+				await other.call("removeThisDevice");
+				await until(() => location.href !== "", 15_000);
+				// Its tabs closed with its engine: the other tab takes the lock.
+				await other.leading;
+			} finally {
+				Reflect.deleteProperty(globalThis, "window");
+				other.close();
+			}
+			expect(location.href).toContain("sign-in");
 			const left = await reopened(host, ana);
 			expect(left.status).not.toHaveProperty("device_id");
 			await left.host.close();

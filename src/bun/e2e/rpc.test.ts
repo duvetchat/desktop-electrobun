@@ -478,8 +478,8 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		expect((await approver.run({ cmd: "sign_device_list", remove: [NEW_A] })).ok).toHaveProperty("device_list");
 		expect((await approver.run({ cmd: "status" })).ok.device_list).not.toBe(before);
 
-		// What Bun can't name, it doesn't ask about.
-		for (const remove of [undefined, "x", [7], ["not a device"], Array.from({ length: 21 }, () => NEW_A)]) {
+		// What Bun can't name, it doesn't ask about, nor a list that takes nothing off (M8).
+		for (const remove of [[], undefined, "x", [7], ["not a device"], Array.from({ length: 21 }, () => NEW_A)]) {
 			expect((await approver.run({ cmd: "sign_device_list", remove })).error).toMatchObject({
 				code: "bad_command",
 				field: "remove",

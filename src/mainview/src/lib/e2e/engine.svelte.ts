@@ -17,7 +17,7 @@ import { useDeviceSearch } from "$lib/search";
 import { dmMessages } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
-import { deviceName } from "./client";
+import { deviceName, forgetDevice } from "./client";
 import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
 import { decryptedFiles, useNamer } from "./decrypted-files.svelte";
 import { CoreError } from "./errors";
@@ -75,6 +75,8 @@ const pagePlatform = (): EnginePlatform => ({
 });
 
 let started = false;
+/** Whose the page's engine is: the device its identify names goes with its data. */
+let pageUser: string | null = null;
 let engine: E2EEngine | null = null;
 let tabs: BrowserTabs | null = null;
 let persisted = false;
@@ -168,6 +170,7 @@ function showSent(conversationId: string, nonce: string, message: DirectMessage)
 export async function startEngine(userId: string, platform: EnginePlatform = pagePlatform()): Promise<void> {
 	if (started) return;
 	started = true;
+	pageUser = userId;
 	onSignOut(stopEngine);
 	const read = (conversationId: string, ids: string[]) =>
 		onMessages<{ rows: ShownMessage[]; through?: number | null }>("read", { conversationId, ids }, (made) =>
@@ -241,7 +244,13 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
 			removeDevice: ({ deviceId, changeKeys }: DeviceParams) => live().removeDevice(deviceId, { changeKeys }),
 			changeKeys: () => live().changeKeys(),
-			removeThisDevice: () => live().removeThisDevice(),
+			alsoRemoved: () => live().alsoRemoved(),
+			removeThisDevice: async () => {
+				await live().removeThisDevice();
+				forgetDevice(userId);
+				// Asked by another tab, which signs out next: this one's engine and lock don't outlive the data (M9).
+				setTimeout(() => void logout(), 0);
+			},
 		},
 		lead: async () => {
 			engine = engineFor(userId, await platform.webHost(), platform);
@@ -391,8 +400,9 @@ interface DeviceParams {
 }
 
 /** The person's act on their devices, by this page's engine or the tab that leads: the state it leaves, shown. */
-function onDevices(method: string, params: unknown, run: (made: E2EEngine) => Promise<void>): Promise<void> {
-	if (tabs) return tabs.call<void>(method, params).finally(follow);
+function onDevices<T>(method: string, params: unknown, run: (made: E2EEngine) => Promise<T>): Promise<T> {
+	// The tab that leads runs its own engine: its tab method is another tab's, which signs this one out after.
+	if (tabs && !tabs.leader) return tabs.call<T>(method, params).finally(follow);
 	return engine ? run(engine) : Promise.reject(new Error("encrypted conversations aren't ready on this device"));
 }
 
@@ -401,9 +411,12 @@ export const removeDevice = (deviceId: string, changeKeys = false) =>
 	onDevices("removeDevice", { deviceId, changeKeys }, (made) => made.removeDevice(deviceId, { changeKeys }));
 /** Change security keys, or Finish a change made before the app closed: its new recovery key shows next. */
 export const changeKeys = () => onDevices("changeKeys", undefined, (made) => made.changeKeys());
+/** What an earlier removal that never went up takes along with the next list or change of keys (M3). */
+export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 
 /** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */
 export async function removeThisDevice(): Promise<void> {
 	await onDevices("removeThisDevice", undefined, (made) => made.removeThisDevice());
+	if (pageUser) forgetDevice(pageUser);
 	await logout();
 }

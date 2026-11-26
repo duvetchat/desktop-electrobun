@@ -56,6 +56,11 @@ export function keepDevice(userId: string, deviceId: string): void {
 	}
 }
 
+/** Forgets the device this installation registered for the user: its data went, and no identify names it again. */
+export function forgetDevice(userId: string): void {
+	localStorage.removeItem(deviceKey(userId));
+}
+
 /** The user the page last connected as (its READY's), whose device a new page's identify names before READY says. */
 export function lastUser(): string | null {
 	return localStorage.getItem(USER_KEY);

@@ -3,6 +3,7 @@
 	import { onlyDevice } from "$lib/e2e/engine/devices";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 
 	/**
@@ -13,7 +14,36 @@
 		readonly encryption: { readonly state: EngineState };
 		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
 		changeKeys(): Promise<void>;
+		/** What an earlier removal that never went up takes along with the next list or change of keys. */
+		alsoRemoved(): Promise<string[]>;
 		removeThisDevice(): Promise<void>;
+	}
+
+	/** The sentence naming the devices an earlier removal takes along (M3), by name, or none. */
+	function alongLine(along: readonly string[], devices: readonly Device[] | null): string | null {
+		if (along.length === 0) return null;
+		const names = along.map((id) => devices?.find((device) => device.id === id)?.name ?? id.slice(0, 8));
+		return t("e2e_device_remove_along", { names: formatList(names) });
+	}
+
+	/**
+	 * What the removal of a device says beside its question: the start of its ID, as Bun's own box names it in full
+	 * (M7), and the devices an earlier removal takes along (M3).
+	 */
+	export function removalNotes(device: Device, along: readonly string[], devices: readonly Device[] | null): string[] {
+		const line = alongLine(along, devices);
+		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...(line ? [line] : [])];
+	}
+
+	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3). */
+	export function askToChangeKeys(
+		devices: readonly Device[] | null,
+		along: readonly string[],
+		run: () => Promise<void>,
+	): Promise<void> {
+		const line = alongLine(along, devices);
+		const message = line ? `${t("e2e_change_keys_confirm")} ${line}` : t("e2e_change_keys_confirm");
+		return confirmAction(message, t("e2e_change_keys"), run);
 	}
 
 	/**
@@ -63,6 +93,7 @@
 		onReload,
 		onRemove,
 		onChangeKeys,
+		onAlsoRemoved = async () => [],
 		onRemoveThis,
 	}: {
 		/** The user's devices, null until they're read. */
@@ -77,7 +108,10 @@
 		now?: number;
 		onReload: () => void;
 		onRemove: (deviceId: string, changeKeys: boolean) => Promise<void>;
+		/** Also Finish, for a change that waits. */
 		onChangeKeys: () => Promise<void>;
+		/** What an earlier removal that never went up takes along with the next one. */
+		onAlsoRemoved?: () => Promise<string[]>;
 		onRemoveThis: () => Promise<void>;
 	} = $props();
 
@@ -85,15 +119,36 @@
 	const ready = $derived(encryption.name === "ready" && !encryption.rotation);
 	const hasData = $derived(hasDeviceData(encryption));
 
+	// A change of keys that waits, with no key on screen (which is its dialog's): Finish, or why it can't (M1, I1).
+	const waiting = $derived(
+		encryption.name === "ready" && encryption.rotation && !encryption.rotation.recoveryKey ? encryption.rotation : null,
+	);
+
 	let removing = $state<Device | null>(null);
+	let along = $state<string[]>([]);
 	let lost = $state(false);
 	let busy = $state(false);
 	let failure = $state<string | null>(null);
 
+	/** What an earlier removal takes along, or none when it can't be told. */
+	const readAlong = () =>
+		onAlsoRemoved().catch((error: unknown) => {
+			console.error("[e2e] What an earlier removal takes along wasn't read:", error);
+			return [];
+		});
+
 	function askToRemove(device: Device) {
 		removing = device;
+		along = [];
 		lost = false;
 		failure = null;
+		void readAlong().then((ids) => {
+			if (removing === device) along = ids.filter((id) => id !== device.id);
+		});
+	}
+
+	async function askToChange() {
+		await askToChangeKeys(devices, await readAlong(), onChangeKeys);
 	}
 
 	async function remove() {
@@ -165,15 +220,18 @@
 		{/if}
 	</SettingsGroup>
 
-	{#if ready || hasData}
+	{#if ready || hasData || waiting}
 		<SettingsGroup>
+			{#if waiting?.stuck}
+				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_rotation_stuck")} icon={KeyIcon} />
+			{:else if waiting}
+				<SettingsRow label={t("e2e_finish_keys")} icon={KeyIcon}>
+					<Button size="sm" onclick={() => void onChangeKeys()}>{t("e2e_finish")}</Button>
+				</SettingsRow>
+			{/if}
 			{#if ready}
 				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_change_keys_line")} icon={KeyIcon}>
-					<Button
-						variant="secondary"
-						size="sm"
-						onclick={() => confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys)}
-					>
+					<Button variant="secondary" size="sm" onclick={() => void askToChange()}>
 						{t("e2e_change_keys")}
 					</Button>
 				</SettingsRow>
@@ -199,6 +257,11 @@
 >
 	{t("e2e_device_remove_text")}
 	{#snippet body()}
+		{#if removing}
+			{#each removalNotes(removing, along, devices) as note (note)}
+				<p class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4]">{note}</p>
+			{/each}
+		{/if}
 		{#if removing?.listed}
 			<label class="text-duvet-ink flex items-start gap-2.5 text-[13.5px] leading-[1.45]">
 				<input type="checkbox" bind:checked={lost} disabled={busy} class="{CHECKBOX} mt-0.5" />
