@@ -4,11 +4,16 @@
 import { afterAll, afterEach, mock, spyOn } from "bun:test";
 import { rmSync } from "node:fs";
 import { sessionApi } from "$lib/api/api";
+import type { DirectMessage } from "$lib/api/conversations";
 import { e2eApi, type E2eApi } from "$lib/api/e2e";
+import { bytesBase64 } from "$lib/staged-images";
+import type { EnvelopeFile } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import type { CoreHost } from "../host";
 import { E2EEngine, type BackupShown, type Clock, type EngineState } from "../engine/engine";
+import { shownFile, type ShownFile } from "../engine/files";
+import type { IdentityMade } from "../engine/identity";
 import type { EngineStore } from "../engine/store";
 import type { FakeApi, GatewayEvent } from "./fake-api";
 import { BunCoreHost } from "./host-bun";
@@ -387,4 +392,69 @@ export function watchedHost(
 			return typeof value === "function" ? value.bind(target) : value;
 		},
 	});
+}
+
+/** The device's files of a message, once its core holds the message, as a view reads them. */
+export async function filesOn(device: TestDevice, conversation: string, id: string): Promise<ShownFile[]> {
+	let files: ShownFile[] = [];
+	await until(async () => {
+		const [row] = await device.engine.messages(conversation, [id]);
+		if (row?.status !== "ok") return false;
+		files = row.attachments.map(shownFile).filter((file): file is ShownFile => file !== null);
+		return true;
+	});
+	return files;
+}
+
+/**
+ * A file as another client could send it, its envelope written by hand: the core seals it and encrypts what it's told,
+ * and nothing checks what the sender says of it. Sent beside the device's engine, which is idle.
+ */
+export async function sendWritten(
+	device: TestDevice,
+	conversation: string,
+	files: { bytes: Uint8Array; said: Partial<EnvelopeFile> }[],
+): Promise<DirectMessage> {
+	const attachments: EnvelopeFile[] = [];
+	const sealed: Blob[] = [];
+	for (const { bytes, said } of files) {
+		const { key } = await device.host.handle<{ key: string }>({ cmd: "attachment_key" });
+		const id = crypto.randomUUID();
+		const hash = bytesBase64(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))));
+		sealed.push(await device.host.sealFile(key, id, new Blob([new Uint8Array(bytes)])));
+		attachments.push({
+			id,
+			key,
+			sha256: hash,
+			name: "file",
+			type: "application/octet-stream",
+			size: bytes.length,
+			...said,
+		});
+	}
+	const nonce = crypto.randomUUID();
+	const { ciphertext } = await device.host.handle<{ ciphertext: string }>({
+		...{ cmd: "encrypt", conversation_id: conversation, nonce },
+		envelope: { attachments },
+	});
+	const ids = attachments.map((a) => a.id);
+	const message = await device.api.sendMessage(conversation, { ciphertext, nonce, attachment_ids: ids }, sealed);
+	await device.host.handle({
+		...{ cmd: "sent", conversation_id: conversation, nonce },
+		...{ message_id: message.id, seq: message.seq },
+	});
+	return message;
+}
+
+/** Another device of the user starts over (Task 26 does it from the app): a new identity, listing that device alone. */
+export async function resetFrom({ host, api, user }: TestDevice) {
+	const made = await host.handle<IdentityMade>({ cmd: "reset_identity" });
+	const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
+	const replaces = (await api.identity(user)).identity_key;
+	const published = await api.putIdentity({
+		...{ identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key },
+		...{ replaces, reset: true },
+	});
+	await host.handle({ cmd: "identity_uploaded" });
+	await host.handle({ cmd: "device_list_uploaded", version: published.device_list_version });
 }

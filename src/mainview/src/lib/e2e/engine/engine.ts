@@ -52,6 +52,7 @@ import {
 	EXTERNAL_SENDER,
 	KEPT_RESET,
 	KEYS_AGAIN,
+	LISTED,
 	RELISTED,
 	TOLD_ADDED,
 	TOLD_INACTIVE,
@@ -1179,6 +1180,10 @@ export class E2EEngine {
 	#set(state: EngineState) {
 		const was = this.state.name;
 		this.state = this.#shown(state);
+		// Ready: the API listed this device, which no list it serves makes a new one again (firstListWaits).
+		if (state.name === "ready" && this.#self && this.#parts.store.read(LISTED) !== this.#self) {
+			this.#parts.store.write(LISTED, this.#self);
+		}
 		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups, and the
 		// packages that came meanwhile).
 		if (state.name === "ready" && was !== "ready") {
@@ -1626,7 +1631,7 @@ export class E2EEngine {
 	/** This device holds the identity the API serves, and the API's list doesn't name it yet. */
 	async #firstListWaits(): Promise<boolean> {
 		const served = await servedIdentity(this.#parts);
-		return served !== null && firstListWaits(served, await coreStatus(this.#parts.host));
+		return served !== null && firstListWaits(served, await coreStatus(this.#parts.host), this.#parts.store);
 	}
 
 	/** Uploads the key packages: nothing while this device isn't on the list, which the API refuses (e2eListed). */
