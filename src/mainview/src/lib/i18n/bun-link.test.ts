@@ -45,7 +45,7 @@ test("the system's languages are Bun's, asked as the page starts and again when 
 	const stop = followSystemLanguages(undefined, page);
 	await settle();
 	expect(rpc.asks).toBe(1);
-	rpc.answers.shift()?.(["es-CO", "en-GB"]);
+	rpc.answers.shift()?.(["en-GB", "es-CO"]);
 	await settle();
 	expect(regionalLocale()).toBe("en-GB");
 
@@ -102,7 +102,7 @@ describe("before the page first draws", () => {
 		await settle();
 		expect(rpc.asks).toBe(asks + 1);
 		expect(done).toBe(false);
-		rpc.answers.shift()?.(["es-CO", "en-IN"]);
+		rpc.answers.shift()?.(["en-IN"]);
 		await primed;
 		expect(regionalLocale()).toBe("en-IN");
 	});

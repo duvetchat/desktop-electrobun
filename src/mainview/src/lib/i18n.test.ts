@@ -165,6 +165,7 @@ describe("the language files", () => {
 			de: /\b(Server|Kan(al|äle))\b/i,
 			"pt-BR": /\b(servidor(es)?|cana(l|is))\b/i,
 			it: /\b(server|canal[ei])\b/i,
+			fi: /\b(palvelin(ta|ten|in|ista|issa|ille|illa|ilta)?|palvelim(en|et|ia|ien|iin|issa|ista|ille|illa|ilta)?|kanav(a|an|aa|at|ien|ia|issa|ista|aan|alle|alla|alta))\b/i,
 		};
 		for (const locale of LOCALES) {
 			const found = Object.entries(fileOf(locale)).filter(
@@ -256,9 +257,9 @@ describe("the app's language", () => {
 		await i18n.setLocalePref("system");
 		expect(i18n.regionalLocale()).toBe("en");
 		await i18n.setSystemLanguages(["es-CO", "en-GB"]);
-		expect(i18n.regionalLocale()).toBe("en-GB");
-		expect(i18n.systemLanguageName()).toBe("English");
-		expect(i18n.currentLocale()).toBe("en");
+		expect(i18n.regionalLocale()).toBe("es-CO");
+		expect(i18n.systemLanguageName()).toBe("Español");
+		expect(i18n.currentLocale()).toBe("es");
 	});
 
 	test("takes only the tags Intl takes from Bun's list, and a list with none leaves the web view's", async () => {

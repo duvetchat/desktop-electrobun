@@ -1,8 +1,8 @@
 import { expect, mock, test } from "bun:test";
 
-// "Match system" with the system's languages as Bun says them (#464, lib/i18n.ts: setSystemLanguages). A released
-// build ships English alone (SHIPPED), where every list comes to English: here a second language ships, so the list
-// can be seen to pick one.
+// "Match system" with the system's languages as Bun says them (#464, lib/i18n.ts: setSystemLanguages). A build that
+// ships English alone would bring every list to English: here a second language ships, so the list can be seen to
+// pick one.
 const real = { ...(await import("$lib/i18n/locale")) };
 const shipped = ["en", "es"] as const;
 mock.module("$lib/i18n/locale", () => ({

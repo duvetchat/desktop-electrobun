@@ -163,6 +163,7 @@ const FILES: Record<Exclude<Locale, "en">, () => Promise<unknown>> = {
 	de: () => import("../../messages/de.json"),
 	"pt-BR": () => import("../../messages/pt-BR.json"),
 	it: () => import("../../messages/it.json"),
+	fi: () => import("../../messages/fi.json"),
 };
 
 async function load(locale: UiLocale): Promise<void> {

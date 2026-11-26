@@ -11,11 +11,11 @@
 // A known limitation: what AppKit says itself follows the bundle's language, which macOS picks from the system's
 // languages among the bundle's (CFBundleLocalizations, scripts/localize-bundle.ts), not from the app's pick. That's the
 // names AppKit gives some items (View's Enter and Exit Full Screen, Edit's Start Dictation… and Emoji & Symbols), the
-// About panel, the open and save panels, and the microphone and camera prompts. While English is the one language
-// shipped, all of it is English, as a released build is; once another ships, a pick that isn't the system's has them in
-// the system's language beside the app's menu items. The way out is writing the pick into the app's own AppleLanguages
-// default (removing it for System), which AppKit and the prompts follow from the next start, with "Match system"
-// reading the global list (CFPreferences, kCFPreferencesAnyApplication) so the app's own doesn't feed back into it.
+// About panel, the open and save panels, and the microphone and camera prompts. A pick that isn't the system's has
+// them in the system's language beside the app's menu items. The way out is writing the pick into the app's own
+// AppleLanguages default (removing it for System), which AppKit and the prompts follow from the next start, with
+// "Match system" reading the global list (CFPreferences, kCFPreferencesAnyApplication) so the app's own doesn't feed
+// back into it.
 import { createInstance } from "i18next";
 import ICU from "i18next-icu";
 import type en from "../mainview/messages/en.json";

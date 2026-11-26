@@ -5,7 +5,7 @@
 export const LOCALE_KEY = "duvet.locale.v1";
 
 /** Every language the app has words for. English first: the others are written from it. */
-export const LOCALES = ["en", "es", "fr", "de", "pt-BR", "it"] as const;
+export const LOCALES = ["en", "es", "fr", "de", "pt-BR", "it", "fi"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**
@@ -13,7 +13,7 @@ export type Locale = (typeof LOCALES)[number];
  * every key (lib/i18n.test.ts holds it to that): until then a system in that language would get the app half in it.
  * A development build offers every language, and the pseudo-language, to pick by hand.
  */
-export const SHIPPED: readonly Locale[] = ["en"];
+export const SHIPPED: readonly Locale[] = ["en", "es", "pt-BR", "it", "fr", "de", "fi"];
 
 /**
  * English with every letter accented, in brackets and a third longer (lib/i18n/pseudo.ts): text still in English after
@@ -31,6 +31,7 @@ export const LOCALE_NAMES: Record<UiLocale, string> = {
 	de: "Deutsch",
 	"pt-BR": "Português (Brasil)",
 	it: "Italiano",
+	fi: "Suomi",
 	[PSEUDO]: "Ƥšéûðö (en-XA)",
 };
 
