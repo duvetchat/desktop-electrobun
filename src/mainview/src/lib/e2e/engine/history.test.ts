@@ -183,6 +183,29 @@ function countingImports(
 	});
 }
 
+/**
+ * Ana's DM with Bo, both in its group, where Ana verified Bo; then Bo changes his keys (Settings → Devices): a strong
+ * change on Ana's device, which holds what goes to him until her yes (Task 28).
+ */
+async function boChangesKeys(setup = setUp()) {
+	const { fake } = setup;
+	const [ana, bo] = [fake.addUser(), fake.addUser()];
+	fake.befriend(ana, bo);
+	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const a = await firstDevice(fake, ana);
+	const b = await firstDevice(fake, bo);
+	await a.engine.openConversation(conversation);
+	await b.engine.openConversation(conversation);
+	await sameGroup([a, b], conversation);
+	await send(a, conversation, "before your new keys");
+	const { digits } = await a.engine.safetyNumber(bo);
+	expect(await a.engine.verifyContact(bo, digits)).toBe(true);
+	await b.engine.changeKeys();
+	await b.engine.keySaved();
+	await until(() => a.engine.contacts().changes[bo]?.verified === true);
+	return { ...setup, ana, bo, conversation, a, b };
+}
+
 /** A host whose `share` the core refuses, as one would whose served devices aren't on the member's list. */
 const unlisted = (host: CoreHost): CoreHost =>
 	new Proxy(host, {
@@ -522,6 +545,43 @@ describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 				error: null,
 			});
 			expect(by(a, "PUT", PACKAGE)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// Task 28: a verified contact's changed key holds what goes to them until the person's yes. A share's package is
+	// taken (the person hears it went), and its parts, its keys and its completion, which lists it for them and posts its
+	// notice, wait for the yes.
+	test(
+		"a share to a verified contact whose key changed sends no part, key or completion until the yes",
+		async () => {
+			const { requests, by, bo, conversation, a, b } = await boChangesKeys();
+			const mark = requests.length;
+			expect(await a.engine.shareHistory(conversation, bo, "week")).toMatchObject({ sent: true });
+			await turnEnded(a);
+			const since = () => requests.slice(mark).filter((seen) => seen.token === a.token);
+			expect(by(a, "PUT", PACKAGE)).toHaveLength(1);
+			expect(since().filter((seen) => [PART_UP, INBOX, COMPLETE].some((path) => path.test(seen.path)))).toEqual([]);
+			// Her yes names the change she was shown: the share goes on, and Bo's device offers it.
+			await a.engine.confirmKeyChanges([{ user: bo, change: a.engine.contacts().changes[bo]!.change }]);
+			await until(() => by(a, "POST", COMPLETE).length === 1);
+			await until(() => b.engine.offers(conversation).length === 1);
+		},
+		SLOW,
+	);
+
+	test(
+		"verifying the contact's new number sends the share that waited for it",
+		async () => {
+			const { by, bo, conversation, a, b } = await boChangesKeys();
+			expect(await a.engine.shareHistory(conversation, bo, "week")).toMatchObject({ sent: true });
+			await turnEnded(a);
+			expect(by(a, "PUT", PART_UP)).toEqual([]);
+			expect(by(a, "POST", COMPLETE)).toEqual([]);
+			const { digits } = await a.engine.safetyNumber(bo);
+			expect(await a.engine.verifyContact(bo, digits)).toBe(true);
+			await until(() => by(a, "POST", COMPLETE).length === 1);
+			await until(() => b.engine.offers(conversation).length === 1);
 		},
 		SLOW,
 	);

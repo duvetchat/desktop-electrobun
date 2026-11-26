@@ -7,7 +7,9 @@
 // inbox, and last it's completed, which posts its notice (type 4) to the conversation and lists it for the member: so
 // nobody sees a share whose keys didn't go. The person hears once the API took it or why it didn't; the rest goes
 // outside the engine's turn, as a catch-up does (deviceless.ts), and a try that failed waits and goes on with the same
-// package, which the API takes again. One that ends for good after the person heard it went is told to them.
+// package, which the API takes again. One that ends for good after the person heard it went is told to them. A share
+// to a verified contact whose key changed (Task 28) is taken, and nothing more of it goes until the person's yes, or
+// their verification of the new number.
 //
 // Receiving, a package is listed (HISTORY_SHARE_CREATE, GET …/history-shares: the API's oldest 100 not acknowledged,
 // the next once those are) and its key comes by the inbox, in either order: the record keeps the key's package 30 days,
@@ -108,6 +110,8 @@ interface Sharing {
 	keysSent: Set<string>;
 	tries: number;
 	cancel: (() => void) | null;
+	/** Its member's changed key waits for the person's yes (Task 28): nothing more of it goes until again(). */
+	held: boolean;
 	/** Answers the person, once the API answered its package. */
 	answer: (outcome: ShareOutcome) => void;
 }
@@ -165,7 +169,7 @@ export class Shares {
 		const answered = new Promise<ShareOutcome>((resolve) => (answer = resolve));
 		const sharing: Sharing = {
 			...{ conversationId, made, about, taken: false, step: "put", partsUp: 0, keysSent: new Set<string>() },
-			...{ tries: 0, cancel: null, answer },
+			...{ tries: 0, cancel: null, held: false, answer },
 		};
 		this.#going.add(sharing);
 		this.#start(sharing);
@@ -175,6 +179,18 @@ export class Shares {
 	/** The uploads going on now, settled, whatever they end as. */
 	settled(): Promise<void> {
 		return Promise.all([...this.#uploads]).then(() => {});
+	}
+
+	/**
+	 * The person's yes to a contact's changed key, or their verification of the new number: the shares held for one go
+	 * on, each held again while its member still waits for a yes.
+	 */
+	again() {
+		for (const sharing of this.#going) {
+			if (!sharing.held) continue;
+			sharing.held = false;
+			this.#start(sharing);
+		}
 	}
 
 	/** Nothing more goes up: what waits is let go, and the person still waiting is told it didn't go. */
@@ -190,7 +206,7 @@ export class Shares {
 	/**
 	 * Outside the turn, from where it stopped: the package, its parts, its key to each device (one the API no longer
 	 * has, or no longer lets this user's reach, takes none), and last its completion, which posts its notice and lists
-	 * it for the member.
+	 * it for the member. Past the package, a member whose changed key waits for the person's yes holds the rest.
 	 */
 	async #upload(sharing: Sharing) {
 		const { api, host } = this.#parts;
@@ -202,11 +218,13 @@ export class Shares {
 				sharing.taken = true;
 				sharing.answer({ sent: true, truncated: made.truncated, start: made.start });
 			}
+			if (this.#held(sharing)) return;
 			sharing.step = "parts";
 			for (; sharing.partsUp < made.parts; sharing.partsUp++) {
 				const part = await host.sharePart(made.share_id, sharing.partsUp);
 				await api.putSharePart(conversationId, made.share_id, sharing.partsUp, new Blob([part.slice()]));
 			}
+			if (this.#held(sharing)) return;
 			sharing.step = "keys";
 			for (const { device_id, message } of made.keys) {
 				if (sharing.keysSent.has(device_id)) continue;
@@ -255,6 +273,12 @@ export class Shares {
 			sharing.cancel = null;
 			if (this.#going.has(sharing)) this.#start(sharing);
 		});
+	}
+
+	/** Whether its member's changed key waits for the person's yes (Task 28), which holds it, untried, until again(). */
+	#held(sharing: Sharing): boolean {
+		sharing.held = !!this.#parts.contacts?.holding([sharing.about.to_user_id]).length;
+		return sharing.held;
 	}
 
 	/** It's over: the host lets the package go, and the person, if still waiting, hears how it went. */

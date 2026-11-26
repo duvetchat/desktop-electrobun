@@ -372,10 +372,14 @@ export class E2EEngine {
 		this.#released();
 	}
 
-	/** What waited for the person's yes goes: messages and edits, as at a READY, and the catch-ups held for it. */
+	/**
+	 * What waited for the person's yes goes: messages and edits, as at a READY, the catch-ups held for it, and their
+	 * shares of a conversation's history.
+	 */
 	#released() {
 		this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
 		this.#groups.ready();
+		this.#shares.again();
 	}
 
 	/** The core's security number with the contact, as it holds them now: observed first when it asks. */
