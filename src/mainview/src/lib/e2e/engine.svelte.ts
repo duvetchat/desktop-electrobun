@@ -199,6 +199,12 @@ function showSent(conversationId: string, nonce: string, message: DirectMessage)
 	});
 }
 
+/**
+ * The engine's methods the web's tabs run at most once: a group the API made, or a history share sent, before the
+ * leading tab went would be made twice by the next (#559).
+ */
+export const MADE_ONCE: readonly string[] = ["createConversation", "shareHistory"];
+
 /** Starts the page's engine for the session's user, once until it stops: its core closes as the user signs out. */
 export async function startEngine(userId: string, platform: EnginePlatform = pagePlatform()): Promise<void> {
 	if (started) return;
@@ -243,8 +249,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 	tabs = new BrowserTabs({
 		userId,
 		...platform.tabs,
-		// A group the API made, or a history share sent, before the leader's tab went: made again, they'd be twice (#559).
-		once: ["createConversation", "shareHistory"],
+		once: MADE_ONCE,
 		methods: {
 			state: () => engine?.state ?? encryption.state,
 			makeIdentity: () => engine?.makeIdentity(),

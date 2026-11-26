@@ -412,8 +412,10 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			fake.befriend(ana, bo);
 			const [locks, hub] = [new FakeLocks(), new FakeHub()];
 			let asked = 0;
+			// The leading tab, as the page makes one: it takes the request, and never answers.
 			const leader = new BrowserTabs({
 				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				once: page.MADE_ONCE,
 				methods: { createConversation: () => (asked++, new Promise(() => {})) },
 				lead: async () => {},
 			});

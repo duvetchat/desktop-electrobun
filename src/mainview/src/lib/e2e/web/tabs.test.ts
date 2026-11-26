@@ -157,6 +157,24 @@ describe("the tabs of one user", () => {
 		expect(await c.tabs.call<string>("whoami")).toBe("b");
 	});
 
+	test("one that no tab took goes on to the tab that leads, and is made once", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const opening = held();
+		let made = 0;
+		const make = () => `made ${++made}`;
+		// a takes the lock and opens its core, and no tab answers meanwhile: what a and b ask waits.
+		const a = tabOf(hub, locks, "a", { make }, () => opening.promise, ["make"]);
+		const b = tabOf(hub, locks, "b", { make }, undefined, ["make"]);
+		const fromA = a.tabs.call<string>("make");
+		const fromB = b.tabs.call<string>("make");
+		await settle();
+		expect(made).toBe(0);
+		opening.resolve();
+		expect([await fromA, await fromB].sort()).toEqual(["made 1", "made 2"]);
+		expect(made).toBe(2);
+	});
+
 	test("a request made while the lock passes is answered by the new tab", async () => {
 		const hub = new FakeHub();
 		const locks = new FakeLocks();
