@@ -1,8 +1,10 @@
 // The web's database key (PLAN-E2E-CLIENTES.md, where the database and its key live): 32 random bytes, which only the
 // core's worker (worker.ts) ever holds as they are. IndexedDB (KEYS_DATABASE, store KEYS_STORE, by user) keeps them
 // wrapped with AES-GCM by a CryptoKey made with `extractable: false`, beside it: no byte of the key is kept in clear,
-// and the wrapping key can't be taken out of the browser. A script of the same origin could still use that CryptoKey
-// as the worker does: the web has nowhere a page can't reach to keep a key in.
+// and no script outside the origin reads it, nor exports the wrapping key. That's all the wrapping does (#559): a script
+// of the origin can use that CryptoKey as the worker does, and the browser keeps the CryptoKey's own bytes in the same
+// record of the profile, so a copy of the profile opens the database. The web has nowhere a page can't reach to keep a
+// key in.
 import { CoreError } from "../errors";
 
 export const KEYS_DATABASE = "duvet-e2e";
