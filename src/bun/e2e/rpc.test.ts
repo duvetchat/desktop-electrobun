@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,10 @@ import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc"
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, rotationQuestion, type Question } from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
+
+// Some of its cases run real cores, which a machine busy with other work takes past Bun's 5 s (#547), as fake-api's
+// tests allow for.
+setDefaultTimeout(60_000);
 
 // Bun's half of the desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it, and Task 7): what the page may ask the
 // core, what asks the person first, outside the page, and how the bytes cross.
