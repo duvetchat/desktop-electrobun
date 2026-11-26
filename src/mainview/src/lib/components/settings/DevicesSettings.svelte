@@ -1,5 +1,7 @@
 <script module lang="ts">
+	import { FetchError, getApiError } from "$lib/api/api";
 	import type { Device } from "$lib/api/e2e";
+	import { CoreError } from "$lib/e2e/errors";
 	import { onlyDevice } from "$lib/e2e/engine/devices";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
@@ -33,6 +35,19 @@
 	export function removalNotes(device: Device, along: readonly string[], devices: readonly Device[] | null): string[] {
 		const line = alongLine(along, devices);
 		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...(line ? [line] : [])];
+	}
+
+	/**
+	 * What a removal that failed says: while a device this one approved sets up, why it waits; the API's refusal of a
+	 * list naming a device this one approved that never finished (task 26's I1), in words; anything else, the API's.
+	 */
+	export function removalProblem(error: unknown): string {
+		if (error instanceof CoreError && error.code === "approval_waits") return t("e2e_approval_waits");
+		const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
+		if (typeof refusal === "string" && /has no certificate of this identity/.test(refusal)) {
+			return t("e2e_device_unfinished");
+		}
+		return getApiError(error, t("e2e_device_action_failed"));
 	}
 
 	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3). */
@@ -70,7 +85,6 @@
 		Trash2 as TrashIcon,
 		TriangleAlert as WarningIcon,
 	} from "@lucide/svelte";
-	import { getApiError } from "$lib/api/api";
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
@@ -115,8 +129,11 @@
 		onRemoveThis: () => Promise<void>;
 	} = $props();
 
-	// A list, or new keys, only from a device with the user's identity, and not while new keys wait to be saved.
-	const ready = $derived(encryption.name === "ready" && !encryption.rotation);
+	// A device this one approved, until its own list is up: a list or new keys meanwhile would leave it out (Task 26).
+	const approving = $derived(encryption.name === "ready" && encryption.approval?.step === "confirmed");
+	// A list, or new keys, only from a device with the user's identity, and not while new keys wait to be saved, nor
+	// while a device it approved sets up.
+	const ready = $derived(encryption.name === "ready" && !encryption.rotation && !approving);
 	const hasData = $derived(hasDeviceData(encryption));
 
 	// A change of keys that waits, with no key on screen (which is its dialog's): Finish, or why it can't (M1, I1).
@@ -160,7 +177,7 @@
 			await onRemove(device.id, lost && device.listed);
 			removing = null;
 		} catch (error) {
-			failure = getApiError(error, t("e2e_device_action_failed"));
+			failure = removalProblem(error);
 		} finally {
 			busy = false;
 		}
@@ -219,6 +236,10 @@
 			</div>
 		{/if}
 	</SettingsGroup>
+
+	{#if approving}
+		<p class={NOTE} role="status">{t("e2e_approval_waits")}</p>
+	{/if}
 
 	{#if ready || hasData || waiting}
 		<SettingsGroup>

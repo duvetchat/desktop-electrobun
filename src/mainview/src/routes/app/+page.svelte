@@ -83,11 +83,13 @@
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
 	import {
+		approvalActions,
 		changeKeys,
 		createDM,
 		encryption,
 		keySaved,
 		makeIdentity,
+		setupActions,
 		startEngine,
 		startOver,
 		uploadLater,
@@ -1132,6 +1134,8 @@
 			onLater={uploadLater}
 			onStartOver={startOver}
 			onFinishKeys={changeKeys}
+			{setupActions}
+			{approvalActions}
 		/>
 	</div>
 {/if}

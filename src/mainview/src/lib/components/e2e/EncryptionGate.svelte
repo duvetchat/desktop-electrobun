@@ -3,18 +3,24 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
+	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
+	import DeviceSetupCard from "./DeviceSetupCard.svelte";
 	import RecoveryKeySheet from "./RecoveryKeySheet.svelte";
 	import UpdateNotice from "./UpdateNotice.svelte";
 
 	// What the app says of its encrypted conversations by the engine's state (PLAN-E2E-CLIENTES.md, «El motor», its
 	// states): nothing while it starts or once it's ready. A first device's recovery key, once made, is a dialog only
-	// "I saved it" and its upload close (decision 23, Ruling 13), and so is the new one of a change of keys (Task 24),
-	// which, made before the app closed, is a bar whose Finish brings it back. Every other state is a bar at the bottom
-	// with what the person can do, which its × hides until the state changes: the rest of the app, Spaces among it, goes
-	// on. The page stacks the bar with the app's other bottom bars. What deletes the device's data asks first.
+	// "I saved it" and its upload close (decision 23, Ruling 13), and so are the new one of a change of keys (Task 24)
+	// and starting over's (Task 26), which, made before the app closed, are a bar whose Finish brings them back. A new
+	// device's bar opens its setup in a sheet (Task 26), and another device's request to be approved is a question of
+	// its own on a ready one. Every other state is a bar at the bottom with what the person can do, which its × hides
+	// until the state changes: the rest of the app, Spaces among it, goes on. The page stacks the bar with the app's
+	// other bottom bars. What deletes the device's data asks first.
 	let {
 		encryption,
 		web,
@@ -23,6 +29,8 @@
 		onLater,
 		onStartOver,
 		onFinishKeys,
+		setupActions,
+		approvalActions,
 	}: {
 		encryption: EngineState;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
@@ -34,21 +42,67 @@
 		onStartOver: () => Promise<void>;
 		/** A change of keys made before the app closed, its key shown again to be saved. */
 		onFinishKeys: () => Promise<void>;
+		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
+		setupActions: {
+			recover(recoveryKey: string): Promise<void>;
+			beginApproval(): Promise<void>;
+			useCode(): Promise<void>;
+			acceptCode(code: string): Promise<void>;
+			endApproval(): Promise<void>;
+			resetIdentity(): Promise<void>;
+			finishSetup(): Promise<void>;
+		};
+		/** The person's answers about a new device of theirs that asks to be approved. */
+		approvalActions: {
+			approve(deviceId: string): Promise<void>;
+			decline(deviceId: string): Promise<void>;
+			confirm(deviceId: string): Promise<void>;
+		};
 	} = $props();
 
 	let hiddenFor = $state<string | null>(null);
 	let busy = $state(false);
+	let setupOpen = $state(false);
 
 	// Starting over deletes the database: the person says yes to that first.
 	const confirmed = (label: string) => () => confirmAction(t("e2e_start_over_confirm"), label, onStartOver);
 
-	// The recovery key the person saves before anything goes up: a first device's, or a change of keys'.
+	// The recovery key the person saves before anything goes up: a first device's, a change of keys', or starting over's.
 	const shownKey = $derived(
 		encryption.name === "first_device"
 			? encryption.recoveryKey
 			: encryption.name === "ready"
 				? (encryption.rotation?.recoveryKey ?? null)
-				: null,
+				: encryption.name === "new_device" && encryption.setup?.way === "reset"
+					? encryption.setup.recoveryKey
+					: null,
+	);
+
+	// The setup's sheet, while the device is a new one that may begin a way: the person's Set up opens it, and its
+	// attempt begins (its QR); closed, the attempt shows no more.
+	const setupShown = $derived(
+		setupOpen &&
+			encryption.name === "new_device" &&
+			(!encryption.setup || encryption.setup.way === "qr" || encryption.setup.way === "code"),
+	);
+	$effect(() => {
+		if (encryption.name !== "new_device") setupOpen = false;
+	});
+	async function openSetup() {
+		setupOpen = true;
+		await setupActions.beginApproval();
+	}
+	function setupOpenChange(open: boolean) {
+		if (open) return;
+		setupOpen = false;
+		void setupActions.endApproval().catch((error: unknown) => console.error("[e2e] The attempt didn't end:", error));
+	}
+
+	// A new device's request to be approved, until its transfer went.
+	const approving = $derived(
+		encryption.name === "ready" && encryption.approval && encryption.approval.step !== "confirmed"
+			? encryption.approval
+			: null,
 	);
 
 	const bar = $derived.by((): { text: string; label?: string; run?: () => Promise<void> } | null => {
@@ -64,7 +118,17 @@
 					? { text: t("e2e_first_device_finish"), label: t("e2e_finish"), run: onMakeIdentity }
 					: { text: t("e2e_first_device"), label: t("e2e_set_up"), run: onMakeIdentity };
 			case "new_device":
-				return { text: t("e2e_new_device") };
+				if (encryption.setup?.way === "finishing") {
+					const devices = encryption.setup.leavingOut;
+					const text = devices?.length
+						? t("e2e_first_list_leaves_out", { devices: formatList(devices) })
+						: t("e2e_new_device_finish");
+					return { text, label: t("e2e_finish"), run: setupActions.finishSetup };
+				}
+				if (encryption.setup?.way === "reset") {
+					return { text: t("e2e_reset_finish"), label: t("e2e_finish"), run: setupActions.finishSetup };
+				}
+				return { text: t("e2e_new_device"), label: t("e2e_set_up"), run: openSetup };
 			case "removed":
 				return { text: t("e2e_removed_device"), label: t("e2e_set_up_again"), run: confirmed(t("e2e_set_up_again")) };
 			case "locked":
@@ -123,4 +187,30 @@
 			<XIcon size={14} />
 		</button>
 	</div>
+{/if}
+
+{#if encryption.name === "new_device"}
+	<Sheet open={setupShown} onOpenChange={setupOpenChange} title={t("e2e_setup_title")} class="max-w-[440px]">
+		<DeviceSetupCard
+			setup={encryption.setup}
+			onRecover={setupActions.recover}
+			onUseCode={setupActions.useCode}
+			onAcceptCode={setupActions.acceptCode}
+			onReset={setupActions.resetIdentity}
+			onBegin={setupActions.beginApproval}
+		/>
+	</Sheet>
+{/if}
+
+{#if approving}
+	<Dialog open title={approvalTitle(approving)} escapeKeydownBehavior="ignore">
+		{#snippet body()}
+			<ApprovalPrompt
+				approval={approving}
+				onApprove={() => approvalActions.approve(approving.device)}
+				onDecline={() => approvalActions.decline(approving.device)}
+				onConfirm={() => approvalActions.confirm(approving.device)}
+			/>
+		{/snippet}
+	</Dialog>
 {/if}

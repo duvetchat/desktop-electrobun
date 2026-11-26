@@ -27,9 +27,14 @@ export function useFake(fake: FakeApi, seen?: (request: Request) => void) {
 }
 afterEach(() => mock.restore());
 
-/** A clock a test moves on by hand: what's due runs as it passes, in order. */
+/** A clock a test moves on by hand: what's due runs as it passes, in order. Its time is the wall clock's, ahead by what
+ * the test moved it on. */
 export class TestClock implements Clock {
 	#now = 0;
+
+	now() {
+		return Date.now() + this.#now;
+	}
 	#timers = new Set<{ at: number; run: () => void }>();
 
 	later(ms: number, run: () => void) {
