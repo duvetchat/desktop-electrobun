@@ -6,8 +6,9 @@
 // awaited it runs first, and each is its data as it was when the request sent it; holdEvents gives any other order. It
 // reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the API does, but runs no validator: a
 // commit is taken by its generation and epoch alone, and of what it changes the fake knows only the devices its welcome
-// brings and the one an external commit adds. As the groups' external sender it proposes the removal of the leaves of
-// who left, which it finds in the ratchet tree of the group's latest group info.
+// brings, the one an external commit adds, and the user a removal takes out, who reads the queue up to it. As the
+// groups' external sender it proposes the removal of the leaves of who left, which it finds in the ratchet tree of the
+// group's latest group info.
 import { createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
@@ -501,6 +502,9 @@ interface Conversation {
 	leavers: Map<string, string>;
 	/** The removals proposed, by generation, epoch and leaf: one an epoch. */
 	proposed: Set<string>;
+	/** The users a removal took out, by its commit's number: out of the conversation, they read the queue up to it (the
+	 * API's MlsDepartures). */
+	departures: Map<string, number>;
 }
 
 interface Segment {
@@ -690,9 +694,14 @@ export class FakeApi {
 				updated_at: at,
 			})),
 			...{ entries: [], messages: [], deleted: new Set(), leaves: new Map(), commits: new Map() },
-			...{ leavers: new Map(), proposed: new Set() },
+			...{ leavers: new Map(), proposed: new Set(), departures: new Map() },
 		});
 		return id;
+	}
+
+	/** Every conversation's ID. */
+	conversationIds(): string[] {
+		return [...this.#conversations.keys()];
 	}
 
 	/** Two users become friends: each may claim the other's key packages and read their identity, as the API allows. */
@@ -1102,9 +1111,7 @@ export class FakeApi {
 				const answer = this.#commit(this.#memberOf(ctx), ctx, "commits");
 				return ok(answer, 201);
 			}),
-			route("GET", `${conv}/mls/queue`, "device", (ctx) =>
-				this.#queue(this.#memberOf(ctx), ctx.query, ctx.session.user),
-			),
+			route("GET", `${conv}/mls/queue`, "device", (ctx) => this.#queueOf(ctx)),
 			route("POST", `${conv}/members`, "listed", (ctx) => this.#addMember(ctx)),
 			route("DELETE", `${conv}/members/@me`, "listed", (ctx) => this.#leave(ctx)),
 			route("DELETE", `${conv}/members/(?<user>${UUID_PATH})`, "listed", (ctx) => this.#removeMember(ctx)),
@@ -1638,13 +1645,29 @@ export class FakeApi {
 		};
 	}
 
-	#queue(conv: Conversation, query: URLSearchParams, viewer: string): Answer {
+	/**
+	 * The queue as a member reads it, or as someone a removal took out does: up to its commit, while the queue holds that,
+	 * so their devices apply their own removal (the API's MlsService.Queue).
+	 */
+	#queueOf(ctx: Context): Answer {
+		const viewer = ctx.session.user;
+		const conv = this.#conversations.get(ctx.params.conversation!);
+		const departure = conv?.departures.get(viewer);
+		if (!conv || departure === undefined || conv.members.some((m) => m.user_id === viewer)) {
+			return this.#queue(this.#memberOf(ctx), ctx.query, viewer);
+		}
+		return this.#queue(conv, ctx.query, viewer, departure);
+	}
+
+	#queue(conv: Conversation, query: URLSearchParams, viewer: string, through?: number): Answer {
 		// As the API binds them (its MlsQueueQuery): a number from 0, and from 1 to 500 of them.
 		const after = query.has("after") ? Number(query.get("after")) : 0;
 		const limit = query.has("limit") ? Number(query.get("limit")) : 200;
 		if (!Number.isSafeInteger(after) || after < 0) throw fail(400, "after is a number from 0");
 		if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw fail(400, "limit is 1 to 500");
 		if (!conv.group) throw fail(404, "no group yet");
+		if (through !== undefined && through < conv.floor) throw fail(403, "you aren't a member of this conversation");
+		const last = Math.min(through ?? conv.seq, conv.seq);
 		if (after + 1 < conv.floor) throw fail(410, "queue expired", { floor_seq: conv.floor });
 		const all = [
 			...conv.entries,
@@ -1652,14 +1675,14 @@ export class FakeApi {
 		];
 		const entries: Entry[] = [];
 		let size = 0;
-		for (const entry of all.filter((e) => e.seq > after).sort((a, b) => a.seq - b.seq)) {
+		for (const entry of all.filter((e) => e.seq > after && e.seq <= last).sort((a, b) => a.seq - b.seq)) {
 			size += entry.data.length;
 			if (entries.length === limit || (entries.length > 0 && size > 4 << 20)) break;
 			entries.push(entry);
 		}
 		const { generation, epoch } = conv.group;
 		const shown = entries.map((entry) => this.#shownTo(viewer, entry));
-		return ok({ entries: shown, last_seq: conv.seq, floor_seq: conv.floor, generation, epoch });
+		return ok({ entries: shown, last_seq: last, floor_seq: conv.floor, generation, epoch });
 	}
 
 	/**
@@ -1876,6 +1899,7 @@ export class FakeApi {
 		if (!conv.members.some((m) => m.user_id === ctx.params.user)) throw fail(404, "not a member");
 		const commit = this.#commit(conv, ctx, "remove");
 		conv.members = conv.members.filter((m) => m.user_id !== ctx.params.user);
+		conv.departures.set(ctx.params.user!, commit.seq);
 		return ok(commit);
 	}
 

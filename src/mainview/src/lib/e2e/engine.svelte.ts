@@ -118,6 +118,8 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 	made.onState((state) => {
 		encryption.state = state;
 		encryption.cutoverAt = made.cutoverAt;
+		// The user's other tabs show it too: a new device's setup moves on here, in the tab that leads.
+		tabs?.stateChanged();
 		// Ready, the rows the views asked for before may be there now.
 		if (state.name === "ready") refreshAll();
 		// On the web, once the device is set up: clearing the site's data would make this browser a new device.
@@ -233,6 +235,17 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			keySaved: () => engine?.keySaved(),
 			uploadLater: () => engine?.uploadLater(),
 			startOver: () => engine?.startOver(),
+			// A new device's setup, and the approvals of the user's new ones (Task 26).
+			recover: (recoveryKey: string) => live().recover(recoveryKey),
+			beginApproval: () => engine?.beginApproval(),
+			useCode: () => engine?.useCode(),
+			acceptCode: (code: string) => live().acceptCode(code),
+			endApproval: () => engine?.endApproval(),
+			resetIdentity: () => engine?.resetIdentity(),
+			finishSetup: () => engine?.finishSetup(),
+			approveDevice: (deviceId: string) => live().approveDevice(deviceId),
+			declineDevice: (deviceId: string) => live().declineDevice(deviceId),
+			confirmApproval: (deviceId: string) => live().confirmApproval(deviceId),
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
 			openConversation: (id: string) => openOnEngine(id),
 			restartGroup: ({ conversationId, leaving }: MessageParams) => live().restartGroup(conversationId, leaving),
@@ -283,6 +296,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			await engine.start();
 		},
 		onLeader: () => void follow(),
+		onState: () => void follow(),
 		onChanged: (id, deleted) => {
 			void followConversation(id);
 			for (const message of deleted) decryptedFiles.forgetMessage(message);
@@ -462,7 +476,17 @@ export function leaveConversation(conversationId: string): Promise<void> {
 	return onMessages<void>("leaveConversation", conversationId, (made) => made.leaveConversation(conversationId));
 }
 
-type Tap = "makeIdentity" | "keySaved" | "uploadLater" | "startOver";
+type Tap =
+	| "makeIdentity"
+	| "keySaved"
+	| "uploadLater"
+	| "startOver"
+	| "beginApproval"
+	| "useCode"
+	| "endApproval"
+	| "resetIdentity"
+	| "finishSetup";
+type TapWith = "recover" | "acceptCode" | "approveDevice" | "declineDevice" | "confirmApproval";
 
 /** One of the person's taps, run by the engine of this tab or of the one that leads: it settles with its state shown. */
 function tap(method: Tap): Promise<void> {
@@ -470,10 +494,34 @@ function tap(method: Tap): Promise<void> {
 	return engine?.[method]() ?? Promise.resolve();
 }
 
+/** A tap that carries what the person gave (a recovery key, a code, the device they answer about). */
+function tapWith(method: TapWith, given: string): Promise<void> {
+	if (tabs) return tabs.call<void>(method, given).finally(follow);
+	return engine?.[method](given) ?? Promise.resolve();
+}
+
 export const makeIdentity = () => tap("makeIdentity");
 export const keySaved = () => tap("keySaved");
 export const uploadLater = () => tap("uploadLater");
 export const startOver = () => tap("startOver");
+
+/** A new device's setup (Task 26): with the recovery key, by another device's approval, or by starting over. */
+export const setupActions = {
+	recover: (recoveryKey: string) => tapWith("recover", recoveryKey),
+	beginApproval: () => tap("beginApproval"),
+	useCode: () => tap("useCode"),
+	acceptCode: (code: string) => tapWith("acceptCode", code),
+	endApproval: () => tap("endApproval"),
+	resetIdentity: () => tap("resetIdentity"),
+	finishSetup: () => tap("finishSetup"),
+};
+
+/** What the person answers about a new device of theirs that asks to be approved. */
+export const approvalActions = {
+	approve: (deviceId: string) => tapWith("approveDevice", deviceId),
+	decline: (deviceId: string) => tapWith("declineDevice", deviceId),
+	confirm: (deviceId: string) => tapWith("confirmApproval", deviceId),
+};
 
 /** Stops the engine and closes its core, whose database stays; on the web, this tab leaves the user's tabs after. */
 export async function stopEngine(): Promise<void> {

@@ -23,6 +23,7 @@
 		"i18next": "^27.2.6",
 		"i18next-icu": "^2.7.1",
 		"intl-messageformat": "^12.2.1",
+		"qrcode-generator": "^2.0.4",
 		"shiki": "^4.0.2"
 	},
 	"devDependencies": {

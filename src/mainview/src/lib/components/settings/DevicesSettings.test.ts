@@ -18,6 +18,7 @@ const {
 	askToChangeKeys,
 	askToDeleteThisDevice,
 	removalNotes,
+	removalProblem,
 } = await import("./DevicesSettings.svelte");
 const { confirmStore } = await import("$lib/stores/confirm.svelte");
 
@@ -83,6 +84,17 @@ describe("Settings' devices", () => {
 			expect(buttons(html, en.e2e_device_remove)).toBe(0);
 			expect(buttons(html, en.e2e_change_keys)).toBe(0);
 		}
+	});
+
+	// Task 26, from task 24's review (M2): a device this one approved has no certificate until its own list goes up, and a
+	// list or a change of keys made meanwhile would leave it out.
+	test("while a device this one approved sets up, offer no removal or change of keys, and say why", () => {
+		const approval = { device: BROWSER.id, name: BROWSER.name, fingerprint: "0123 4567 89ab cdef", step: "confirmed" };
+		const html = drawn({ encryption: { name: "ready", approval } });
+		expect(buttons(html, en.e2e_device_remove)).toBe(0);
+		expect(buttons(html, en.e2e_change_keys)).toBe(0);
+		expect(html).toContain(en.e2e_approval_waits);
+		expect(drawn()).not.toContain(en.e2e_approval_waits);
 	});
 
 	test("offer to delete this device's data where it has some", () => {
@@ -166,5 +178,25 @@ describe("Settings' devices", () => {
 		expect(en.e2e_device_added).toBe(NOTICES.device_added);
 		expect(en.e2e_delete_device).toBe(NOTICES.delete_device);
 		expect(en.e2e_removed_device).toBe(NOTICES.removed_device);
+	});
+
+	// Review I1: the API's refusal of a list naming a device this one approved that never finished, in words.
+	test("say in words why a removal failed", async () => {
+		const { FetchError } = await import("$lib/api/api");
+		const { CoreError } = await import("$lib/e2e/errors");
+		const refused = (error: string) =>
+			new FetchError(
+				"Request failed with status 400",
+				{},
+				{
+					...{ data: { error }, status: 400, statusText: "Bad Request" },
+					headers: new Headers(),
+				},
+			);
+		expect(
+			removalProblem(refused("the list names device 0193a4b2-0000, which has no certificate of this identity")),
+		).toBe(en.e2e_device_unfinished);
+		expect(removalProblem(new CoreError("approval_waits", ""))).toBe(en.e2e_approval_waits);
+		expect(removalProblem(new TypeError("fetch failed"))).toBe("fetch failed");
 	});
 });

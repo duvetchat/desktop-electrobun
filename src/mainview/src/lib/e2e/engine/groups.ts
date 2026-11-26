@@ -98,8 +98,8 @@ export async function joinGroup(
 	externalSender: string,
 	expected: LegacyRecord | null,
 ): Promise<Commit> {
-	// A device that never saw the group's members (a first device, joining a group it was added to without one) is
-	// asked for their identities first.
+	// A device that never saw the group's members (one just set up, Task 26, or a first device, joining a group it was
+	// added to without one) is asked for their identities first.
 	const made = await withIdentities(parts, () =>
 		parts.host.handle<{ commit: string; group_info: string }>({
 			...{ cmd: "join_external", conversation_id: conv.id, generation, group_info, external_sender: externalSender },

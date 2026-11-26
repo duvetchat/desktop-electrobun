@@ -24,19 +24,23 @@ import {
 	removeDevice,
 	type KeysMade,
 } from "./devices";
+import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
 import { Failures } from "./failures";
 import { fileNames } from "./files";
 import { Received, Shares, type SharedOffer, type ShareOutcome, type ShareRange } from "./history";
-import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
+import { firstListWaits, identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
 import { checkRoom } from "./members";
+import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
-import { DEVICE_RECORD, EXTERNAL_SENDER, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
+import { makeReset, replacedByReset } from "./start-over";
+import { DEVICE_RECORD, EXTERNAL_SENDER, KEPT_RESET, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
 import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
+export type { DeviceApproval, DeviceSetup } from "./approval";
 export type { Outgoing, Pending } from "./send";
 export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
@@ -58,9 +62,12 @@ export type MessagesListener = (
 export interface Clock {
 	/** Runs `run` once `ms` have passed; what it gives calls it off. */
 	later(ms: number, run: () => void): () => void;
+	/** The time now, in ms since the epoch. */
+	now(): number;
 }
 
 export const systemClock: Clock = {
+	now: () => Date.now(),
 	later(ms, run) {
 		const timer = setTimeout(run, ms);
 		return () => clearTimeout(timer);
@@ -101,8 +108,8 @@ export interface EngineParts {
 export type EngineState =
 	| { name: "starting" }
 	| { name: "first_device"; recoveryKey: string | null; finishing: boolean }
-	| { name: "new_device" }
-	| { name: "ready"; rotation?: { recoveryKey: string | null; stuck?: true } }
+	| { name: "new_device"; setup?: DeviceSetup }
+	| { name: "ready"; rotation?: { recoveryKey: string | null; stuck?: true }; approval?: DeviceApproval }
 	| { name: "removed" }
 	| { name: "locked" }
 	| { name: "unsupported" }
@@ -194,9 +201,21 @@ export class E2EEngine {
 	readonly #offerListeners = new Set<(conversationId: string, offers: SharedOffer[]) => void>();
 	/** The flows queued in the turn and not begun: quiet work waits for none (#quietly). */
 	#waiting = 0;
+	/** A new device's approval, and the approvals this device takes part in for the user's new ones (Task 26). */
+	readonly #approvals: Approvals;
+	/** A new device whose core holds an identity already: starting over's, until its upload, or one whose first list
+	 * hasn't gone up (Task 26). */
+	#setup: Extract<DeviceSetup, { way: "reset" | "finishing" }> | null = null;
+	/** The identity the start over under way replaces (also kept in the record, which a later start reads). */
+	#replaces: string | null = null;
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
+		this.#approvals = new Approvals(
+			parts,
+			(work) => this.#soon(work),
+			() => this.#set(this.state),
+		);
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
 		const messagesChanged = (id: string, ids?: string[], through?: number | null, deleted?: string[]) => {
@@ -258,6 +277,7 @@ export class E2EEngine {
 			// A list now would be the new identity's, which the API doesn't have yet.
 			if (this.state.name === "ready" && this.state.rotation)
 				throw new Error("the change of keys under way goes first");
+			this.#holdForApproval();
 			const device = (await this.#parts.api.devices()).find(({ id }) => id === deviceId);
 			if (!device) return;
 			if (device.current) throw new Error("this device goes with its data, never by its own list");
@@ -275,7 +295,20 @@ export class E2EEngine {
 	 * before the app closed, which is that one again: its recovery key, which the views show next, goes up once saved.
 	 */
 	changeKeys(remove: string[] = []): Promise<void> {
-		return this.#act(() => this.#makeKeys(remove));
+		return this.#act(() => {
+			this.#holdForApproval();
+			return this.#makeKeys(remove);
+		});
+	}
+
+	/**
+	 * A device this one approved hasn't put up its list yet (task 24's review, M2): it has no certificate of the identity
+	 * until then, so a list or a change of keys now would leave it out, and its own list would lose to it (409).
+	 */
+	#holdForApproval() {
+		if (this.#approvals.holds()) {
+			throw new CoreError("approval_waits", "a device this one approved hasn't put up its list yet");
+		}
 	}
 
 	/**
@@ -312,6 +345,8 @@ export class E2EEngine {
 			this.#made = null;
 			this.#keys = null;
 			this.#stuck = false;
+			this.#setup = null;
+			this.#replaces = null;
 			this.#set({ name: "starting" });
 			if (!unlisted || !device) return;
 			await api.deleteDevice(device).catch((error: unknown) => {
@@ -554,6 +589,129 @@ export class E2EEngine {
 		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId)));
 	}
 
+	/**
+	 * A new device set up with the person's recovery key (Task 26), typed as they like, spaces and dashes too: a mistyped
+	 * one is the core's refusal (`bad_command` `recovery_key`) before the API is asked for anything; one that doesn't open
+	 * the identity is `decrypt_failed`. Then the device's first list goes up, and it's ready.
+	 */
+	recover(recoveryKey: string): Promise<void> {
+		return this.#queue(async () => {
+			if (!this.#isNew()) return;
+			await checkRecoveryKey(this.#parts, recoveryKey);
+			await recoverIdentity(this.#parts, recoveryKey);
+			// One way per attempt: an approval under way is over.
+			this.#approvals.end();
+			await this.#listThisDevice(false);
+		});
+	}
+
+	/** The person sets this new device up: an approval's attempt begins, shown as its QR (approval.ts). */
+	beginApproval(): Promise<void> {
+		return this.#queue(async () => {
+			if (this.#isNew()) await this.#approvals.begin();
+		});
+	}
+
+	/** The person's «Use a code instead»: an attempt by the code, its commitment to the user's listed devices. */
+	useCode(): Promise<void> {
+		return this.#queue(async () => {
+			if (this.#isNew()) await this.#approvals.useCode();
+		});
+	}
+
+	/** The code the person typed, from the approving device's screen: accepted, a transfer kept for it is taken. */
+	acceptCode(code: string): Promise<void> {
+		return this.#queue(async () => {
+			if (this.#isNew() && (await this.#approvals.accept(code))) await this.#takeApprovals();
+		});
+	}
+
+	/** The setup's card closed: the attempt shows no more, and no new QR is made. */
+	endApproval(): Promise<void> {
+		return this.#queue(async () => this.#approvals.end());
+	}
+
+	/**
+	 * The person's start over (decision 47), after the page's warning: a new identity in the place of the one the API
+	 * serves, its recovery key shown next, which goes up once saved (keySaved). On the desktop Bun asks in its own box
+	 * first, and its no changes nothing.
+	 */
+	resetIdentity(): Promise<void> {
+		return this.#queue(async () => {
+			if (!this.#isNew()) return;
+			const served = await servedIdentity(this.#parts);
+			if (!served) return;
+			try {
+				this.#made = await makeReset(this.#parts, served.identity_key, false);
+			} catch (error) {
+				if (error instanceof CoreError && error.code === "refused") return;
+				throw error;
+			}
+			this.#replaces = served.identity_key;
+			this.#approvals.end();
+			this.#setup = { way: "reset", recoveryKey: this.#made.recovery_key, finishing: false };
+			this.#set({ name: "new_device" });
+		});
+	}
+
+	/**
+	 * The person's Finish on a new device whose setup waits: its first list (signed without the devices the API took
+	 * away, on the desktop after Bun's box), or starting over's recovery key again, made before the app closed.
+	 */
+	finishSetup(): Promise<void> {
+		return this.#queue(async () => {
+			if (this.state.name !== "new_device") return;
+			const setup = this.#setup;
+			if (setup?.way === "finishing") return this.#listThisDevice(true);
+			const replaces = this.#replaces;
+			if (setup?.way !== "reset" || !setup.finishing || !replaces) return;
+			try {
+				this.#made = await makeReset(this.#parts, replaces, true);
+			} catch (error) {
+				if (error instanceof CoreError && error.code === "refused") return;
+				throw error;
+			}
+			this.#setup = { way: "reset", recoveryKey: this.#made.recovery_key, finishing: true };
+			this.#set({ name: "new_device" });
+		});
+	}
+
+	/**
+	 * The person's yes to «Is this device yours?»: this device offers to approve it (never without it). Its identity
+	 * replaced meanwhile, its inbox goes first, which may bring the change of keys' transfer, and the yes is tried again.
+	 */
+	approveDevice(deviceId: string): Promise<void> {
+		return this.#queue(async () => {
+			if (this.#role() !== "approver") return;
+			if ((await this.#approvals.approve(deviceId)) === "replaced") {
+				await this.#inbox();
+				if (this.#role() !== "approver" || (await this.#approvals.approve(deviceId)) === "replaced") return;
+			}
+			// A reveal kept from before the app started again: taken now.
+			await this.#approvals.take("approver");
+		});
+	}
+
+	/** The person's no: the new device's request goes, and another one waiting its turn is asked. */
+	declineDevice(deviceId: string): Promise<void> {
+		return this.#queue(async () => {
+			this.#approvals.decline(deviceId);
+			await this.#takeApprovals();
+		});
+	}
+
+	/**
+	 * The person's Confirm, once the new device accepted the code: on the desktop Bun asks in its own box first, its no
+	 * keeping the code shown; then the transfer goes, and this device's lists and keys wait for the new device's list.
+	 */
+	confirmApproval(deviceId: string): Promise<void> {
+		return this.#queue(async () => {
+			if (this.#role() !== "approver") return;
+			await this.#approvals.confirm(deviceId);
+			await this.#takeApprovals();
+		});
+	}
+
 	/** Starts: hears the gateway's events, then runs «Arranque». It settles when the start's flow ended, whatever state. */
 	start(): Promise<void> {
 		this.#unlisten ??= this.#parts.events.listen((event) => this.#heard(event));
@@ -581,6 +739,7 @@ export class E2EEngine {
 		this.#shares.stop();
 		this.#received.stop();
 		this.#failures.stop();
+		this.#approvals.stop();
 	}
 
 	/**
@@ -609,6 +768,7 @@ export class E2EEngine {
 	keySaved(): Promise<void> {
 		return this.#queue(async () => {
 			if (this.#keys && this.state.name === "ready") return this.#keysSaved(this.#keys);
+			if (this.state.name === "new_device" && this.#setup?.way === "reset") return this.#resetSaved();
 			const made = this.#made;
 			if (!made || this.state.name !== "first_device") return;
 			let published: boolean;
@@ -639,6 +799,12 @@ export class E2EEngine {
 			if (state.name === "ready" && state.rotation?.recoveryKey) {
 				this.#keys = null;
 				return this.#set({ name: "ready", rotation: { recoveryKey: null } });
+			}
+			// And starting over's: its upload waits for Finish, which brings the same identity and key back.
+			if (state.name === "new_device" && this.#setup?.way === "reset" && this.#setup.recoveryKey) {
+				this.#made = null;
+				this.#setup = { way: "reset", recoveryKey: null, finishing: true };
+				return this.#set({ name: "new_device" });
 			}
 			if (state.name !== "first_device" || !state.recoveryKey) return;
 			this.#made = null;
@@ -711,6 +877,8 @@ export class E2EEngine {
 		}
 		this.#keys = null;
 		this.#set(await this.#identity());
+		// A new device's request kept while the change waited is asked now.
+		await this.#takeApprovals();
 	}
 
 	/**
@@ -747,14 +915,29 @@ export class E2EEngine {
 
 	#set(state: EngineState) {
 		const was = this.state.name;
-		this.state = state;
+		this.state = this.#shown(state);
 		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups, and the
 		// packages that came meanwhile).
 		if (state.name === "ready" && was !== "ready") {
 			this.#groups.ready();
 			this.#received.again();
 		}
-		for (const listener of this.#listeners) listener(state);
+		for (const listener of this.#listeners) listener(this.state);
+	}
+
+	/**
+	 * The state with what a new device shows of its setup, and a ready one of a new device's approval (Task 26), as they
+	 * are now: none while a change of keys waits, which approves nothing.
+	 */
+	#shown(state: EngineState): EngineState {
+		if (state.name === "new_device") {
+			const setup = this.#setup ?? this.#approvals.setup();
+			return setup ? { name: "new_device", setup } : { name: "new_device" };
+		}
+		if (state.name !== "ready") return state;
+		const { approval: _shown, ...ready } = state;
+		const approval = ready.rotation ? null : this.#approvals.shown();
+		return approval ? { ...ready, approval } : ready;
 	}
 
 	/** Runs `work` once the flow before it ended (nothing once stopped). What it throws rejects this call alone. */
@@ -875,6 +1058,11 @@ export class E2EEngine {
 					// a commit is due to take them out.
 					if (state.name === "ready") {
 						this.#set(await this.#identity());
+						// The list of a device this one approved, up: this device's own changes go on.
+						if (this.#approvals.holds()) {
+							const served = await servedIdentity(this.#parts);
+							if (served) this.#approvals.listed(served);
+						}
 						await this.#whenReady(() => this.#groups.all());
 					} else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
 				});
@@ -922,14 +1110,97 @@ export class E2EEngine {
 			await confirmKeys(this.#parts, served.device_list_version);
 	}
 
-	/** The inbox; once it brought a rotation's transfer, the own user observed, which may change what this device is. */
+	/**
+	 * The inbox; once it brought a rotation's transfer, the own user observed, which may change what this device is. Then
+	 * the approval frames it kept, for this device's role (approval.ts).
+	 */
 	async #inbox(): Promise<void> {
 		if (await this.#takeInbox()) this.#set(await this.#identity());
+		await this.#takeApprovals();
 	}
 
 	/** The inbox read and handled, a package's key kept by what receives them. */
 	#takeInbox(): Promise<boolean> {
 		return takeInbox(this.#parts, this.#tries, this.#failures, (key) => this.#received.keyCame(key));
+	}
+
+	/** Which approvals this device takes part in: as a new one, or as one that may approve the user's new ones. */
+	#role(): ApprovalRole {
+		const { state } = this;
+		if (state.name === "new_device") return this.#setup ? null : "new";
+		return state.name === "ready" && !state.rotation ? "approver" : null;
+	}
+
+	/** A new device with no identity in its core yet: one way of setting it up may begin. */
+	#isNew(): boolean {
+		return this.#role() === "new";
+	}
+
+	/** The kept approval frames, by this device's role; a transfer that set it up lists it next. */
+	async #takeApprovals(): Promise<void> {
+		if (!(await this.#approvals.take(this.#role()))) return;
+		this.#approvals.end();
+		await this.#listThisDevice(false);
+	}
+
+	/**
+	 * This device, holding the user's identity now (recovered, or approved), puts up its first list (recover.ts), and
+	 * once it's listed starts its last steps. One that must leave devices out names them and waits for the person's
+	 * Finish (`signOff`, when Bun asks in its own box: review M6); one that fails, or their no there, leaves Finish too.
+	 * One that lost to another list (409) can't be listed any more, as the core adds no device to a list: the
+	 * installation starts again as a new device (Ruling 26), and the person sets it up again.
+	 */
+	async #listThisDevice(signOff: boolean): Promise<void> {
+		let listed: FirstList;
+		try {
+			listed = await putFirstList(this.#parts, signOff);
+		} catch (error) {
+			this.#waitToFinish(this.#setup?.way === "finishing" ? this.#setup.leavingOut : undefined);
+			if (error instanceof CoreError && error.code === "refused") return;
+			throw error;
+		}
+		if (typeof listed === "object") return this.#waitToFinish(listed.leavingOut.map((id) => id.slice(0, 8)));
+		if (listed === "lost") {
+			await this.#startOver();
+			throw new CoreError("list_changed", "another device's list went up first: this device starts again as a new one");
+		}
+		this.#setup = null;
+		this.#set({ name: "starting" });
+		await this.#settle();
+	}
+
+	/** Finish is left for the person, naming the devices the list leaves out by their IDs' start (as Settings does). */
+	#waitToFinish(leavingOut?: string[]) {
+		this.#setup = leavingOut?.length ? { way: "finishing", leavingOut: leavingOut.toSorted() } : { way: "finishing" };
+		this.#set({ name: "new_device" });
+	}
+
+	/**
+	 * The person saved starting over's recovery key: the new identity goes up in the place of the one it replaces, and
+	 * only once the API took it is it confirmed; the record lets go of it then. A refusal or a lost answer rejects, the
+	 * key still shown, and the same bytes go next time. Another identity there meanwhile (409) can't be replaced by this
+	 * one, made for the one before: the installation starts again as a new device (Ruling 26).
+	 */
+	async #resetSaved(): Promise<void> {
+		const made = this.#made;
+		const replaces = this.#replaces;
+		if (!made || !replaces) return;
+		let published: boolean;
+		try {
+			published = await publishIdentity(this.#parts, made, replaces);
+		} catch (error) {
+			if (!(error instanceof UpdateRequiredError)) throw error;
+			this.#made = null;
+			this.#setup = { way: "reset", recoveryKey: null, finishing: true };
+			return this.#set({ name: "update", minimum: error.minimum });
+		}
+		this.#made = null;
+		this.#setup = null;
+		this.#replaces = null;
+		this.#parts.store.write(KEPT_RESET, null);
+		if (!published) return this.#startOver();
+		this.#set({ name: "starting" });
+		await this.#settle().catch((error: unknown) => this.#failed(error));
 	}
 
 	/** «Arranque»: the API's configuration, the user's database, this installation's device and the session bound to it. */
@@ -952,9 +1223,13 @@ export class E2EEngine {
 			parts.registered(device);
 			this.#retries = 0;
 			// An identity made before the app closed, still waiting for its upload: the same command gives it again, its
-			// recovery key with it, from the person's tap as the first time (step 4).
+			// recovery key with it, from the person's tap as the first time (step 4). A start over's, as its record says,
+			// is a new device's (Task 26), never a first device's that lost its race.
 			if (status.waiting_upload === "create_identity") {
-				return this.#set({ name: "first_device", recoveryKey: null, finishing: true });
+				this.#replaces = replacedByReset(parts.store);
+				if (!this.#replaces) return this.#set({ name: "first_device", recoveryKey: null, finishing: true });
+				this.#setup = { way: "reset", recoveryKey: null, finishing: true };
+				return this.#set({ name: "new_device" });
 			}
 			await this.#settle();
 		} catch (error) {
@@ -977,6 +1252,8 @@ export class E2EEngine {
 	async #settle(): Promise<void> {
 		await this.#settleKeys();
 		const state = await this.#identity();
+		// Set up here before the app closed, its first list not up: it goes up now, or waits for the person's Finish.
+		if (state.name === "new_device" && (await this.#firstListWaits())) return this.#listThisDevice(false);
 		this.#set(state);
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
@@ -999,6 +1276,12 @@ export class E2EEngine {
 		});
 		await this.#tellInactive().catch((error: unknown) => console.error("[e2e] The devices weren't read:", error));
 		this.#daily ??= this.#everyDay();
+	}
+
+	/** This device holds the identity the API serves, and the API's list doesn't name it yet. */
+	async #firstListWaits(): Promise<boolean> {
+		const served = await servedIdentity(this.#parts);
+		return served !== null && firstListWaits(served, await coreStatus(this.#parts.host));
 	}
 
 	/** Uploads the key packages: nothing while this device isn't on the list, which the API refuses (e2eListed). */
@@ -1044,6 +1327,9 @@ export class E2EEngine {
 		for (const key of DEVICE_RECORD) store.write(key, null);
 		this.#made = null;
 		this.#keys = null;
+		this.#setup = null;
+		this.#replaces = null;
+		this.#approvals.stop();
 		this.#device = null;
 		this.#tries.clear();
 		this.#groups.forget();

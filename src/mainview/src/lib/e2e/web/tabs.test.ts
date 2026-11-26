@@ -22,6 +22,7 @@ function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = 
 	const deleted: string[][] = [];
 	const leaders: string[] = [];
 	let led = 0;
+	let states = 0;
 	const tabs = new BrowserTabs({
 		userId: user,
 		tab: name,
@@ -37,8 +38,9 @@ function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = 
 			deleted.push(gone);
 		},
 		onLeader: (tab) => leaders.push(tab),
+		onState: () => states++,
 	});
-	return { tabs, changed, deleted, leaders, led: () => led };
+	return { tabs, changed, deleted, leaders, led: () => led, states: () => states };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -196,6 +198,25 @@ describe("the tabs of one user", () => {
 		a.tabs.changed("0193a4b2-0000-7000-8000-0000000000c1", ["0193a4b2-0000-7000-8000-0000000000d1"]);
 		await settle();
 		expect(b.deleted).toEqual([[], ["0193a4b2-0000-7000-8000-0000000000d1"]]);
+	});
+
+	// Task 26: what a new device's setup shows changes in the leader's engine (a QR made again, an offer's field), which
+	// a tab that doesn't lead follows as it comes.
+	test("the leader says its state changed, and only the other tabs hear it", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const a = tabOf(hub, locks, "a");
+		await a.tabs.leading;
+		const b = tabOf(hub, locks, "b");
+		a.tabs.stateChanged();
+		await settle();
+		expect(b.states()).toBe(1);
+		expect(a.states()).toBe(0);
+		// A tab that doesn't lead says nothing of a state it doesn't have.
+		b.tabs.stateChanged();
+		await settle();
+		expect(a.states()).toBe(0);
+		expect(b.states()).toBe(1);
 	});
 
 	test("a tab that closes stops answering, and its own calls fail", async () => {

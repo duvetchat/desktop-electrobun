@@ -114,13 +114,12 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			await until(async () => (await a.api.inbox()).length === 3);
 			expect((await a.api.inbox()).map((message) => message.id)).toEqual(sent.slice(1));
 
-			// The next READY reads it again: what the core can't read is dropped, the transfer kept, the frame kept.
+			// The next READY reads it again: what the core can't read is dropped, the transfer kept, the frame kept. Of a
+			// device's commitments the approval's flow keeps the newest (Task 26): one sent again replaces the one before.
 			a.connect(device);
 			await until(async () => (await a.api.inbox()).length === 0);
-			expect((a.store.read<{ id: string }[]>("approvals") ?? []).map((message) => message.id)).toEqual([
-				firstFrame!,
-				lastFrame!,
-			]);
+			expect(firstFrame).toBeDefined();
+			expect((a.store.read<{ id: string }[]>("approvals") ?? []).map((message) => message.id)).toEqual([lastFrame!]);
 			expect((a.store.read<{ id: string }[]>("transfers") ?? []).map((message) => message.id)).toEqual([kept!]);
 			await Promise.all([a.engine.stop(), other.engine.stop()]);
 		},

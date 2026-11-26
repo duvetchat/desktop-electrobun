@@ -4,7 +4,7 @@
 // BroadcastChannel of the same name, by the engine's public methods, never by the core's commands:
 //   - a request `{id, from, method, params}`, which the leader answers `{id, to, ok}` or `{id, to, error}`;
 //   - `{event: "leader", tab}` from a tab that starts to lead, and `{event: "changed", conversation_id, deleted?}` from
-//     the leader, `deleted` the messages its queue deleted.
+//     the leader, `deleted` the messages its queue deleted, and `{event: "state"}` when its engine's state changed.
 // A request left unanswered goes again when a new leader says so, and the new leader runs its own: so every method
 // must bear being run twice (a send carries its nonce). The methods are the caller's: the engine's (Task 12).
 import { CoreError, errorFields } from "../errors";
@@ -36,6 +36,8 @@ export interface BrowserTabsOptions {
 	onChanged?: (conversationId: string, deleted: string[]) => void;
 	/** A tab that says it leads, another or this one. */
 	onLeader?: (tab: string) => void;
+	/** The leader's engine went to another state, which this tab, not leading, asks for again. */
+	onState?: () => void;
 	channel?: ChannelLike;
 	locks?: LockManagerLike;
 	/** This tab's ID, which its requests and the leader's word carry. */
@@ -118,6 +120,11 @@ export class BrowserTabs {
 		if (this.#leader) this.#post({ event: "changed", conversation_id: conversationId, deleted });
 	}
 
+	/** The leader tells the other tabs its engine's state changed (a new device's setup moving on, among others). */
+	stateChanged() {
+		if (this.#leader) this.#post({ event: "state" });
+	}
+
 	/**
 	 * Leaves the user's tabs: lets go of the lock, or of its place in line, and fails what it was still asking. The engine
 	 * closes its host first: the next tab takes the lock at once, and a core still open here would hold the pool.
@@ -185,6 +192,8 @@ export class BrowserTabs {
 				? data.deleted.filter((id): id is string => typeof id === "string")
 				: [];
 			if (!this.#leader) this.#options.onChanged?.(data.conversation_id, deleted);
+		} else if (data.event === "state") {
+			if (!this.#leader) this.#options.onState?.();
 		} else if (typeof data.id === "string" && typeof data.from === "string" && typeof data.method === "string") {
 			if (this.#leader) this.#answer(data.id, data.from, data.method, data.params);
 		} else if (typeof data.id === "string" && data.to === this.tab) {
