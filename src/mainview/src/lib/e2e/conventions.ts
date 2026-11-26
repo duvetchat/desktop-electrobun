@@ -238,6 +238,14 @@ const FRAME_FIELDS: readonly string[] = ["duvet", "step", "data", "name"];
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 /** The most characters a device's name has, counted by code point. */
 export const MAX_DEVICE_NAME = 64;
+/**
+ * What a device's name may not look like, as the approving device shows it beside the fingerprint and the code it says
+ * to compare and to type (desktop-electrobun#543): a fingerprint's two groups of four hex digits, apart by anything but
+ * a letter or a digit, and a code's six digits, of any script, that no letter or digit touches. A phone's model keeps
+ * its digits that letters touch (22041219NY, 220333QAG).
+ */
+const LIKE_FINGERPRINT = /[0-9a-f]{4}[^\p{L}\p{N}]+[0-9a-f]{4}/iu;
+const LIKE_CODE = /(?<![\p{L}\p{N}])\p{Nd}{6}(?![\p{L}\p{N}])/u;
 
 /** An approval frame as the inbox's message carries it: its JSON in UTF-8, its fields in this order, in base64. */
 export function approvalFrameMessage({ step, data, name }: ApprovalFrame): string {
@@ -248,7 +256,7 @@ export function approvalFrameMessage({ step, data, name }: ApprovalFrame): strin
 /**
  * The approval frame an inbox message is, or null, when it's a message of the core between devices (receive_direct's).
  * A frame is JSON with duvet "approval", one of the four steps, its data in base64, a name of 64 characters at most if
- * any, and nothing else.
+ * any, which looks like neither a fingerprint nor a code, and nothing else.
  */
 export function readApprovalFrame(message: string): ApprovalFrame | null {
 	let value: unknown;
@@ -268,6 +276,7 @@ export function readApprovalFrame(message: string): ApprovalFrame | null {
 	if (shown !== undefined && (typeof shown !== "string" || !shown || Array.from(shown).length > MAX_DEVICE_NAME)) {
 		return null;
 	}
+	if (typeof shown === "string" && (LIKE_FINGERPRINT.test(shown) || LIKE_CODE.test(shown))) return null;
 	return { duvet, step, data, ...(shown === undefined ? {} : { name: shown }) };
 }
 
