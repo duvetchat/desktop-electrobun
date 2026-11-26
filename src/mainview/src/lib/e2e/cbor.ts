@@ -1,5 +1,6 @@
 // The CBOR the core writes its signed objects in (PLAN-E2E-API.md, its formats): read here only to tell which device a
-// certificate is for, as the inbox names a sender by it; the core checks every signature. The fake API reads it too.
+// certificate is for, as the inbox names a sender by it, and which devices a list names, which the device list's own
+// changes leave out or keep (engine/devices.ts); the core checks every signature. The fake API reads it too.
 import { base64Bytes } from "$lib/activity-thumbnail";
 
 export type Cbor = number | string | boolean | null | Uint8Array | Cbor[] | Map<string, Cbor>;
@@ -75,4 +76,19 @@ export function certificateDevice(certificate: string): string | null {
 	}
 	const body = asBytes(asMap(cbor(signed))?.get("body"));
 	return body ? asUuid(asMap(cbor(body))?.get("device")) : null;
+}
+
+/** The devices a device list names (its signed object in base64: `{body, sig}`, its body's `devices`), or null. */
+export function listDevices(list: string): string[] | null {
+	let signed: Uint8Array;
+	try {
+		signed = base64Bytes(list);
+	} catch {
+		return null;
+	}
+	const body = asBytes(asMap(cbor(signed))?.get("body"));
+	const devices = body ? asMap(cbor(body))?.get("devices") : null;
+	if (!Array.isArray(devices)) return null;
+	const ids = devices.map(asUuid).filter((id) => id !== null);
+	return ids.length === devices.length ? ids : null;
 }

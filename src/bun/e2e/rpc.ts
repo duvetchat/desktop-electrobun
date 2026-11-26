@@ -1,8 +1,8 @@
 // Bun's half of the desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it, Rulings 5 and 6, and Task 7): what the
 // page may ask of the core, and what asks the person first. A script in the page, an XSS in what a message draws, can
 // ask whatever the page can, and so read and write while it lasts. But the core takes the commands of its contract
-// alone, and approving a device, making an identity or changing the keys takes a yes in the system's own box, whose
-// text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
+// alone, and approving a device, making an identity, changing the keys or taking a device off the account takes a yes
+// in the system's own box, whose text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
 // the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time, so nothing runs between a
 // question and the command it answers. A worker that stops is started again, with the database it had open.
 import {
@@ -20,6 +20,7 @@ import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 import {
 	approvalQuestion,
 	newKeysQuestion,
+	removalQuestion,
 	readCommitment,
 	rotationQuestion,
 	type Confirm,
@@ -90,13 +91,15 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 
 /**
  * What asks the person first: create_identity too, which the core runs as it runs reset_identity (a new identity on a
- * device without one), so asking for the one alone would leave the other as a way around it.
+ * device without one), so asking for the one alone would leave the other as a way around it; and sign_device_list,
+ * whose list takes devices off the account (Task 24).
  */
 export const CONFIRMED: ReadonlySet<string> = new Set([
 	"approval_confirm",
 	"rotate_keys",
 	"reset_identity",
 	"create_identity",
+	"sign_device_list",
 ]);
 
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
@@ -255,6 +258,11 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			// same offer).
 			if (underWay === null) throw refused("refused", "this device can't tell what it would approve");
 			question = approvalQuestion(underWay);
+		} else if (cmd === "sign_device_list") {
+			const remove = devices(command.remove);
+			// A list that takes off no device would be a box that names none (M8).
+			if (remove.length === 0) throw bad("remove", "a device list is signed to take off at least one device");
+			question = removalQuestion(remove);
 		} else {
 			const remove = cmd === "rotate_keys" ? devices(command.remove) : [];
 			// Run again before its upload, the command makes nothing new: it hands back what it made.
