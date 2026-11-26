@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
+import type { MlsEntry } from "$lib/types";
+import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
+	answeringHost,
 	firstDevice,
 	groupOf,
 	restarted,
 	sameGroup,
 	testDevice,
+	testHost,
 	turnEnded,
 	until,
 	useFake,
@@ -28,12 +32,13 @@ function setUp() {
 	return { fake, requests };
 }
 
-/** Ana's group with Bo and Cy, a device each: made by Ana's device, the others in by its welcome. */
-async function groupOfThree() {
+/** Ana's group with Bo and Cy, a device each: made by Ana's device, the others in by its welcome. Cy's core is `cyHost`. */
+async function groupOfThree(cyHost?: CoreHost) {
 	const { fake, requests } = setUp();
 	const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 	const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
-	const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+	const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+	const c = await firstDevice(fake, cy, { host: cyHost });
 	await a.engine.openConversation(conversation);
 	const made = await sameGroup([a, b, c], conversation);
 	return { fake, requests, ana, bo, cy, a, b, c, conversation, made };
@@ -230,7 +235,7 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			await a.engine.stop();
 			await a.host.open(ana);
 			const removal = await removeByHand(a, conversation, cy);
-			await until(async () => (await groupOf(c, conversation)) === null);
+			await until(async () => (await groupOf(c, conversation)) === null, { what: "Cy's device out of the group" });
 			await turnEnded(c);
 
 			// Ana adds Cy back. Cy's device hears nothing of it while minutes pass, then the addition's commit, and its
@@ -244,10 +249,51 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			fake.releaseEvents({ only: (event) => event.type === "MLS_COMMIT" });
 			await turnEnded(c);
 			fake.releaseEvents();
-			await until(async () => (await groupOf(c, conversation)) !== null);
+			await until(async () => (await groupOf(c, conversation)) !== null, { what: "Cy's device back in the group" });
 			const since = (await b.api.queue(conversation, removal.seq)).entries.filter(({ kind }) => kind === "commit");
 			expect(since.map((entry) => entry.sender_user)).toEqual([ana]);
 			await sameGroup([a, b, c], conversation);
+		},
+		SLOW,
+	);
+
+	// #520: the commit that takes a user out reaches their device during a turn of its own (here, the one for its own
+	// message's event), which then reads the queue for it. Someone a removal took out reads the queue up to its commit, as
+	// the API serves it, so the device applies its own removal; added back, it comes in by the new welcome.
+	test(
+		"a removal heard during a turn of its own takes the device out, and it comes back",
+		async () => {
+			const host = testHost();
+			let release = () => {};
+			const released = new Promise<void>((resolve) => (release = resolve));
+			let holding = false;
+			// Cy's turn for the event of its own message waits at its apply, once `holding` is on, until `release`.
+			const cyHost = answeringHost(host, (command) => {
+				// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine's own apply command
+				const entries = command.cmd === "apply" ? (command.entries as MlsEntry[]) : [];
+				if (!holding || !entries.some((entry) => entry.kind === "message")) return undefined;
+				holding = false;
+				return released.then(() => host.handle({ ...command, cmd: "apply" }));
+			});
+			const { ana, cy, a, c, conversation } = await groupOfThree(cyHost);
+			const { key_packages } = await a.api.claimKeyPackages(cy);
+			holding = true;
+			const mine = c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "mine" });
+			await until(() => !holding, { what: "Cy's turn for its own message" });
+			await a.engine.stop();
+			await a.host.open(ana);
+			const removal = await removeByHand(a, conversation, cy);
+			await until(() => c.heard.some((event) => event.type === "MLS_COMMIT" && event.data.entry?.seq === removal.seq), {
+				what: "the removal's event on Cy's connection",
+			});
+			release();
+			await mine;
+			await until(async () => (await groupOf(c, conversation)) === null, { what: "Cy's device out of the group" });
+			// Out of the conversation, Cy reads its queue up to the commit that took them out.
+			const page = await c.api.queue(conversation, 0);
+			expect([page.last_seq, page.entries.at(-1)?.seq]).toEqual([removal.seq, removal.seq]);
+			await addByHand(a, conversation, cy, key_packages);
+			await until(async () => (await groupOf(c, conversation)) !== null, { what: "Cy's device back in the group" });
 		},
 		SLOW,
 	);
@@ -321,7 +367,7 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			await a.engine.stop();
 			await a.host.open(a.user);
 			await removeByHand(a, conversation, cy);
-			await until(async () => (await groupOf(c, conversation)) === null);
+			await until(async () => (await groupOf(c, conversation)) === null, { what: "Cy's device out of the group" });
 			const away = await b.engine.sendMessage({
 				conversation_id: conversation,
 				nonce: crypto.randomUUID(),
@@ -329,7 +375,7 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			});
 			if (!away?.seq) throw new Error("Bo's message wasn't sent");
 			await addByHand(a, conversation, cy, key_packages);
-			await until(async () => (await groupOf(c, conversation)) !== null);
+			await until(async () => (await groupOf(c, conversation)) !== null, { what: "Cy's device back in the group" });
 			const joined = (await c.api.conversations())
 				.find((conv) => conv.id === conversation)!
 				.members.find((member) => member.user_id === cy)!.id;
