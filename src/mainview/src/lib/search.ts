@@ -47,9 +47,12 @@ function dropIfReplaced(signal: AbortSignal | undefined) {
 	if (signal?.aborted) throw new DOMException("the search was replaced", "AbortError");
 }
 
-/** A failure of the device's search, as the panel says it: not ready, unless the core refused the search itself. */
+/**
+ * A failure of the device's search, as the panel says it: not ready, unless the core refused the search itself. The
+ * page's engine refuses with `not_ready` when it has none, a code of its own that crosses tabs (#508).
+ */
 function notReady(error: unknown): never {
-	if (error instanceof CoreError && error.code !== "internal") throw error;
+	if (error instanceof CoreError && error.code !== "internal" && error.code !== "not_ready") throw error;
 	throw new Error(t("e2e_not_ready"));
 }
 
