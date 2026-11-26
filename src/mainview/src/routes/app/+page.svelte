@@ -67,6 +67,7 @@
 	} from "$lib/stores.svelte";
 	import { startConversationCall } from "$lib/voice";
 	import UserFlagsSheet from "$lib/components/UserFlagsSheet.svelte";
+	import SafetyNumberDialog from "$lib/components/e2e/SafetyNumberDialog.svelte";
 	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { t } from "$lib/i18n";
@@ -1121,6 +1122,7 @@
 <ReactionsDialog />
 <BanDialog />
 <UserFlagsSheet />
+<SafetyNumberDialog />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
 	<!-- The app's bottom bars, one above the other at the bottom centre: above where a toast shows, so none hides another. -->

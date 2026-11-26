@@ -199,3 +199,34 @@ test("a send refused as not ready, or past the cap, says so in the table's words
 		'if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");',
 	);
 });
+
+// Task 28 (decision 25): a contact's changed key shows over the message box of each conversation with them, until it's
+// closed; a verified contact's makes what goes there next wait for the person's yes, asked before it goes: a message
+// typed (Chat's beforeSend), a Retry, a voice note and an edit alike. One the engine held says why, by name.
+test("a changed key's notice shows in each conversation with that person, and a verified one's asks before what goes", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(
+		/\{#each changedIn\(encryption\.contacts\.changes, memberUsers\) as user \(user\)\}\s*<KeyChangeNotice\b/,
+	);
+	expect(view).toContain("onClose={() => void closeKeyChange(user)}");
+	expect(view).toContain("onVerify={() => safetyNumberRequest.set({ id: user, name: memberName(user) })}");
+	expect(view).toMatch(/const waiting = waitingForYes\(encryption\.contacts\.changes, memberUsers\);/);
+	expect(view).toContain("beforeSend={askBeforeSend}");
+	expect(view).toMatch(/function dmRetry\(message: Message\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
+	expect(view).toMatch(/async function dmVoiceNote\(blob: Blob\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
+	expect(view).toMatch(
+		/async function dmSaveEdit\(messageId: string, content: string\) \{\s*if \(!\(await askBeforeSend\(\)\)\) return;/,
+	);
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);',
+	);
+});
+
+// A verified contact's mark in their DM, among the conversation's actions (in the pane's bar, or the view's own
+// header), as the core holds them now: the engine observes the members as the view opens the conversation
+// (contacts.test.ts).
+test("a DM with a verified contact wears its mark", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(/\{#if dmPartner && encryption\.contacts\.verified\[dmPartner\]\}\s*<VerifiedMark\b/);
+	expect(view).toMatch(/openConversation\(convId\)/);
+});

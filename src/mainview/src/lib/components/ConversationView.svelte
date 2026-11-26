@@ -129,9 +129,16 @@
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
 	import ConversationState from "$lib/components/e2e/ConversationState.svelte";
 	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
+	import KeyChangeNotice from "$lib/components/e2e/KeyChangeNotice.svelte";
+	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
+	import { safetyNumberRequest } from "$lib/e2e/encryption.svelte";
+	import { changedIn, waitingForYes } from "$lib/e2e/engine/contacts";
+	import { formatList } from "$lib/i18n/format";
 	import {
 		acceptMembers,
 		addMember,
+		closeKeyChange,
+		confirmKeyChanges,
 		deleteEncrypted,
 		discardEncrypted,
 		editEncrypted,
@@ -207,6 +214,32 @@
 		});
 	});
 	const groupState = $derived(encryption.conversations[conversation.id] ?? null);
+	const memberUsers = $derived(conversation.members.map((member) => member.user_id));
+	/** A member's name as the app shows it, by their user ID. */
+	function memberName(userId: string): string {
+		const member = conversation.members.find((m) => m.user_id === userId)?.user;
+		return member?.alias ?? member?.username ?? userId;
+	}
+	// The other person of a DM, whose mark shows among its actions once the person verified them (Task 28): as the
+	// engine observes them when the conversation opens.
+	const dmPartner = $derived(
+		conversation.type === 2 ? null : (conversation.members.find((m) => m.user_id !== me?.id)?.user_id ?? null),
+	);
+
+	// A verified contact's changed key (Task 28, decision 25): before what goes here next, the person is asked, naming
+	// them; their yes lets it go, and what waited with it. True when nothing waits for a yes.
+	async function askBeforeSend(): Promise<boolean> {
+		const waiting = waitingForYes(encryption.contacts.changes, memberUsers);
+		if (!waiting.length) return true;
+		let yes = false;
+		await confirmAction(heldFor(waiting), t("e2e_send_anyway"), async () => {
+			await confirmKeyChanges(waiting);
+			yes = true;
+		});
+		return yes;
+	}
+	/** What waits for the person's yes says, naming whom it waits for. */
+	const heldFor = (users: string[]) => t("e2e_key_changed_verified", { name: formatList(users.map(memberName)) });
 	const ownerName = $derived.by(() => {
 		const owner = conversation.members.find((member) => member.user_id === conversation.owner_id)?.user;
 		return owner?.alias ?? owner?.username ?? "";
@@ -746,6 +779,7 @@
 		if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");
 		if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");
 		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
+		if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);
 		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
 	}
 
@@ -871,6 +905,7 @@
 
 	// An edit of the person's message: this device's database shows it at once, and the engine sends it.
 	async function dmSaveEdit(messageId: string, content: string) {
+		if (!(await askBeforeSend())) return;
 		await editEncrypted(conversation.id, messageId, content);
 	}
 
@@ -891,7 +926,8 @@
 
 	// Retry: the same nonce, so the device sends the same bytes again, or makes them again when no member could open
 	// them any more.
-	function dmRetry(message: Message) {
+	async function dmRetry(message: Message) {
+		if (!(await askBeforeSend())) return;
 		const convId = conversation.id;
 		const nonce = message.nonce ?? message.id;
 		const saved = dmRetryData.get(nonce);
@@ -941,6 +977,11 @@
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), { ...note, attachments }] }));
 		const facts = await voiceNoteFacts(blob).catch(() => null);
 		dmRetryData.set(nonce, { outgoing: [{ file: blob, name: "voice-note.webm", ...facts }], draft: convId });
+		// A no keeps the note, waiting with Retry and Dismiss.
+		if (!(await askBeforeSend())) {
+			failedNonces = new Set(failedNonces).add(nonce);
+			return;
+		}
 		sendHere(convId, nonce, "").catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
 			toast(getApiError(err, "Failed to send voice note"), "error");
@@ -1186,14 +1227,20 @@
 
 <!-- What the conversation says of its encrypted group, over its message box -->
 {#snippet groupNotice()}
+	<!-- A contact's changed key, in each conversation with them until it's closed (Task 28) -->
+	{#each changedIn(encryption.contacts.changes, memberUsers) as user (user)}
+		<KeyChangeNotice
+			name={memberName(user)}
+			verified={encryption.contacts.changes[user]?.verified === true}
+			onVerify={() => safetyNumberRequest.set({ id: user, name: memberName(user) })}
+			onClose={() => void closeKeyChange(user)}
+		/>
+	{/each}
 	<ConversationState
 		conversationState={groupState}
 		{ownerName}
 		memberNames={conversation.members.map((member) => member.user.alias ?? member.user.username)}
-		memberName={(userId) => {
-			const member = conversation.members.find((m) => m.user_id === userId)?.user;
-			return member?.alias ?? member?.username ?? userId;
-		}}
+		{memberName}
 		onRestart={restartEncryption}
 		onAccept={() => acceptMembers(conversation.id)}
 	/>
@@ -1298,6 +1345,10 @@
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
+	<!-- A DM with a contact the person verified wears their mark (Task 28) -->
+	{#if dmPartner && encryption.contacts.verified[dmPartner]}
+		<VerifiedMark class="px-1" />
+	{/if}
 	<!-- One press on the phone places a voice call, as before; the chevron beside it opens Voice call and Video call
 	     (#370): one control, not a second button beside it. -->
 	<div class="flex gap-px">
@@ -1446,6 +1497,7 @@
 			bind:failedNonces
 			bind:isAtBottom
 			onSend={dmHandleSend}
+			beforeSend={askBeforeSend}
 			onSaveEdit={dmSaveEdit}
 			onDeleteMsg={dmDelete}
 			onRetry={dmRetry}

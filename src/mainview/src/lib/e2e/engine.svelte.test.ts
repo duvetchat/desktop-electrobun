@@ -369,4 +369,72 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		},
 		SLOW,
 	);
+
+	// Task 28: what the page shows of the person's contacts is the engine's, as it changes: whom they verified, and the
+	// changed keys still shown.
+	test(
+		"on the desktop, the page shows the contacts the engine holds as they change",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			fake.befriend(ana, bo);
+			await firstDevice(fake, bo);
+			await readyOnDesktop(ana, testHost());
+			expect(page.encryption.contacts).toEqual({ changes: {}, verified: {} });
+			const { digits } = await page.safetyNumberOf(bo);
+			expect(digits).toMatch(/^(\d{5} ){11}\d{5}$/);
+			expect(page.encryption.contacts.verified[bo]).toBe(false);
+			expect(await page.verifyContact(bo, digits)).toBe(true);
+			expect(page.encryption.contacts.verified[bo]).toBe(true);
+			expect(await page.contactOf(bo)).toBe(true);
+		},
+		SLOW,
+	);
+
+	test(
+		"on the web, a tab that doesn't lead shows the leader's contacts, and verifies through it",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			fake.befriend(ana, bo);
+			await firstDevice(fake, bo);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			// The user's tab that leads, its engine set up, serving the contacts' methods as the page's own tabs do.
+			const leader = testDevice(fake, ana);
+			const { engine } = leader;
+			const leading = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: {
+					state: () => engine.state,
+					contacts: () => engine.contacts(),
+					contact: (userId: string) => engine.contact(userId),
+					safetyNumber: (userId: string) => engine.safetyNumber(userId),
+					verifyContact: ({ userId, digits }: { userId: string; digits: string }) =>
+						engine.verifyContact(userId, digits),
+				},
+				lead: async () => {
+					await engine.start();
+					await engine.makeIdentity();
+					await engine.keySaved();
+				},
+			});
+			engine.onContacts(() => leading.stateChanged());
+			await leading.leading;
+			await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) } }));
+			await until(() => page.encryption.state.name === "ready");
+			const { digits } = await page.safetyNumberOf(bo);
+			expect(await engine.safetyNumber(bo)).toMatchObject({ digits });
+			expect(await page.verifyContact(bo, digits)).toBe(true);
+			await until(() => page.encryption.contacts.verified[bo] === true);
+			expect(engine.contacts().verified[bo]).toBe(true);
+			await page.stopEngine();
+			await engine.stop();
+			leading.close();
+		},
+		SLOW,
+	);
 });

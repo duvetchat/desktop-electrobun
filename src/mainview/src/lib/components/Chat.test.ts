@@ -108,3 +108,16 @@ describe("who's typing", () => {
 		expect(indicator).toMatch(/class="[^"]*\bbg-duvet-glass\b[^"]*\bbackdrop-blur-\[20px\]/);
 	});
 });
+
+// Task 28: a conversation's send may ask the person first (a verified contact's changed key): a no sends nothing and
+// gives back to its draft what the box handed over, its reply too.
+describe("a conversation's send", () => {
+	const chat = source("Chat.svelte");
+
+	test("asks first where its conversation says so, and a no gives back what was written", () => {
+		expect(chat).toMatch(
+			/setReplyIn\(sending\.key, null\);\s*if \(onSend\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(beforeSend && !\(await beforeSend\(\)\)\) return putBack\(channelId, nonce, fromDraft, sending\.key\);/,
+		);
+		expect(chat).toContain("beforeSend?: () => Promise<boolean>;");
+	});
+});

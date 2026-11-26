@@ -9,6 +9,7 @@
 		Pencil,
 		Phone,
 		Shield,
+		ShieldCheck,
 		User,
 		UserCheck,
 		UserMinus,
@@ -29,6 +30,8 @@
 		removeFromGroup,
 	} from "$lib/member-actions";
 	import { banRequest, kickFromSpace } from "$lib/moderation";
+	import { encryption, safetyNumberRequest } from "$lib/e2e/encryption.svelte";
+	import { t } from "$lib/i18n";
 	import {
 		activeCall,
 		conversations,
@@ -66,7 +69,7 @@
 		onRemoveFromGroup?: (userId: string) => Promise<void>;
 	} = $props();
 
-	const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false };
+	const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false, shared: false };
 
 	const items = $derived(
 		memberMenuItems({
@@ -83,14 +86,15 @@
 				: STRANGER,
 			busy: $activeCall !== null,
 			can: { profile: !!onProfile, mention: !!onMention, removeFromGroup: !!onRemoveFromGroup },
+			encrypted: encryption.state.name === "ready",
 		}),
 	);
 
 	// Its groups, in order, and whether each has an item: who they are to the user (a profile, a mention, a chat, a
-	// call), the friendship, what's theirs in the Space or the user's own (roles, the display name), what removes them,
-	// their ID, and staff's editor. A line comes before each group shown after another.
+	// call, their security number), the friendship, what's theirs in the Space or the user's own (roles, the display
+	// name), what removes them, their ID, and staff's editor. A line comes before each group shown after another.
 	const groups = $derived([
-		items.profile || items.mention || items.message || items.call,
+		items.profile || items.mention || items.message || items.call || items.verify,
 		items.friend !== null,
 		items.roles.length > 0 || items.displayName,
 		!!items.moderation || items.removeFromGroup,
@@ -143,6 +147,14 @@
 {/if}
 {#if items.call}
 	<MenuItem icon={Phone} onSelect={() => chatWith(person.id, true)}>Call</MenuItem>
+{/if}
+{#if items.verify}
+	<MenuItem
+		icon={ShieldCheck}
+		onSelect={() => afterClose(() => safetyNumberRequest.set({ id: person.id, name: person.name }))}
+	>
+		{t("e2e_verify_number")}
+	</MenuItem>
 {/if}
 
 {#if lineBefore(1)}<MenuSeparator />{/if}

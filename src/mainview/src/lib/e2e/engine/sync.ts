@@ -518,6 +518,11 @@ export class Conversations {
 		if (!now || now.name === "no_device") this.#set(conv.id, this.#goingOn(conv.id));
 	}
 
+	/** The conversation's members as the API listed them last: none for one it doesn't know. */
+	members(conversationId: string): string[] {
+		return this.#known.get(conversationId)?.members.map((member) => member.user_id) ?? [];
+	}
+
 	/** A user's identity changed (IDENTITY_UPDATE): their conversations' members without a device are asked again. */
 	async identityChanged(user: string): Promise<void> {
 		for (const conv of [...this.#known.values()]) {

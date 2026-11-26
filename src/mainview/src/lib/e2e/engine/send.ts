@@ -83,11 +83,13 @@ interface KeptChange {
 }
 
 /** What a conversation's messages tell the engine: which changed on this device, the person's that the API took (by
- * the nonce they sent it with), and a change the API refused for good. */
+ * the nonce they sent it with), and a change the API refused for good; and what it asks of it: the members whose
+ * changed key holds what goes to the conversation until the person's yes (contacts.ts). */
 export interface SendsHooks {
 	changed: (conversationId: string, ids?: string[]) => void;
 	sent: (conversationId: string, nonce: string, message: DirectMessage) => void;
 	refused: (conversationId: string, messageId: string, kind: ChangeKind) => void;
+	held: (conversationId: string) => string[];
 }
 
 /** The most users a message names: the API takes 20. */
@@ -120,6 +122,9 @@ const unanswered = (error: unknown) => {
 /** The core's word that no member could open the message's bytes any more. */
 const staleBytes = (error: unknown) =>
 	error instanceof CoreError && error.code === "rule_violation" && error.rule === "stale_message";
+/** A message held for the person's yes, a verified contact's key changed (#deliver): it waits, as an unanswered one
+ * does. */
+const held = (error: unknown) => error instanceof CoreError && error.code === "key_changed";
 /** The API's (a 409): the bytes are of another generation of the group, or too many epochs behind it. */
 const staleAnswer = (error: unknown) =>
 	error instanceof FetchError && error.response?.status === 409 && error.response.data?.error === "stale message";
@@ -415,7 +420,7 @@ export class Sends {
 					at--;
 					continue;
 				}
-				const passing = error instanceof UpdateRequiredError || unanswered(error);
+				const passing = error instanceof UpdateRequiredError || unanswered(error) || held(error);
 				// A refusal of the API's own, not of the group's epochs: it wouldn't change at the next flush.
 				if (files && !passing && statusOf(error) !== undefined && !staleAnswer(error)) this.#refused.add(first);
 				if (first === wanted) throw error;
@@ -453,6 +458,14 @@ export class Sends {
 		const { ciphertext } = made;
 		// A Dismiss took it meanwhile: it isn't sent (task 18's re-review, N1).
 		if (this.#dismissing.has(first)) return null;
+		// A verified contact's changed key, known by now (its encrypt may have just observed it): it waits for the
+		// person's yes, its bytes kept, as decision 25 asks before anything more goes there.
+		const holding = this.#hooks.held(id);
+		if (holding.length) {
+			throw new CoreError("key_changed", "a verified contact's key changed: the person says whether to send", {
+				users: holding,
+			});
+		}
 		// Its own send's upload, whichever flush this is: its progress and its Cancel, which may have come already.
 		const own = this.#uploads.get(first);
 		own?.signal?.throwIfAborted();

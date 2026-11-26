@@ -116,6 +116,7 @@
 		failedNonces = $bindable(new Set<string>()),
 		isAtBottom = $bindable(true),
 		onSend = undefined,
+		beforeSend = undefined,
 		onSaveEdit = undefined,
 		onDeleteMsg = undefined,
 		onRetry = undefined,
@@ -163,6 +164,8 @@
 			allowedMentions?: AllowedMentions,
 			draft?: string,
 		) => Promise<void>;
+		/** A conversation's word before its send: false, and nothing goes (a verified contact's changed key, Task 28). */
+		beforeSend?: () => Promise<boolean>;
 		onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 		onDeleteMsg?: (msgId: string) => Promise<void>;
 		onRetry?: (message: Message) => void;
@@ -440,6 +443,8 @@
 		setReplyIn(sending.key, null);
 
 		if (onSend) {
+			// The person may be asked first: their no gives back to the draft what the box handed over, its reply too.
+			if (beforeSend && !(await beforeSend())) return putBack(channelId, nonce, fromDraft, sending.key);
 			try {
 				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions, sending.key);
 			} catch (err) {

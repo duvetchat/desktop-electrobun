@@ -54,7 +54,7 @@ const space = (mine: string[], me = ME, hers: string[] = []): GatewaySpace => ({
 	updated_at: "",
 });
 
-const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false };
+const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false, shared: false };
 const carol = { id: CAROL, memberId: CAROL_MEMBER, name: "Carol", isBot: false, flags: null };
 const input = (change: Partial<Input> = {}): Input => ({
 	me: { id: ME, staff: false },
@@ -63,6 +63,7 @@ const input = (change: Partial<Input> = {}): Input => ({
 	ties: STRANGER,
 	busy: false,
 	can: { profile: true, mention: true, removeFromGroup: false },
+	encrypted: false,
 	...change,
 });
 
@@ -79,6 +80,7 @@ describe("a member's menu", () => {
 			moderation: null,
 			removeFromGroup: false,
 			staff: false,
+			verify: false,
 		});
 	});
 
@@ -101,6 +103,23 @@ describe("a member's menu", () => {
 	test("a friend request: theirs is accepted from here; the user's own, waiting, offers nothing", () => {
 		expect(memberMenuItems(input({ ties: { ...STRANGER, askedMe: true } })).friend).toBe("accept");
 		expect(memberMenuItems(input({ ties: { ...STRANGER, askedThem: true } })).friend).toBeNull();
+	});
+
+	// Task 28: their security number, whose identity the API serves to friends and to whoever shares a conversation with
+	// them, while this device's encrypted conversations are ready.
+	test("Verify security number: for a friend, or someone the user shares a conversation with, once encryption is ready", () => {
+		const friend = { ...STRANGER, friend: true };
+		expect(memberMenuItems(input({ encrypted: true, ties: friend })).verify).toBe(true);
+		expect(memberMenuItems(input({ encrypted: true, ties: { ...STRANGER, shared: true } })).verify).toBe(true);
+		// Not a stranger, whose identity the API doesn't serve; not a bot, nor the user; nor before encryption is ready.
+		expect(memberMenuItems(input({ encrypted: true })).verify).toBe(false);
+		expect(memberMenuItems(input({ encrypted: true, ties: friend, person: { ...carol, isBot: true } })).verify).toBe(
+			false,
+		);
+		expect(memberMenuItems(input({ encrypted: true, ties: friend, me: { id: CAROL, staff: false } })).verify).toBe(
+			false,
+		);
+		expect(memberMenuItems(input({ ties: friend })).verify).toBe(false);
 	});
 
 	test("a bot: no friendship, no direct conversation and no call, which a bot can't take", () => {
@@ -255,5 +274,9 @@ describe("where the user stands with someone", () => {
 		expect(ties([], [], [request(ME, CAROL)], []).askedThem).toBe(true);
 		expect(ties([], [], [], [chat(1, [ME, CAROL])]).dm).toBe(true);
 		expect(ties([], [], [], [chat(2, [ME, CAROL, OWNER])]).dm).toBe(false);
+		// Any conversation with them, a group's too, has the API serve their identity.
+		expect(ties([], [], [], [chat(2, [ME, CAROL, OWNER])]).shared).toBe(true);
+		expect(ties([], [], [], [chat(1, [ME, CAROL])]).shared).toBe(true);
+		expect(ties([], [], [], [chat(2, [ME, OWNER])]).shared).toBe(false);
 	});
 });
