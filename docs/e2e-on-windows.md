@@ -98,7 +98,11 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
 4. **The window keeps up while a large history is shared.** In a DM with a few hundred messages, Share history with a
    member's new device, and pick «the conversation's history». While it goes, drag the window by its title bar, snap it
    with Win+Left and Win+Right, and type in another chat: none of it should stall.
-5. **The rest, with the web and with the Pixel:**
+5. **A player's frame holds nothing of the window's RPC.** In a dev build, play a YouTube and a TikTok embed in a
+   room. In DevTools' console (F12), pick each of the player's frames in the context menu at the top (top ▾), and run
+   `[typeof __electrobunSecretKeyBytes, typeof __electrobunRpcSocketPort]`: every frame says
+   `['undefined', 'undefined']`, where the top one says `['object', 'number']` (desktop-electrobun#556).
+6. **The rest, with the web and with the Pixel:**
    - conversing: a message, a reply, an edit, a deletion, in a DM and in a group;
    - attachments: a picture, a file, a voice note;
    - recovery: a new device set up with the recovery key;
