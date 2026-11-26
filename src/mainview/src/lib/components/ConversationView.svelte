@@ -129,6 +129,8 @@
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
 	import ConversationState from "$lib/components/e2e/ConversationState.svelte";
 	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
+	import ConversationUnavailable, { unavailableHere } from "$lib/components/e2e/ConversationUnavailable.svelte";
+	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import KeyChangeNotice from "$lib/components/e2e/KeyChangeNotice.svelte";
 	import SharedHistoryOffer from "$lib/components/e2e/SharedHistoryOffer.svelte";
 	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
@@ -218,6 +220,9 @@
 		});
 	});
 	const groupState = $derived(encryption.conversations[conversation.id] ?? null);
+	// Where this app can't open encrypted conversations (a platform or a browser without the core, a client too old), its
+	// messages can't load and its box can't send: the conversation says why in their place.
+	const unavailable = $derived(unavailableHere(encryption.state));
 	/** A member's name as the app shows it, by their user ID. */
 	function memberName(userId: string): string {
 		const member = conversation.members.find((m) => m.user_id === userId)?.user;
@@ -1508,45 +1513,51 @@
 
 	<!-- Body: the messages, and a group's members column at their right -->
 	<div class="flex flex-1 overflow-hidden">
-		<Chat
-			bind:this={chatView}
-			{intro}
-			notice={groupNotice}
-			{messages}
-			channelId={conversation.id}
-			channelName={conversationTitle()}
-			placeholder={`Message ${conversationTitle()}`}
-			isInitialLoading={isLoading}
-			retryFirstPage={loadFailed ? loadFirstPage : null}
-			{isLoadingMore}
-			hasMoreMessages={hasMore && (!beforeJoining || olderHeld)}
-			hasMoreMessagesBelow={hasMoreBelow}
-			{isLoadingMoreBelow}
-			{highlightedMessageId}
-			onLoadMore={handleLoadMore}
-			onLoadMoreBelow={handleLoadMoreBelow}
-			onJumpToPresent={jumpToPresent}
-			bind:failedNonces
-			bind:isAtBottom
-			onSend={dmHandleSend}
-			beforeSend={askBeforeSend}
-			onSaveEdit={dmSaveEdit}
-			onDeleteMsg={dmDelete}
-			onRetry={dmRetry}
-			onDismiss={dmDismiss}
-			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
-			sendRecording={() => sendConversationRecording(conversation.id).catch(() => {})}
-			onVoiceNoteOverride={dmVoiceNote}
-			gifFile={dmGif}
-			{fileLimit}
-			members={convMembers}
-			unreadAfterMessageId={convUnreadAfter}
-			onUnreadMark={(msgId) => {
-				if (convUnreadAfter == null) convUnreadAfter = msgId;
-			}}
-			onRemoveMember={removeMember}
-			{paneFocused}
-		/>
+		{#if unavailable}
+			<div class="flex min-w-0 flex-1 items-center justify-center overflow-y-auto">
+				<ConversationUnavailable encryption={encryption.state} web={!isElectrobunWindow()} />
+			</div>
+		{:else}
+			<Chat
+				bind:this={chatView}
+				{intro}
+				notice={groupNotice}
+				{messages}
+				channelId={conversation.id}
+				channelName={conversationTitle()}
+				placeholder={`Message ${conversationTitle()}`}
+				isInitialLoading={isLoading}
+				retryFirstPage={loadFailed ? loadFirstPage : null}
+				{isLoadingMore}
+				hasMoreMessages={hasMore && (!beforeJoining || olderHeld)}
+				hasMoreMessagesBelow={hasMoreBelow}
+				{isLoadingMoreBelow}
+				{highlightedMessageId}
+				onLoadMore={handleLoadMore}
+				onLoadMoreBelow={handleLoadMoreBelow}
+				onJumpToPresent={jumpToPresent}
+				bind:failedNonces
+				bind:isAtBottom
+				onSend={dmHandleSend}
+				beforeSend={askBeforeSend}
+				onSaveEdit={dmSaveEdit}
+				onDeleteMsg={dmDelete}
+				onRetry={dmRetry}
+				onDismiss={dmDismiss}
+				sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+				sendRecording={() => sendConversationRecording(conversation.id).catch(() => {})}
+				onVoiceNoteOverride={dmVoiceNote}
+				gifFile={dmGif}
+				{fileLimit}
+				members={convMembers}
+				unreadAfterMessageId={convUnreadAfter}
+				onUnreadMark={(msgId) => {
+					if (convUnreadAfter == null) convUnreadAfter = msgId;
+				}}
+				onRemoveMember={removeMember}
+				{paneFocused}
+			/>
+		{/if}
 		{#if column && layoutPrefs.membersColumn[column]}
 			<MembersColumn
 				members={convMembers}

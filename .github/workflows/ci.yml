@@ -21,8 +21,9 @@ jobs:
   check:
     # On the organisation's own runner: the 2,000 free Actions minutes a month ran out.
     runs-on: [self-hosted, linux, x64, duvet]
-    # 20 since the browser tests (Task 8 of the E2E plan): a Chrome to install the first time, then about a minute.
-    timeout-minutes: 20
+    # 30: a passing run takes 12 to 16 minutes, the browser tests (Task 8 of the E2E plan) and the engine's real cores
+    # among them, and a runner busy with other repositories' runs stretches it past 20 (#538).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
