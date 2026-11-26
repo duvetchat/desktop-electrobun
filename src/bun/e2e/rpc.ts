@@ -23,6 +23,7 @@ import {
 	removalQuestion,
 	readCommitment,
 	rotationQuestion,
+	verifyQuestion,
 	type Confirm,
 	type Question,
 } from "./confirm";
@@ -91,8 +92,8 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 
 /**
  * What asks the person first: create_identity too, which the core runs as it runs reset_identity (a new identity on a
- * device without one), so asking for the one alone would leave the other as a way around it; and sign_device_list,
- * whose list takes devices off the account (Task 24).
+ * device without one), so asking for the one alone would leave the other as a way around it; sign_device_list, whose
+ * list takes devices off the account (Task 24); and verify_user, whose mark a script could set on a forged key (Task 28).
  */
 export const CONFIRMED: ReadonlySet<string> = new Set([
 	"approval_confirm",
@@ -100,6 +101,7 @@ export const CONFIRMED: ReadonlySet<string> = new Set([
 	"reset_identity",
 	"create_identity",
 	"sign_device_list",
+	"verify_user",
 ]);
 
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
@@ -258,6 +260,16 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			// same offer).
 			if (underWay === null) throw refused("refused", "this device can't tell what it would approve");
 			question = approvalQuestion(underWay);
+		} else if (cmd === "verify_user") {
+			const userId = uuid(command.user_id, "user_id");
+			// The desktop compares digits and scans no code (Ruling 21): a QR would be a script's.
+			if (command.qr !== undefined) throw bad("qr", "the desktop verifies by the digits the person compared");
+			if (typeof command.digits !== "string") throw bad("digits", "the digits the person compared are a text");
+			// Bun reads the number itself: other digits than the core holds (a script's, or a number that changed since the
+			// page showed it) are refused, as nothing would match them.
+			const { digits } = unwrap(await core("handle", { command: { cmd: "safety_number", user_id: userId } }));
+			if (command.digits !== digits) throw refused("refused", "those aren't the digits of the security number");
+			question = verifyQuestion({ user: userId, digits });
 		} else if (cmd === "sign_device_list") {
 			const remove = devices(command.remove);
 			// A list that takes off no device would be a box that names none (M8).

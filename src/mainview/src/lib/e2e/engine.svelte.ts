@@ -30,7 +30,9 @@ import {
 	type EngineState,
 	type Outgoing,
 	type Pending,
+	type KeyChange,
 	type SafetyNumber,
+	type ShownChange,
 	type ShownMessage,
 } from "./engine/engine";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
@@ -245,8 +247,9 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			contact: (id: string) => live().contact(id),
 			safetyNumber: (id: string) => live().safetyNumber(id),
 			verifyContact: ({ userId: id, digits }: ContactParams) => live().verifyContact(id, digits),
-			closeKeyChange: (id: string) => live().closeKeyChange(id),
-			confirmKeyChanges: (ids: string[]) => live().confirmKeyChanges(ids),
+			keyChangesIn: (id: string) => live().keyChangesIn(id),
+			closeKeyChange: ({ user, change }: ShownChange) => live().closeKeyChange(user, change),
+			confirmKeyChanges: (changes: ShownChange[]) => live().confirmKeyChanges(changes),
 			sendMessage: (message: Outgoing) => {
 				const stop = new AbortController();
 				othersUploads.set(message.nonce, stop);
@@ -370,12 +373,20 @@ export const safetyNumberOf = (userId: string) =>
 /** The person marks the contact verified, having compared these digits: whether they're verified now. */
 export const verifyContact = (userId: string, digits: string) =>
 	onMessages<boolean>("verifyContact", { userId, digits }, (made) => made.verifyContact(userId, digits));
-/** The person closes the notice of a contact's changed key. */
-export const closeKeyChange = (userId: string) =>
-	onMessages<void>("closeKeyChange", userId, (made) => made.closeKeyChange(userId));
-/** The person's yes to sending, these contacts' changed keys known: what waited for it goes. */
-export const confirmKeyChanges = (userIds: string[]) =>
-	onMessages<void>("confirmKeyChanges", [...userIds], (made) => made.confirmKeyChanges(userIds));
+/**
+ * The changed keys of the conversation's people, as the engine says them (its group's users here, with those the API
+ * lists): what its notices show and its sends ask about. None where no engine can say.
+ */
+export const keyChangesIn = (conversationId: string) =>
+	onMessages<Record<string, KeyChange>>("keyChangesIn", conversationId, (made) =>
+		made.keyChangesIn(conversationId),
+	).catch((): Record<string, KeyChange> => ({}));
+/** The person closes the notice of the contact's change they were shown. */
+export const closeKeyChange = (user: string, change: string) =>
+	onMessages<void>("closeKeyChange", { user, change }, (made) => made.closeKeyChange(user, change));
+/** The person's yes to sending, the changes they were shown known: what waited for it goes. */
+export const confirmKeyChanges = (changes: ShownChange[]) =>
+	onMessages<void>("confirmKeyChanges", changes, (made) => made.confirmKeyChanges(changes));
 
 /** The leader's engine, for what another tab asks of it: none yet is a refusal, as the tab would show. */
 function live(): E2EEngine {

@@ -583,7 +583,9 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		c.engine.onSent((_conversation, sent, message) => {
 			if (sent === nonce) went = message;
 		});
-		await c.engine.confirmKeyChanges([dave.id]);
+		// Her yes names the change she was shown.
+		const change = c.engine.contacts().changes[dave.id]?.change ?? "";
+		await c.engine.confirmKeyChanges([{ user: dave.id, change }]);
 		await eventually(async () => went !== null);
 		const id = (went as DirectMessage | null)?.id ?? "";
 		await eventually(async () => (await d.engine.messages(dm, [id]))[0]?.text === text);

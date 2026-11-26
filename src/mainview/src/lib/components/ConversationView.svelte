@@ -132,13 +132,14 @@
 	import KeyChangeNotice from "$lib/components/e2e/KeyChangeNotice.svelte";
 	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
 	import { safetyNumberRequest } from "$lib/e2e/encryption.svelte";
-	import { changedIn, waitingForYes } from "$lib/e2e/engine/contacts";
+	import { changedIn, waitingForYes, type KeyChange } from "$lib/e2e/engine/contacts";
 	import { formatList } from "$lib/i18n/format";
 	import {
 		acceptMembers,
 		addMember,
 		closeKeyChange,
 		confirmKeyChanges,
+		keyChangesIn,
 		deleteEncrypted,
 		discardEncrypted,
 		editEncrypted,
@@ -214,7 +215,6 @@
 		});
 	});
 	const groupState = $derived(encryption.conversations[conversation.id] ?? null);
-	const memberUsers = $derived(conversation.members.map((member) => member.user_id));
 	/** A member's name as the app shows it, by their user ID. */
 	function memberName(userId: string): string {
 		const member = conversation.members.find((m) => m.user_id === userId)?.user;
@@ -226,14 +226,27 @@
 		conversation.type === 2 ? null : (conversation.members.find((m) => m.user_id !== me?.id)?.user_id ?? null),
 	);
 
+	// The changed keys of this conversation's people, as the engine says them: its group's users on this device, with
+	// those the API lists (Task 28's review, I1). Asked again as the contacts or the members change.
+	let changesHere = $state.raw<Record<string, KeyChange>>({});
+	$effect(() => {
+		const convId = conversation.id;
+		void encryption.contacts;
+		void conversation.members;
+		void keyChangesIn(convId).then((changes) => {
+			if (conversation.id === convId) changesHere = changes;
+		});
+	});
+
 	// A verified contact's changed key (Task 28, decision 25): before what goes here next, the person is asked, naming
-	// them; their yes lets it go, and what waited with it. True when nothing waits for a yes.
+	// them; their yes, to the changes they were shown, lets it go, and what waited with it. True when nothing waits.
 	async function askBeforeSend(): Promise<boolean> {
-		const waiting = waitingForYes(encryption.contacts.changes, memberUsers);
+		const changes = await keyChangesIn(conversation.id);
+		const waiting = waitingForYes(changes, Object.keys(changes));
 		if (!waiting.length) return true;
 		let yes = false;
 		await confirmAction(heldFor(waiting), t("e2e_send_anyway"), async () => {
-			await confirmKeyChanges(waiting);
+			await confirmKeyChanges(waiting.map((user) => ({ user, change: changes[user]?.change ?? "" })));
 			yes = true;
 		});
 		return yes;
@@ -903,10 +916,14 @@
 		failedNonces = new Set([...failedNonces, ...rows.map((row) => row.id)]);
 	}
 
-	// An edit of the person's message: this device's database shows it at once, and the engine sends it.
-	async function dmSaveEdit(messageId: string, content: string) {
-		if (!(await askBeforeSend())) return;
-		await editEncrypted(conversation.id, messageId, content);
+	// An edit of the person's message: this device's database shows it at once, and the engine sends it. A no to the
+	// question before it keeps the edit box, and what was typed in it (Chat's saveEdit).
+	async function dmSaveEdit(messageId: string, content: string): Promise<boolean> {
+		if (!(await askBeforeSend())) return false;
+		editEncrypted(conversation.id, messageId, content).catch((error: unknown) => {
+			console.error("[e2e] An edit wasn't made:", error);
+		});
+		return true;
 	}
 
 	// A notice (no seq: a pin's, a call's, a share's) is deleted as before; an encrypted message with its author's
@@ -1228,12 +1245,12 @@
 <!-- What the conversation says of its encrypted group, over its message box -->
 {#snippet groupNotice()}
 	<!-- A contact's changed key, in each conversation with them until it's closed (Task 28) -->
-	{#each changedIn(encryption.contacts.changes, memberUsers) as user (user)}
+	{#each changedIn(changesHere, Object.keys(changesHere)) as user (user)}
 		<KeyChangeNotice
 			name={memberName(user)}
-			verified={encryption.contacts.changes[user]?.verified === true}
+			verified={changesHere[user]?.verified === true}
 			onVerify={() => safetyNumberRequest.set({ id: user, name: memberName(user) })}
-			onClose={() => void closeKeyChange(user)}
+			onClose={() => void closeKeyChange(user, changesHere[user]?.change ?? "")}
 		/>
 	{/each}
 	<ConversationState

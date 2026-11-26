@@ -101,6 +101,24 @@ export function approvalQuestion({ device, fingerprint }: { device: string; fing
 	};
 }
 
+/**
+ * Marking a contact verified (verify_user): the security number Bun read from the core itself, which the person compared
+ * with the contact's, and the contact by their ID, which is what the core marks.
+ */
+export function verifyQuestion({ user, digits }: { user: string; digits: string }): Question {
+	const groups = digits.split(" ");
+	const lines = [0, 4, 8].map((at) => groups.slice(at, at + 4).join(" ")).join("\n");
+	return {
+		title: "Mark this contact as verified?",
+		message:
+			"Duvet will mark this contact as verified on this device." +
+			`\n\nSecurity number:\n${lines}` +
+			"\n\nMark them only if you compared this number with the one on their device, and they're the same." +
+			`\n\nTheir ID: ${user}`,
+		yes: "Mark verified",
+	};
+}
+
 /** Taking devices off the account (sign_device_list): each one by its ID, which is all Bun can tell of it. */
 export function removalQuestion(remove: string[]): Question {
 	const one = remove.length === 1;

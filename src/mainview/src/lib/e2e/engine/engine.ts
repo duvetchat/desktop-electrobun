@@ -25,7 +25,7 @@ import {
 	type KeysMade,
 } from "./devices";
 import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
-import { Contacts, type ContactsShown, type Observation, type SafetyNumber } from "./contacts";
+import { Contacts, type ContactsShown, type KeyChange, type SafetyNumber, type ShownChange } from "./contacts";
 import { Failures } from "./failures";
 import { fileNames } from "./files";
 import {
@@ -52,7 +52,7 @@ export type { DeviceApproval, DeviceSetup } from "./approval";
 export type { Outgoing, Pending } from "./send";
 export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
-export type { ContactsShown, KeyChange, SafetyNumber } from "./contacts";
+export type { ContactsShown, KeyChange, SafetyNumber, ShownChange } from "./contacts";
 
 /**
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
@@ -104,10 +104,10 @@ export interface EngineParts {
 	/** The session is bound to this device, which every identify names from now on (Ruling 30). */
 	registered(deviceId: string): void;
 	/**
-	 * What the core answers of each other user observed, whichever flow observes them (identity.ts' observeUsers): the
-	 * engine's own, which hands it to its contacts (contacts.ts).
+	 * The engine's contacts (contacts.ts), set by the engine itself: what the core answers of each other user observed,
+	 * whichever flow observes them (identity.ts' observeUsers), and whose changed key holds what goes to them.
 	 */
-	observed?: (userId: string, seen: Observation) => void;
+	contacts?: Contacts;
 }
 
 /**
@@ -219,15 +219,10 @@ export class E2EEngine {
 	readonly #contactListeners = new Set<() => void>();
 
 	constructor(given: EngineParts) {
-		this.#contacts = new Contacts(given.store, () => {
+		this.#contacts = new Contacts(given.store, given.user, () => {
 			for (const listener of this.#contactListeners) listener();
 		});
-		const parts: EngineParts = {
-			...given,
-			observed: (user, seen) => {
-				if (user !== given.user) this.#contacts.observed(user, seen);
-			},
-		};
+		const parts: EngineParts = { ...given, contacts: this.#contacts };
 		this.#parts = parts;
 		this.#approvals = new Approvals(
 			parts,
@@ -262,8 +257,9 @@ export class E2EEngine {
 				refused: (id, message, kind) => {
 					for (const listener of this.#refusedListeners) listener(id, message, kind);
 				},
-				// A verified contact's changed key holds what goes to their conversations until the person's yes.
-				held: (id) => this.#contacts.holding(this.#groups.members(id)),
+				// A verified contact's changed key holds what goes to their conversations until the person's yes: whom the
+				// group holds here, with those the API lists (review, I1).
+				held: async (id) => this.#contacts.holding(await this.#groups.people(id)),
 			},
 		);
 	}
@@ -314,24 +310,45 @@ export class E2EEngine {
 		return this.#act(async () => {
 			if ((await this.#safetyNumber(userId)).digits !== digits) return false;
 			const { host } = this.#parts;
-			const { verified } = await host.handle<{ verified: boolean }>({ cmd: "verify_user", user_id: userId });
+			// The digits go along: on the desktop, Bun's own box names them, and runs verify_user only for its own (Ruling 6).
+			const { verified } = await host.handle<{ verified: boolean }>({ cmd: "verify_user", user_id: userId, digits });
 			this.#contacts.verifiedNow(userId, verified);
+			// Verifying the new number is a yes too (review, Minor 7).
+			if (verified) this.#released();
 			return verified;
 		});
 	}
 
-	/** The person closes the notice of a contact's changed key: it shows no more, wherever it showed. */
-	async closeKeyChange(userId: string): Promise<void> {
-		this.#contacts.close(userId);
+	/**
+	 * The changed keys of the conversation's people (Task 28's review, I1): the users its group holds on this device,
+	 * members and leaves, with those the API lists, as a server could list it without someone its group still holds.
+	 */
+	keyChangesIn(conversationId: string): Promise<Record<string, KeyChange>> {
+		return this.#act(async () => {
+			const { changes } = this.#contacts.shown();
+			const people = await this.#groups.people(conversationId);
+			return Object.fromEntries(people.flatMap((user) => (changes[user] ? [[user, changes[user]]] : [])));
+		});
+	}
+
+	/** The person closes the notice of the contact's change they were shown: it shows no more, wherever it showed. */
+	async closeKeyChange(userId: string, change: string): Promise<void> {
+		this.#contacts.close(userId, change);
 	}
 
 	/**
-	 * The person's yes to sending, these contacts' changed keys known (decision 25): what waited for it goes, as at a
+	 * The person's yes to sending, the changes they were shown known (decision 25): what waited for it goes, as at a
 	 * READY.
 	 */
-	async confirmKeyChanges(userIds: string[]): Promise<void> {
-		this.#contacts.confirm(userIds);
+	async confirmKeyChanges(changes: ShownChange[]): Promise<void> {
+		this.#contacts.confirm(changes);
+		this.#released();
+	}
+
+	/** What waited for the person's yes goes: messages and edits, as at a READY, and the catch-ups held for it. */
+	#released() {
 		this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
+		this.#groups.ready();
 	}
 
 	/** The core's security number with the contact, as it holds them now: observed first when it asks. */
@@ -1288,6 +1305,11 @@ export class E2EEngine {
 		this.#set(state);
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
+		// Whom the person verified, looked at again: a change of theirs the record never took holds from the start (review,
+		// Minor 5).
+		await observeUsers(this.#parts, this.#contacts.verifiedUsers()).catch((error: unknown) => {
+			console.warn("[e2e] The verified contacts weren't observed:", error);
+		});
 		await this.#whenReady(() => this.#groups.all());
 		for (const id of [...this.#toOpen]) {
 			this.#toOpen.delete(id);

@@ -166,7 +166,8 @@
 		) => Promise<void>;
 		/** A conversation's word before its send: false, and nothing goes (a verified contact's changed key, Task 28). */
 		beforeSend?: () => Promise<boolean>;
-		onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
+		/** An edit's save: false, a conversation's no to it, keeps its box open with what was typed. */
+		onSaveEdit?: (msgId: string, content: string) => void | boolean | Promise<void | boolean>;
 		onDeleteMsg?: (msgId: string) => Promise<void>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
@@ -578,12 +579,17 @@
 		editingMessageId = null;
 	}
 
-	function saveEdit(messageId: string, content: string) {
+	async function saveEdit(messageId: string, content: string) {
 		const original = messages.find((m) => m.id === messageId)?.content;
 		const trimmed = content.trim();
 		if (trimmed && trimmed !== original) {
-			if (onSaveEdit) Promise.resolve(onSaveEdit(messageId, trimmed)).catch(console.error);
-			else updateMessage(messageId, trimmed, channelId).catch(console.error);
+			if (onSaveEdit) {
+				const saved = await Promise.resolve(onSaveEdit(messageId, trimmed)).catch((error: unknown) => {
+					console.error(error);
+				});
+				// The person's no (a conversation's question before it goes): the box stays, with what they typed.
+				if (saved === false) return;
+			} else updateMessage(messageId, trimmed, channelId).catch(console.error);
 		}
 		cancelEdit();
 	}

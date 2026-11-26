@@ -251,13 +251,14 @@ describe("what the page may ask", () => {
 });
 
 describe("what asks the person first, outside the page", () => {
-	test("five commands: create_identity, which the core runs as reset_identity, and no QR on the desktop", () => {
+	test("six commands: create_identity, which the core runs as reset_identity, verify_user, and no QR on the desktop", () => {
 		expect([...CONFIRMED].sort()).toEqual([
 			"approval_confirm",
 			"create_identity",
 			"reset_identity",
 			"rotate_keys",
 			"sign_device_list",
+			"verify_user",
 		]);
 	});
 
@@ -486,6 +487,53 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 			});
 		}
 		expect(asked).toHaveLength(4);
+	});
+
+	// Task 28's review (Ruling 6's sixth): a script in the page can't mark a contact verified unseen. Bun reads the
+	// security number itself, names it in its box, and runs verify_user on a yes alone, for the digits the page showed.
+	test("verify_user names the security number Bun reads itself, and runs on a yes alone, for those digits", async () => {
+		const { asked, confirm } = person(true, false, true);
+		const ana = pageOf({ start: realCore(), confirm });
+		const bo = pageOf({ start: realCore(), confirm: async () => true });
+		const made: Record<string, { identity_key: string; device_list: string; certificate: string }> = {};
+		for (const [page, user, device] of [
+			[ana, ANA, APPROVER],
+			[bo, BO, BO_DEVICE],
+		] as const) {
+			await page.ask("open", { userId: user });
+			await page.run({ cmd: "create_device", user_id: user, device_id: device });
+			made[user] = (await page.run({ cmd: "create_identity" })).ok;
+			await page.run({ cmd: "identity_uploaded" });
+		}
+		const { identity_key, device_list, certificate } = made[BO];
+		const seen = async () =>
+			(await ana.run({ cmd: "observe_user", user_id: BO, identity_key, device_list, certificates: [certificate] })).ok;
+		expect(await seen()).toMatchObject({ state: "new", verified: false });
+		const { digits } = (await ana.run({ cmd: "safety_number", user_id: BO })).ok;
+		const other = digits.replace(/\d/, (digit: string) => String((Number(digit) + 1) % 10));
+
+		// A script's: no digits, other digits than the core holds, or a QR, which the desktop never scans.
+		expect((await ana.run({ cmd: "verify_user", user_id: BO })).error).toMatchObject({
+			code: "bad_command",
+			field: "digits",
+		});
+		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits: other })).error).toMatchObject({
+			code: "refused",
+		});
+		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits, qr: "AAAA" })).error).toMatchObject({
+			code: "bad_command",
+			field: "qr",
+		});
+		expect(asked).toHaveLength(1);
+
+		// The person's no marks nothing; the box names Bun's own digits, and the contact's ID.
+		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits })).error).toMatchObject({ code: "refused" });
+		expect(asked[1]?.message.replace(/\s+/g, " ")).toContain(digits);
+		expect(asked[1]?.message).toContain(BO);
+		expect((await seen()).verified).toBe(false);
+		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits })).ok).toEqual({ verified: true });
+		expect((await seen()).verified).toBe(true);
+		expect(asked).toHaveLength(3);
 	});
 
 	test.each(["reset_identity", "create_identity"])("%s asks first, and runs on a yes alone", async (cmd) => {

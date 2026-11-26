@@ -36,13 +36,13 @@ export async function servedIdentity({ api, user }: EngineParts): Promise<Identi
  * What the core answers of each goes to the contacts (`observed`, contacts.ts), where a changed key leaves its
  * notice.
  */
-export async function observeUsers({ api, host, observed }: EngineParts, users: string[]): Promise<void> {
+export async function observeUsers({ api, host, contacts }: EngineParts, users: string[]): Promise<void> {
 	for (let at = 0; at < users.length; at += 50) {
 		for (const { user_id, identity_key, device_list, certificates } of await api.identities(users.slice(at, at + 50))) {
 			const seen = await host.handle<Observation>({
 				...{ cmd: "observe_user", user_id, identity_key, device_list, certificates },
 			});
-			observed?.(user_id, seen);
+			contacts?.observed(user_id, seen);
 		}
 	}
 }

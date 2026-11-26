@@ -52,6 +52,8 @@
 				await load(request, t("e2e_safety_changed", { name: request.name }));
 			}
 		} catch (error) {
+			// Bun's own box answered no (the desktop): nothing changes, and nothing's wrong.
+			if (error instanceof CoreError && error.code === "refused") return;
 			problem = words(error, request.name);
 		} finally {
 			busy = false;

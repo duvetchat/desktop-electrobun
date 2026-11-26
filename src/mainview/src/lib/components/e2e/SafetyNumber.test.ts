@@ -40,7 +40,7 @@ describe("a contact's security number", () => {
 		expect(svg?.attributes["aria-label"]).toBe(en.e2e_safety_qr_label.replace("{name}", "Bo"));
 		expect(drawn()).toContain(en.e2e_safety_compare.replace("{name}", "Bo"));
 		// The QR's own test holds what it draws to its text (QrCode.test.ts): here, that the text is the core's qr.
-		const source = readFileSync(join(import.meta.dir, "SafetyNumber.svelte"), "utf8");
+		const source = readFileSync(join(import.meta.dir, "SafetyNumber.svelte"), "utf8").replaceAll("\r\n", "\n");
 		expect(source).toMatch(/<QrCode text=\{number\.qr\}/);
 	});
 
@@ -64,9 +64,9 @@ describe("a contact's security number", () => {
 });
 
 describe("the security number's dialog", () => {
-	const dialog = readFileSync(join(import.meta.dir, "SafetyNumberDialog.svelte"), "utf8");
-	const shared = readFileSync(join(import.meta.dir, "../../e2e/encryption.svelte.ts"), "utf8");
-	const page = readFileSync(join(import.meta.dir, "../../../routes/app/+page.svelte"), "utf8");
+	const dialog = readFileSync(join(import.meta.dir, "SafetyNumberDialog.svelte"), "utf8").replaceAll("\r\n", "\n");
+	const shared = readFileSync(join(import.meta.dir, "../../e2e/encryption.svelte.ts"), "utf8").replaceAll("\r\n", "\n");
+	const page = readFileSync(join(import.meta.dir, "../../../routes/app/+page.svelte"), "utf8").replaceAll("\r\n", "\n");
 
 	test("is one for the app, opened by whoever names a contact", () => {
 		// Kept apart from the engine, which another window's page (Space settings' members, whose menu asks) never loads.
@@ -77,14 +77,21 @@ describe("the security number's dialog", () => {
 		expect(dialog).toMatch(/<Sheet\b[^>]*>\s*<SafetyNumber\b/);
 	});
 
+	test("a no in Bun's own box changes nothing, and says nothing is wrong", () => {
+		expect(dialog).toContain('if (error instanceof CoreError && error.code === "refused") return;');
+	});
+
 	test("marks only the number the person compared, and shows the new one when it changed meanwhile", () => {
 		expect(dialog).toMatch(/verifyContact\(asked\.id, shown\.digits\)/);
 		expect(dialog).toContain('t("e2e_safety_changed", { name: request.name })');
 	});
 
 	test("opens from a contact's menu and profile, as the menu's rule offers it, and the profile wears the mark", () => {
-		const menu = readFileSync(join(import.meta.dir, "../MemberMenu.svelte"), "utf8");
-		const popover = readFileSync(join(import.meta.dir, "../MemberProfilePopover.svelte"), "utf8");
+		const menu = readFileSync(join(import.meta.dir, "../MemberMenu.svelte"), "utf8").replaceAll("\r\n", "\n");
+		const popover = readFileSync(join(import.meta.dir, "../MemberProfilePopover.svelte"), "utf8").replaceAll(
+			"\r\n",
+			"\n",
+		);
 		expect(menu).toMatch(
 			/\{#if items\.verify\}\s*<MenuItem\s+icon=\{ShieldCheck\}\s+onSelect=\{\(\) => afterClose\(\(\) => safetyNumberRequest\.set\(\{ id: person\.id, name: person\.name \}\)\)\}/,
 		);
