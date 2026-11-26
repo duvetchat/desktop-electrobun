@@ -2,27 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, testDevice, testHost, until, useFake, watchedHost, type TestDevice } from "../testing/engines";
-import type { IdentityMade } from "./identity";
+import { firstDevice, resetFrom, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
 import { DEVICE_KEYS } from "./store";
 
 // The engine's start (PLAN-E2E-CLIENTES.md, «El motor», «Arranque»): the API's configuration, the user's database,
 // this installation's device and the session bound to it, and what the user's identity makes of the device.
 const SLOW = 180_000;
 const MINUTE = 60_000;
-
-/** Another device of the user starts over (Task 26 does it from the app): a new identity, listing that device alone. */
-async function resetFrom({ host, api, user }: TestDevice) {
-	const made = await host.handle<IdentityMade>({ cmd: "reset_identity" });
-	const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
-	const replaces = (await api.identity(user)).identity_key;
-	const published = await api.putIdentity({
-		...{ identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key },
-		...{ replaces, reset: true },
-	});
-	await host.handle({ cmd: "identity_uploaded" });
-	await host.handle({ cmd: "device_list_uploaded", version: published.device_list_version });
-}
 
 describe.skipIf(!coreLibrary)("the engine's start", () => {
 	test(

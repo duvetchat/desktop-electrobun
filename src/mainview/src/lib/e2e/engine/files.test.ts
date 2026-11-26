@@ -3,22 +3,24 @@ import type { DirectMessage } from "$lib/api/conversations";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { bytesBase64 } from "$lib/staged-images";
-import { drawnAs, type EnvelopeFile } from "../conventions";
+import { drawnAs } from "../conventions";
 import { FakeApi, type GatewayEvent } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
 	commitByHand,
+	filesOn,
 	firstDevice,
 	rejection,
 	restarted,
 	sameGroup,
+	sendWritten,
 	turnEnded,
 	until,
 	useFake,
 	type TestDevice,
 } from "../testing/engines";
 import { holdUploads, useXHR } from "../testing/xhr";
-import { drawnBy, FileError, FilesGone, gifFile, openSealed, sealedSize, shownFile, type ShownFile } from "./files";
+import { drawnBy, FileError, FilesGone, gifFile, openSealed, sealedSize, shownFile } from "./files";
 
 // A conversation's files (PLAN-E2E-CLIENTES.md, «Adjuntos», and its conventions between clients): each sealed by the
 // core with a key and an ID of its own, sent with that ID, and opened by the other device from the API's signed URL,
@@ -63,18 +65,6 @@ const jpeg = (n: number) => withHead([0xff, 0xd8, 0xff], n);
 const gif = (n: number) => withHead([...new TextEncoder().encode("GIF89a")], n);
 const blob = (bytes: Uint8Array) => new Blob([new Uint8Array(bytes)]);
 
-/** The device's files of a message, once its core holds the message, as a view reads them. */
-async function filesOn(device: TestDevice, conversation: string, id: string): Promise<ShownFile[]> {
-	let files: ShownFile[] = [];
-	await until(async () => {
-		const [row] = await device.engine.messages(conversation, [id]);
-		if (row?.status !== "ok") return false;
-		files = row.attachments.map(shownFile).filter((file): file is ShownFile => file !== null);
-		return true;
-	});
-	return files;
-}
-
 /** How a device opens a file the API keeps at `url`: downloaded with none of the app's headers, opened by its core. */
 const openerOf = (device: TestDevice, url: string | undefined) => ({
 	download: (most: number, progress?: (received: number) => void) => {
@@ -88,46 +78,6 @@ const urlOf = (message: DirectMessage, id: string) => message.attachments?.find(
 /** The IDs of the conversation's messages the API holds, as a device reads its queue. */
 const onTheApi = async (device: TestDevice, conversation: string) =>
 	(await device.api.queue(conversation, 0)).entries.filter((e) => e.kind === "message").map((e) => e.message_id!);
-
-/**
- * A file as another client could send it, its envelope written by hand: the core seals it and encrypts what it's told,
- * and nothing checks what the sender says of it. Sent beside Ana's engine, which is idle.
- */
-async function sendWritten(
-	device: TestDevice,
-	conversation: string,
-	files: { bytes: Uint8Array; said: Partial<EnvelopeFile> }[],
-): Promise<DirectMessage> {
-	const attachments: EnvelopeFile[] = [];
-	const sealed: Blob[] = [];
-	for (const { bytes, said } of files) {
-		const { key } = await device.host.handle<{ key: string }>({ cmd: "attachment_key" });
-		const id = crypto.randomUUID();
-		const hash = bytesBase64(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))));
-		sealed.push(await device.host.sealFile(key, id, blob(bytes)));
-		attachments.push({
-			id,
-			key,
-			sha256: hash,
-			name: "file",
-			type: "application/octet-stream",
-			size: bytes.length,
-			...said,
-		});
-	}
-	const nonce = crypto.randomUUID();
-	const { ciphertext } = await device.host.handle<{ ciphertext: string }>({
-		...{ cmd: "encrypt", conversation_id: conversation, nonce },
-		envelope: { attachments },
-	});
-	const ids = attachments.map((a) => a.id);
-	const message = await device.api.sendMessage(conversation, { ciphertext, nonce, attachment_ids: ids }, sealed);
-	await device.host.handle({
-		...{ cmd: "sent", conversation_id: conversation, nonce },
-		...{ message_id: message.id, seq: message.seq },
-	});
-	return message;
-}
 
 // Step 5's review, M4 (desktop-electrobun#544): a thumbnail of its own was taken whatever its size, up to a request's
 // 32 MiB, and every reader downloaded it as its row neared the screen.

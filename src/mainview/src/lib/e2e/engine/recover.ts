@@ -9,6 +9,7 @@ import { coreStatus } from "./bootstrap";
 import { takenAway, unlessNothingKept } from "./devices";
 import type { EngineParts } from "./engine";
 import { observeOwn, servedIdentity } from "./identity";
+import { LISTED } from "./store";
 
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
@@ -91,6 +92,8 @@ export async function putFirstList(parts: EngineParts, signOff: boolean): Promis
 		throw error;
 	}
 	await host.handle({ cmd: "device_list_uploaded", version }).catch(unlessNothingKept);
+	// Listed: no list the API serves from now on makes this device's first list wait again (firstListWaits).
+	if (status.device_id) parts.store.write(LISTED, status.device_id);
 	await observeOwn(parts, (await servedIdentity(parts)) ?? served);
 	return "listed";
 }
