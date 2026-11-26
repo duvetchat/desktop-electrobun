@@ -15,10 +15,12 @@ export const PENDING_SENDS = "pending_sends";
 export const PENDING_CHANGES = "pending_changes";
 /** The devices a change of keys under way takes off the list (devices.ts), which it runs again with, until it's uploaded. */
 export const KEPT_ROTATION = "rotation";
+/** The identity a start over replaces (start-over.ts), from the person's tap until its upload is confirmed. */
+export const KEPT_RESET = "reset";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEPT_RESET],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";

@@ -30,6 +30,23 @@ describe("the notices", () => {
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
 
+	test("a new device's setup and its approval say the table's words", () => {
+		// The plan's own words (Task 26) and what both apps must say alike: the mobile app takes the same.
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_use_code", "use_code"],
+			["e2e_approval_code_hint", "approval_code_hint"],
+			["e2e_code_accepted", "code_accepted"],
+			["e2e_code_mismatch", "code_mismatch"],
+			["e2e_approval_ask", "approval_ask"],
+			["e2e_approval_confirm_after", "approval_confirm_after"],
+			["e2e_start_over_warning", "start_over_warning"],
+		];
+		for (const [key, table] of words) {
+			expect(NOTICES[table]).toEqual(expect.any(String));
+			expect(en[key]).toBe(NOTICES[table]);
+		}
+	});
+
 	test("a conversation's files say the table's words", () => {
 		// The app's words for them (en.json, which t() reads) are the notices', key for key: the mobile app takes the same.
 		const words: [keyof typeof en, NoticeKey][] = [

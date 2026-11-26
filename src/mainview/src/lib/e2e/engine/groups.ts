@@ -82,9 +82,13 @@ export async function joinGroup(
 	expected: LegacyRecord | null,
 ): Promise<Commit> {
 	const { generation, epoch, group_info } = await parts.api.groupInfo(conv.id);
-	const made = await parts.host.handle<{ commit: string; group_info: string }>({
-		...{ cmd: "join_external", conversation_id: conv.id, generation, group_info, external_sender: externalSender },
-		...(expected ? { expected } : {}),
-	});
+	// A device that never saw the group's members (one just set up, Task 26, or a first device added to a group) is
+	// asked for their identities first.
+	const made = await withIdentities(parts, () =>
+		parts.host.handle<{ commit: string; group_info: string }>({
+			...{ cmd: "join_external", conversation_id: conv.id, generation, group_info, external_sender: externalSender },
+			...(expected ? { expected } : {}),
+		}),
+	);
 	return { generation, epoch, ...made };
 }

@@ -58,6 +58,15 @@ export const NOTICES = {
 	file_named: "{name}: {status}",
 	// The mobile app's push, when a message can't be read in time (its task 21): this app doesn't show it.
 	new_message: "New message",
+	// A new device's setup and its approval (task 26).
+	use_code: "Use a code instead",
+	approval_code_hint: "A computer approving this device will show this code",
+	code_accepted: "Code accepted: confirm it on your other device.",
+	code_mismatch: "That isn't the code your other device shows.",
+	approval_ask: "Is this device yours?",
+	approval_confirm_after: "Confirm only after your new device accepts it",
+	start_over_warning:
+		"Starting over makes new security keys for your account. The history of your encrypted conversations can't be read any more, and your contacts will see that your keys changed.",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

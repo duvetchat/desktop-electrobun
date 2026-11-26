@@ -23,6 +23,16 @@ const props = (state: EngineState, web = false) => ({
 	onLater: async () => {},
 	onStartOver: async () => {},
 	onFinishKeys: async () => {},
+	setupActions: {
+		recover: async () => {},
+		beginApproval: async () => {},
+		useCode: async () => {},
+		acceptCode: async () => {},
+		endApproval: async () => {},
+		resetIdentity: async () => {},
+		finishSetup: async () => {},
+	},
+	approvalActions: { approve: async () => {}, decline: async () => {}, confirm: async () => {} },
 });
 const drawn = (state: EngineState, web = false) =>
 	render(EncryptionGate, { props: props(state, web) }).body.replace(/<!--[^]*?-->/g, "");
@@ -104,6 +114,36 @@ describe("the encryption gate", () => {
 		// Nothing else runs it.
 		expect(gate.match(/onStartOver\b/g)).toHaveLength(3);
 		expect(en.e2e_start_over_confirm).toContain("Delete this device's encrypted conversations and their keys");
+	});
+
+	// Task 26: a new device is set up in a card of its own, from its bar; one whose setup waits to finish says so.
+	test("a new device's bar opens its setup, and one that waits to finish has Finish", () => {
+		expect(drawn({ name: "new_device" })).toMatch(/<button [^>]*>\s*Set up\s*<\/button>/);
+		// The card's ways shown, the bar stays as it was.
+		expect(drawn({ name: "new_device", setup: { way: "qr", qr: "omRib2R5" } })).toContain(en.e2e_new_device);
+		const listing = drawn({ name: "new_device", setup: { way: "finishing" } });
+		expect(listing).toContain(en.e2e_new_device_finish);
+		expect(listing).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+		const reset = drawn({ name: "new_device", setup: { way: "reset", recoveryKey: null, finishing: true } });
+		expect(reset).toContain(en.e2e_reset_finish);
+		expect(reset).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+		// Starting over's new key has the screen, as a first device's.
+		const key = drawn({ name: "new_device", setup: { way: "reset", recoveryKey: "1".repeat(48), finishing: false } });
+		expect(key).not.toContain(en.e2e_new_device);
+		const gate = source("EncryptionGate.svelte");
+		expect(gate).toMatch(/<Sheet\b[^>]*>\s*<DeviceSetupCard\b/);
+	});
+
+	test("another device's request to be approved is a question of its own, never a bar", () => {
+		const approval = {
+			...{ device: "01a2161e-0000-7000-8000-000000000001", name: "Chrome on Linux" },
+			...{ fingerprint: "0123 4567 89ab cdef", step: "asked" as const },
+		};
+		expect(drawn({ name: "ready", approval }).trim()).toBe("");
+		expect(drawn({ name: "ready", approval: { ...approval, step: "confirmed" } }).trim()).toBe("");
+		const gate = source("EncryptionGate.svelte");
+		expect(gate).toMatch(/<Dialog\b[^>]*title=\{approvalTitle\(/);
+		expect(gate).toContain("<ApprovalPrompt");
 	});
 
 	// M1: one stack for the app's bottom bars, which neither places by itself.

@@ -85,6 +85,17 @@ describe("Settings' devices", () => {
 		}
 	});
 
+	// Task 26, from task 24's review (M2): a device this one approved has no certificate until its own list goes up, and a
+	// list or a change of keys made meanwhile would leave it out.
+	test("while a device this one approved sets up, offer no removal or change of keys, and say why", () => {
+		const approval = { device: BROWSER.id, name: BROWSER.name, fingerprint: "0123 4567 89ab cdef", step: "confirmed" };
+		const html = drawn({ encryption: { name: "ready", approval } });
+		expect(buttons(html, en.e2e_device_remove)).toBe(0);
+		expect(buttons(html, en.e2e_change_keys)).toBe(0);
+		expect(html).toContain(en.e2e_approval_waits);
+		expect(drawn()).not.toContain(en.e2e_approval_waits);
+	});
+
 	test("offer to delete this device's data where it has some", () => {
 		expect(buttons(drawn(), NOTICES.delete_device)).toBe(1);
 		expect(buttons(drawn({ encryption: { name: "new_device" } }), NOTICES.delete_device)).toBe(1);

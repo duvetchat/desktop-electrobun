@@ -74,6 +74,7 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
+	import { CoreError } from "$lib/e2e/errors";
 	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
 	import SettingsGroup from "./SettingsGroup.svelte";
@@ -115,8 +116,11 @@
 		onRemoveThis: () => Promise<void>;
 	} = $props();
 
-	// A list, or new keys, only from a device with the user's identity, and not while new keys wait to be saved.
-	const ready = $derived(encryption.name === "ready" && !encryption.rotation);
+	// A device this one approved, until its own list is up: a list or new keys meanwhile would leave it out (Task 26).
+	const approving = $derived(encryption.name === "ready" && encryption.approval?.step === "confirmed");
+	// A list, or new keys, only from a device with the user's identity, and not while new keys wait to be saved, nor
+	// while a device it approved sets up.
+	const ready = $derived(encryption.name === "ready" && !encryption.rotation && !approving);
 	const hasData = $derived(hasDeviceData(encryption));
 
 	// A change of keys that waits, with no key on screen (which is its dialog's): Finish, or why it can't (M1, I1).
@@ -160,7 +164,10 @@
 			await onRemove(device.id, lost && device.listed);
 			removing = null;
 		} catch (error) {
-			failure = getApiError(error, t("e2e_device_action_failed"));
+			failure =
+				error instanceof CoreError && error.code === "approval_waits"
+					? t("e2e_approval_waits")
+					: getApiError(error, t("e2e_device_action_failed"));
 		} finally {
 			busy = false;
 		}
@@ -219,6 +226,10 @@
 			</div>
 		{/if}
 	</SettingsGroup>
+
+	{#if approving}
+		<p class={NOTE} role="status">{t("e2e_approval_waits")}</p>
+	{/if}
 
 	{#if ready || hasData || waiting}
 		<SettingsGroup>

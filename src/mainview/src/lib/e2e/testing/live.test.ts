@@ -10,6 +10,7 @@ import { logIn } from "$lib/api/auth";
 import { e2eApi } from "$lib/api/e2e";
 import { identifyData } from "$lib/api/ws/identify";
 import { getWSHostURL } from "$lib/common/common";
+import { listDevices } from "../cbor";
 import { deviceName } from "../client";
 import { E2EEngine, systemClock } from "../engine/engine";
 import { openSealed, sealedSize, shownFile, type ShownFile } from "../engine/files";
@@ -171,6 +172,8 @@ async function approvedOn(first: Device, who: Account): Promise<Device> {
 }
 /** Carol's and Dave's devices and their DM, which the groups' case leaves to the messages' case after it. */
 let carolAndDave: { c: Device; d: Device; dm: string } | null = null;
+/** The recovery key each account's first device showed in the groups' case, by the account's ID: a test's own copy. */
+const recoveryKeys = new Map<string, string>();
 afterAll(async () => {
 	if (carolAndDave) await Promise.all([carolAndDave.c.end(), carolAndDave.d.end()]);
 });
@@ -241,9 +244,14 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 				.handle<{ generation: number; epoch: number; authenticator: string }>({ cmd: "group", conversation_id: id })
 				.catch(() => null);
 		try {
-			for (const device of [c, d]) {
+			for (const [device, who] of [
+				[c, carol],
+				[d, dave],
+			] as const) {
 				await device.engine.start();
 				await device.engine.makeIdentity();
+				const shown = device.engine.state;
+				if (shown.name === "first_device" && shown.recoveryKey) recoveryKeys.set(who.id, shown.recoveryKey);
 				await device.engine.keySaved();
 				expect(device.engine.state).toEqual({ name: "ready" });
 			}
@@ -379,4 +387,90 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await Promise.all([lost.end(), kept.end()]);
 		}
 	}, 180_000);
+
+	// A new device (PLAN-E2E-CLIENTES.md, Task 26): Dave's second device, set up with the recovery key his first showed
+	// in the groups' case, goes into his DM with Carol by an external commit and reads what she sends after.
+	test("a second device recovers with the key and reads what comes after", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no conversation");
+		const { c, d, dm } = pair;
+		const dave = account(3);
+		const key = recoveryKeys.get(dave.id);
+		if (!key) throw new Error("the groups' case kept no recovery key");
+		const second = await deviceOf(dave);
+		try {
+			await second.engine.start();
+			expect(second.engine.state).toEqual({ name: "new_device" });
+			// As a person types it: in groups, spaces between.
+			await second.engine.recover(key.match(/.{4}/g)!.join(" "));
+			expect(second.engine.state).toEqual({ name: "ready" });
+			const own = second.registered.at(-1)!;
+			expect((await second.routes.devices()).find(({ current }) => current)).toMatchObject({ id: own, listed: true });
+			expect(listDevices((await second.routes.identity(dave.id)).device_list)).toContain(own);
+
+			await inOneGroup([c, d, second], dm);
+			const text = "after you recovered";
+			const sent = (await c.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text }))!;
+			await eventually(async () => (await second.engine.messages(dm, [sent.id]))[0]?.text === text);
+		} finally {
+			await second.end();
+		}
+	}, 180_000);
+
+	// Carol's new device, approved by the one the cases above left her, by the code it shows: on the API's list, and in
+	// her DM's group, where it reads what Dave sends.
+	test("a device approved by code joins", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no conversation");
+		const { c, d, dm } = pair;
+		const carol = account(2);
+		const fresh = await deviceOf(carol);
+		const asked = () => (c.engine.state.name === "ready" ? c.engine.state.approval : undefined);
+		try {
+			await fresh.engine.start();
+			expect(fresh.engine.state).toEqual({ name: "new_device" });
+			await fresh.engine.beginApproval();
+			await fresh.engine.useCode();
+			const own = fresh.registered.at(-1)!;
+			await eventually(async () => asked()?.step === "asked");
+			expect(asked()).toMatchObject({ device: own, name: deviceName() });
+			await c.engine.approveDevice(own);
+			await eventually(async () => asked()?.step === "code");
+			const { code } = asked()!;
+			await eventually(async () => {
+				const shown = fresh.engine.state;
+				return shown.name === "new_device" && shown.setup?.way === "code" && shown.setup.offered;
+			});
+			await fresh.engine.acceptCode(code!);
+			await c.engine.confirmApproval(own);
+			await eventually(async () => fresh.engine.state.name === "ready");
+			expect((await fresh.routes.devices()).find(({ current }) => current)).toMatchObject({ id: own, listed: true });
+			await eventually(async () => asked() === undefined);
+
+			await inOneGroup([c, d, fresh], dm);
+			const text = "welcome, new device";
+			const sent = (await d.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text }))!;
+			await eventually(async () => (await fresh.engine.messages(dm, [sent.id]))[0]?.text === text);
+		} finally {
+			await fresh.end();
+		}
+	}, 180_000);
 });
+
+/** The conversation's group as the device's core holds it, or null without one. */
+const heldGroup = (device: Device, conversation: string) =>
+	device.host
+		.handle<{ generation: number; epoch: number; authenticator: string }>({
+			cmd: "group",
+			conversation_id: conversation,
+		})
+		.catch(() => null);
+
+/** Waits until the devices hold the conversation's group at one generation and epoch, with one authenticator. */
+async function inOneGroup(devices: Device[], conversation: string): Promise<void> {
+	await eventually(async () => {
+		const groups = await Promise.all(devices.map((device) => heldGroup(device, conversation)));
+		const [first] = groups;
+		return groups.every((group) => group !== null && first !== null && Bun.deepEquals(group, first));
+	}, 60_000);
+}

@@ -4,9 +4,9 @@
 // (a new password's remove_devices, step 3's ruling 23), which no list or change of keys of this device's names again.
 // This device never takes itself off the list: the API takes no list without the session's device.
 import { FetchError } from "$lib/api/api";
-import type { Device, Identity } from "$lib/api/e2e";
+import type { Device, E2eApi, Identity } from "$lib/api/e2e";
 import type { UserDevice } from "$lib/types";
-import { certificateDevice, listDevices } from "../cbor";
+import { listDevices } from "../cbor";
 import { CoreError } from "../errors";
 import { coreStatus, type CoreStatus } from "./bootstrap";
 import type { EngineParts, EngineState } from "./engine";
@@ -23,7 +23,7 @@ const ROUNDS = 3;
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
 /** A refusal the core gives when there's nothing kept of what it's told: the upload was confirmed already. */
-const unlessNothingKept = (error: unknown) => {
+export const unlessNothingKept = (error: unknown) => {
 	if (!(error instanceof CoreError && error.code === "not_found" && error.what === "upload")) throw error;
 };
 
@@ -67,11 +67,15 @@ export function addedToTell(store: EngineStore, device: UserDevice): boolean {
 	return true;
 }
 
-/** The devices a list this device holds names that have no certificate the API serves, never this one: the API took
- * them away (remove_devices), and refuses a list that names them. */
-function gone(served: Identity, held: readonly string[], self: string | undefined): string[] {
-	const certified = new Set(served.certificates.map(certificateDevice));
-	return held.filter((id) => id !== self && !certified.has(id));
+/**
+ * The devices a list this device holds names that the API no longer registers, never this one: it took them away
+ * (remove_devices), and refuses a list that names them. A device it still registers stays though it has no certificate
+ * yet (one this device approved, whose own list hasn't gone up: task 24's review, M2), as GET …/devices tells: the
+ * Android twin's rule (task 25).
+ */
+export async function takenAway(api: E2eApi, held: readonly string[], self: string | undefined): Promise<string[]> {
+	const registered = new Set((await api.devices()).map(({ id }) => id));
+	return held.filter((id) => id !== self && !registered.has(id));
 }
 
 /** The devices the list this device holds of its user names. */
@@ -106,7 +110,9 @@ export async function signWithout(parts: EngineParts, device: string): Promise<v
 		if (!listed.includes(device)) return;
 		const status = await coreStatus(host);
 		const held = heldDevices(status);
-		const off = [...new Set([device, ...gone(served, held, status.device_id)])].filter((id) => held.includes(id));
+		const off = [...new Set([device, ...(await takenAway(api, held, status.device_id))])].filter((id) =>
+			held.includes(id),
+		);
 		const device_list = off.length
 			? (await host.handle<{ device_list: string }>({ cmd: "sign_device_list", remove: off })).device_list
 			: status.device_list;
@@ -197,7 +203,7 @@ export async function makeKeys(parts: EngineParts, remove: readonly string[]): P
 		status = await coreStatus(host);
 		const held = heldDevices(status);
 		const asked = remove.filter((id) => held.includes(id));
-		removing = [...new Set([...asked, ...gone(served, held, status.device_id)])];
+		removing = [...new Set([...asked, ...(await takenAway(parts.api, held, status.device_id))])];
 		store.write(KEPT_ROTATION, { remove: removing });
 	}
 	const made = await host.handle<Omit<KeysMade, "replaces">>({
