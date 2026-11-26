@@ -18,15 +18,18 @@ describe("the share history dialog", () => {
 		expect(source("../MessageList.svelte")).toContain("conversationId={isConversation ? channelId : null}");
 	});
 
+	// What the pick and Share do is sharing.ts' (pickedRange, shareFromDialog), which sharing.test.ts runs: here, that the
+	// dialog's radios and its button go through them.
 	test("offers the four ranges, and shares on Share alone, with the one picked", () => {
 		const dialog = source("ShareHistoryDialog.svelte");
 		expect(dialog).toMatch(/\{#each SHARE_RANGES as option \(option\)\}/);
 		expect(dialog).toContain("{t(RANGE_WORDS[option])}");
-		expect(dialog).toContain("await shareHistory(conversationId, userId, range)");
+		expect(dialog).toContain("bind:value={() => range, (picked) => (range = pickedRange(picked, range))}");
+		expect(dialog).toContain(
+			"said = await shareFromDialog((picked) => shareHistory(conversationId, userId, picked), range, name);",
+		);
 		expect(dialog.match(/shareHistory\(/g)).toHaveLength(1);
 		expect(dialog).toContain("onclick={share}");
-		// What it says once answered: the cut, the limit, why else it didn't go.
-		expect(dialog).toContain("outcomeLine(outcome, name)");
 	});
 
 	test("shares only once this device is ready, and says so until then", () => {

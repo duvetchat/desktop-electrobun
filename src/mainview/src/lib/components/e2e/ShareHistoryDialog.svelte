@@ -4,8 +4,7 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import { encryption, shareHistory } from "$lib/e2e/engine.svelte";
 	import { SHARE_RANGES, type ShareRange } from "$lib/e2e/engine/history";
-	import { CoreError } from "$lib/e2e/errors";
-	import { outcomeLine, RANGE_WORDS } from "$lib/e2e/sharing";
+	import { pickedRange, RANGE_WORDS, shareFromDialog } from "$lib/e2e/sharing";
 	import { t } from "$lib/i18n";
 	import { shareHistoryRequest } from "$lib/member-actions";
 	import { ERROR_NOTE, spinnerClass } from "$lib/overlay-forms";
@@ -41,14 +40,8 @@
 		sharing = true;
 		said = null;
 		try {
-			const outcome = await shareHistory(conversationId, userId, range);
-			const text = outcomeLine(outcome, name);
-			if (text === null) open = false;
-			else said = { text, done: outcome.sent };
-		} catch (error) {
-			console.error("[e2e] A conversation's history wasn't shared:", error);
-			const notReady = error instanceof CoreError && error.code === "not_ready";
-			said = { text: t(notReady ? "e2e_not_ready" : "e2e_share_history_failed"), done: false };
+			said = await shareFromDialog((picked) => shareHistory(conversationId, userId, picked), range, name);
+			if (said === null) open = false;
 		} finally {
 			sharing = false;
 		}
@@ -71,7 +64,7 @@
 >
 	{#if asked}
 		<RadioGroup.Root
-			bind:value={() => range, (picked) => (range = picked as ShareRange)}
+			bind:value={() => range, (picked) => (range = pickedRange(picked, range))}
 			disabled={sharing || !!said?.done}
 			aria-label={t("e2e_share_history")}
 			class="flex flex-col gap-1"

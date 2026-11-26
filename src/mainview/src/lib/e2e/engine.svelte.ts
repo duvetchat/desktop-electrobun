@@ -34,6 +34,7 @@ import {
 	type ShareRange,
 	type ShownMessage,
 } from "./engine/engine";
+import { SHARE_RANGES } from "./engine/history";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
@@ -146,9 +147,15 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		showOffers(conversationId, offers);
 		tabs?.changed(conversationId);
 	});
-	// An edit or a deletion the API refused for good shows on this device alone: the person is told.
-	made.onChangeRefused((_conversationId, _messageId, kind) => {
-		toast(t(kind === "edit" ? "e2e_edit_refused" : "e2e_delete_refused"), "error");
+	// An edit or a deletion the API refused for good shows on this device alone, and a share of the history the person
+	// was told went ended for good: they're told.
+	made.onChangeRefused((_conversationId, _id, kind) => {
+		const words = {
+			edit: "e2e_edit_refused",
+			delete: "e2e_delete_refused",
+			share: "e2e_share_history_failed",
+		} as const;
+		toast(t(words[kind]), "error");
 	});
 	made.onDevice(tellOfDevice);
 	for (const conversationId of toOpen) {
@@ -255,9 +262,18 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			removeMember: ({ conversationId, userId: user }: MessageParams) =>
 				live().removeMember(conversationId, user ?? ""),
 			leaveConversation: (id: string) => live().leaveConversation(id),
-			shareHistory: ({ conversationId, userId: user, range }: MessageParams) =>
-				live().shareHistory(conversationId, user ?? "", range ?? "week"),
+			// A request without its member or its range is none the page sends: nothing is shared for it (M5).
+			shareHistory: ({ conversationId, userId: user, range }: MessageParams) => {
+				const picked = SHARE_RANGES.find((one) => one === range);
+				if (!user || !picked) {
+					throw new CoreError("bad_command", "a share names its member and its range", {
+						field: user ? "range" : "user_id",
+					});
+				}
+				return live().shareHistory(conversationId, user, picked);
+			},
 			importShared: ({ shareId }: MessageParams) => live().importShared(shareId ?? ""),
+			dismissShared: ({ shareId }: MessageParams) => live().dismissShared(shareId ?? ""),
 			offers: (id: string) => engine?.offers(id) ?? [],
 			cutoverAt: () => engine?.cutoverAt ?? null,
 			sendMessage: (message: Outgoing) => {
@@ -427,6 +443,11 @@ export const shareHistory = (conversationId: string, userId: string, range: Shar
 export const importShared = (conversationId: string, shareId: string) =>
 	onMessages<number>("importShared", { conversationId, shareId }, (made) => made.importShared(shareId)).finally(() =>
 		followConversation(conversationId),
+	);
+/** The person's Dismiss of what the conversation offers: it shows no more, and the API is told it's done with here. */
+export const dismissShared = (conversationId: string, shareId: string) =>
+	onMessages<void>("dismissShared", { conversationId, shareId }, async (made) => made.dismissShared(shareId)).finally(
+		() => followConversation(conversationId),
 	);
 
 /**

@@ -449,7 +449,7 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		]);
 	}, 180_000);
 
-	// History shared (PLAN-E2E-CLIENTES.md, Task 30; decision 26), through the API's routes, its notice and its limits:
+	// History shared (PLAN-E2E-CLIENTES.md, Task 30; decision 26), through the API's routes and its notice:
 	// Carol and Dave write in a group, then Carol adds Alice, whose device can't read what came before her. Carol shares
 	// the last week with her; Alice's device offers it, takes it in on her word, and shows it as shared by Carol.
 	test("a member who just joined gets a week from another, and reads it", async () => {
@@ -474,8 +474,18 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		await eventually(() => holds(a));
 		expect(await a.engine.messages(group.id, before)).toEqual([]);
 
-		// Carol shares the week; Alice's device offers it once its key is in, and takes it in on her word.
+		// Carol shares the week: the group hears its notice (type 4), whom it went to and how far back. Alice's device
+		// offers it once its key is in, and takes it in on her word.
+		const heard = new Set<string>();
+		const hear = (who: string) => (event: EngineEvent) => {
+			if (event.type !== "DM_MESSAGE_CREATE" || event.data.conversation_id !== group.id) return;
+			const { type, history_share } = event.data;
+			if (type === 4 && history_share?.to_user_id === alice.id && history_share.range === "week") heard.add(who);
+		};
+		const stops = [a.socket.events.listen(hear("Alice")), d.socket.events.listen(hear("Dave"))];
 		expect(await c.engine.shareHistory(group.id, alice.id, "week")).toMatchObject({ sent: true, truncated: false });
+		await eventually(async () => heard.size === 2);
+		for (const stop of stops) stop();
 		await eventually(async () => a.engine.offers(group.id).length === 1, 60_000);
 		const [offer] = a.engine.offers(group.id);
 		expect(offer).toMatchObject({ from_user_id: carol.id, range: "week" });

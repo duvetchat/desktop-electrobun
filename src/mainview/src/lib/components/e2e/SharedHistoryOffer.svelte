@@ -6,18 +6,22 @@
 	import { spinnerClass } from "$lib/overlay-forms";
 
 	// What other members shared of the conversation's history with this person (PLAN-E2E-CLIENTES.md, Task 30), over its
-	// message box: who shared how far back, and Add to this device, which takes it in on the person's word alone (Ruling
-	// 22: nothing a member or a server made up comes in unasked). One that didn't come in says so, and can be asked again.
+	// message box, the engine's newest three: who shared how far back, Add to this device, which takes it in on the
+	// person's word alone (Ruling 22: nothing a member or a server made up comes in unasked), and Dismiss, which lets it
+	// go for good. One that didn't come in says so, and can be asked again; the next shows as one goes.
 	let {
 		offers,
 		nameOf,
 		onAdd,
+		onDismiss,
 	}: {
 		offers: SharedOffer[];
 		/** A member's name as the app shows it, by their user ID. */
 		nameOf: (userId: string) => string;
 		/** The person's yes: it comes in on this device, or rejects. */
 		onAdd: (shareId: string) => Promise<void>;
+		/** The person's Dismiss: it shows no more, and the API is told it's done with here. */
+		onDismiss: (shareId: string) => Promise<void>;
 	} = $props();
 
 	const adding = new SvelteSet<string>();
@@ -36,6 +40,11 @@
 			adding.delete(shareId);
 		}
 	}
+
+	function dismiss(shareId: string) {
+		failed.delete(shareId);
+		onDismiss(shareId).catch((error: unknown) => console.error("[e2e] A shared history wasn't dismissed:", error));
+	}
 </script>
 
 {#each offers as offer (offer.share_id)}
@@ -49,6 +58,9 @@
 		<Button size="sm" disabled={adding.has(offer.share_id)} onclick={() => void add(offer.share_id)}>
 			{#if adding.has(offer.share_id)}<span class={spinnerClass()} aria-hidden="true"></span>{/if}
 			{t("e2e_shared_add")}
+		</Button>
+		<Button size="sm" variant="quiet" disabled={adding.has(offer.share_id)} onclick={() => dismiss(offer.share_id)}>
+			{t("e2e_dismiss")}
 		</Button>
 	</div>
 {/each}

@@ -135,6 +135,7 @@
 		addMember,
 		deleteEncrypted,
 		discardEncrypted,
+		dismissShared,
 		editEncrypted,
 		encryption,
 		heldBeforeEncrypted,
@@ -1209,6 +1210,7 @@
 			return member?.alias ?? member?.username ?? userId.slice(0, 8);
 		}}
 		onAdd={(shareId) => importShared(conversation.id, shareId).then(() => {})}
+		onDismiss={(shareId) => dismissShared(conversation.id, shareId)}
 	/>
 {/snippet}
 

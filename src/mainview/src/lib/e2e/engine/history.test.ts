@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import type { HistoryShare } from "$lib/types";
 import { CoreError } from "../errors";
 import type { CoreHost, ShareMade } from "../host";
 import { FakeApi, type GatewayEvent } from "../testing/fake-api";
@@ -8,6 +9,7 @@ import {
 	firstDevice,
 	groupOf,
 	rejection,
+	restarted,
 	sameGroup,
 	testHost,
 	turnEnded,
@@ -16,7 +18,7 @@ import {
 	type TestDevice,
 } from "../testing/engines";
 import { useXHR } from "../testing/xhr";
-import { KEPT_LATER } from "./store";
+import { KEPT_LATER, SHARE_KEYS } from "./store";
 
 // A conversation's history shared with a member (PLAN-E2E-CLIENTES.md, Task 30; decision 26), and what a device does
 // with the packages it's handed: a member's share, offered and added on the person's word (Ruling 22), and a catch-up
@@ -31,6 +33,11 @@ const COMPLETE = new RegExp(`^${CONV}/history-shares/${UUID}/complete$`);
 const INBOX = new RegExp(`^/api/devices/(${UUID})/inbox$`);
 const PART_DOWN = new RegExp(`^/api/history-shares/${UUID}/parts/\\d+$`);
 const ACK = new RegExp(`^/api/history-shares/${UUID}/ack$`);
+/** A device's list of its packages, and its own inbox. */
+const LIST = /^\/api\/users\/@me\/history-shares$/;
+const OWN_INBOX = /^\/api\/users\/@me\/devices\/@me\/inbox$/;
+/** The API's page of a device's packages: the oldest 100 it hasn't acknowledged. */
+const PAGE = 100;
 // A package's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
 useXHR();
 
@@ -44,9 +51,13 @@ interface Seen {
 
 /**
  * The fake, answering every request the test's engines make, each seen first; `hold` may keep one waiting until what it
- * gives settles, as a slow network would, and `answer` answer one in the fake's place, as a server that lies would.
+ * gives settles, as a slow network would, and `answer` answer one in the fake's place, as a server that lies would
+ * (`fake` answers it as the API would, for a lie made of the truth).
  */
-function setUp(hold?: (seen: Seen) => Promise<void> | void, answer?: (seen: Seen) => Response | undefined) {
+function setUp(
+	hold?: (seen: Seen) => Promise<void> | void,
+	answer?: (seen: Seen, fake: FakeApi) => Response | undefined | Promise<Response | undefined>,
+) {
 	const fake = new FakeApi();
 	const requests: Seen[] = [];
 	spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
@@ -55,7 +66,7 @@ function setUp(hold?: (seen: Seen) => Promise<void> | void, answer?: (seen: Seen
 		const seen = { method: request.method, path: new URL(request.url).pathname, token, request: request.clone() };
 		requests.push(seen);
 		await hold?.(seen);
-		return answer?.(seen) ?? fake.fetch(request);
+		return (await answer?.(seen, fake)) ?? fake.fetch(request);
 	}) as typeof fetch);
 	const by = (device: TestDevice, method: string, path: RegExp) =>
 		requests.filter((seen) => seen.token === device.token && seen.method === method && path.test(seen.path));
@@ -86,10 +97,12 @@ const texts = async (device: TestDevice, conversation: string, ids: string[]) =>
 	(await device.engine.messages(conversation, ids)).map((row) => row.text ?? "").sort(byText);
 
 /**
- * Ana's and Bo's group, where Bo wrote ten days ago and both wrote this week; then Dee, with two devices, joins it, and
- * Ana's device holds all three messages.
+ * Ana's and Bo's group, where Bo wrote ten days ago and both wrote this week; then Dee, with two devices (the first as
+ * `dee` gives), joins it, and Ana's device holds all three messages.
  */
-async function deeJoins(given: { setup?: ReturnType<typeof setUp>; anaHost?: CoreHost } = {}) {
+async function deeJoins(
+	given: { setup?: ReturnType<typeof setUp>; anaHost?: CoreHost; dee?: Parameters<typeof firstDevice>[2] } = {},
+) {
 	const { anaHost } = given;
 	const setup = given.setup ?? setUp();
 	const { fake } = setup;
@@ -109,7 +122,7 @@ async function deeJoins(given: { setup?: ReturnType<typeof setUp>; anaHost?: Cor
 		await send(b, conversation, "this week, from Bo"),
 	];
 	await until(async () => (await texts(a, conversation, [old.id, ...recent.map((m) => m.id)])).length === 3);
-	const d1 = await firstDevice(fake, dee);
+	const d1 = await firstDevice(fake, dee, given.dee);
 	const d2 = await approvedDevice(fake, d1);
 	await a.engine.addMember(conversation, dee);
 	await sameGroup([a, b, d1, d2], conversation);
@@ -139,8 +152,15 @@ function sharing(host: CoreHost, change: (made: ShareMade) => ShareMade): CoreHo
 	});
 }
 
-/** A host that counts the packages it imports at once, and the most it ever did. */
-function countingImports(host: CoreHost, counts: { now: number; most: number; done: number }): CoreHost {
+/**
+ * A host that counts the packages it imports at once, the most it ever did and the imports that ended; each refused
+ * with what `refuse` gives, as a core whose call is cut would, while it gives one.
+ */
+function countingImports(
+	host: CoreHost,
+	counts: { now: number; most: number; done: number },
+	refuse: () => Error | null = () => null,
+): CoreHost {
 	return new Proxy(host, {
 		get(target, name) {
 			if (name === "importShare") {
@@ -148,6 +168,8 @@ function countingImports(host: CoreHost, counts: { now: number; most: number; do
 					counts.now++;
 					counts.most = Math.max(counts.most, counts.now);
 					try {
+						const refused = refuse();
+						if (refused) throw refused;
 						return await target.importShare(shareId, parts);
 					} finally {
 						counts.now--;
@@ -160,6 +182,48 @@ function countingImports(host: CoreHost, counts: { now: number; most: number; do
 		},
 	});
 }
+
+/** A host whose `share` the core refuses, as one would whose served devices aren't on the member's list. */
+const unlisted = (host: CoreHost): CoreHost =>
+	new Proxy(host, {
+		get(target, name) {
+			if (name === "share") {
+				return () =>
+					Promise.reject(
+						new CoreError("rule_violation", "a device isn't on its user's list", { rule: "device_not_listed" }),
+					);
+			}
+			const value = Reflect.get(target, name);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+
+/** The packages whose keys the device's record holds, by ID: not those done with, which it holds by their IDs alone. */
+const keysHeld = (device: TestDevice): string[] =>
+	(device.store.read<unknown[]>(SHARE_KEYS) ?? []).flatMap((entry) =>
+		typeof entry === "object" && entry !== null && "type" in entry && "share_id" in entry
+			? [String(entry.share_id)]
+			: [],
+	);
+const isPackage = (data: unknown): data is HistoryShare =>
+	typeof data === "object" && data !== null && "id" in data && typeof data.id === "string";
+/** The package a HISTORY_SHARE_CREATE told of. */
+const packageOf = (event: GatewayEvent | undefined): HistoryShare | null => {
+	const data: unknown = event?.type === "HISTORY_SHARE_CREATE" ? event.data : null;
+	return isPackage(data) ? data : null;
+};
+/** Whether the device heard of the package, and holds its key. */
+const keyAndPackage = (device: TestDevice, share: string) =>
+	keysHeld(device).includes(share) && device.heard.some((event) => packageOf(event)?.id === share);
+/** Packages a server made up for the conversation, from `from`: no key of theirs is anywhere. */
+const madeUp = (count: number, conversation: string, from: string): HistoryShare[] =>
+	Array.from({ length: count }, () => ({
+		...{ id: crypto.randomUUID(), conversation_id: conversation, from_user_id: from, kind: "share" as const },
+		...{ range: "week", starts_at: new Date().toISOString(), size: 64, parts: 1 },
+	}));
+/** The ID of the share a device put up last. */
+const lastShare = (by: ReturnType<typeof setUp>["by"], device: TestDevice) =>
+	PACKAGE.exec(by(device, "PUT", PACKAGE).at(-1)!.path)![1]!;
 
 describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 	test(
@@ -175,16 +239,20 @@ describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 			const about = await put!.request.json();
 			expect(about).toMatchObject({ to_user_id: dee, kind: "share", range: "week" });
 			const share = PACKAGE.exec(put!.path)![1]!;
-			// Its parts, then its completion, then its key, to each of Dee's devices and to no other.
-			const parts = by(a, "PUT", PART_UP).map((seen) => seen.path);
-			expect(parts).toEqual(Array.from({ length: about.parts }, (_, n) => `${put!.path}/parts/${n}`));
-			expect(by(a, "POST", COMPLETE)).toHaveLength(1);
-			const keyed = by(a, "POST", INBOX).map((seen) => INBOX.exec(seen.path)![1]!);
-			expect(keyed.sort(byText)).toEqual([deviceOf(d1), deviceOf(d2)].sort(byText));
-			const order = requests.map((seen) => seen.path);
-			expect(order.lastIndexOf(`${put!.path}/parts/${about.parts - 1}`)).toBeLessThan(
-				order.indexOf(`${put!.path}/complete`),
+			// Its parts, then its key, to each of Dee's devices and to no other, then its completion, which posts its notice
+			// and lists it for Dee: nobody sees a share whose keys didn't go (M1).
+			const parts = by(a, "PUT", PART_UP);
+			expect(parts.map((seen) => seen.path)).toEqual(
+				Array.from({ length: about.parts }, (_, n) => `${put!.path}/parts/${n}`),
 			);
+			const completed = by(a, "POST", COMPLETE);
+			expect(completed).toHaveLength(1);
+			const keys = by(a, "POST", INBOX);
+			const keyed = keys.map((seen) => INBOX.exec(seen.path)![1]!);
+			expect(keyed.sort(byText)).toEqual([deviceOf(d1), deviceOf(d2)].sort(byText));
+			const at = (seen: Seen) => requests.indexOf(seen);
+			expect(at(parts.at(-1)!)).toBeLessThan(Math.min(...keys.map(at)));
+			expect(Math.max(...keys.map(at))).toBeLessThan(at(completed[0]!));
 			// The group sees the notice: whom it went to, and how far back.
 			for (const device of [a, b, d1, d2]) await until(() => device.heard.some(noticeFor(dee, "week")));
 			// Up, the package goes from Ana's host.
@@ -278,7 +346,11 @@ describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 			await a.engine.shareHistory(conversation, dee, "all");
 			await turnEnded(a);
 			await until(() => d1.engine.offers(conversation).length === 1);
+			// The views are told any of the conversation's rows may have changed: an open chat reads its rows again.
+			const told: (readonly string[] | undefined)[] = [];
+			d1.engine.onMessages((id, ids) => id === conversation && told.push(ids));
 			await d1.engine.importShared(d1.engine.offers(conversation)[0]!.share_id);
+			expect(told).toContainEqual(undefined);
 			const rows = await d1.engine.messages(conversation, [old.id, ...recent.map((m) => m.id), after.id]);
 			const of = (id: string) => rows.find((row) => row.message_id === id);
 			expect(of(after.id)).toMatchObject({ user_id: bo, shared_by: null, text: "after Dee came" });
@@ -291,33 +363,66 @@ describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 	test(
 		"a package whose key hasn't come waits for it",
 		async () => {
-			// Ana's device can't hand the key on at first: the package is up and complete, its key not.
-			const away = await cyHasNoDevice();
-			away.fake.refuse({ method: "POST", path: INBOX }, 500, { error: "internal server error" });
-			const c = await firstDevice(away.fake, away.cy);
-			await until(() => away.by(away.a, "POST", COMPLETE).length === 1, 120_000);
-			await until(() => c.heard.some((event) => event.type === "HISTORY_SHARE_CREATE"));
+			// Cy's first device doesn't read its inbox until its next READY: Ana's catch-up, its key there already, is
+			// listed for it before the key is in.
+			let deaf = true;
+			let cy = "";
+			const setup = setUp(undefined, (seen) =>
+				deaf && seen.token === cy && seen.method === "GET" && OWN_INBOX.test(seen.path) ? Response.json([]) : undefined,
+			);
+			const away = await cyHasNoDevice(setup);
+			cy = away.fake.signIn(away.cy).token;
+			const c = await firstDevice(away.fake, away.cy, { token: cy });
+			await until(() => c.heard.some((event) => event.type === "HISTORY_SHARE_CREATE"), 120_000);
 			await turnEnded(away.a);
 			await turnEnded(c);
 			// Cy's device lists it, and waits: it fetches none of it and adds nothing.
 			expect((await c.api.shares()).map((share) => share.kind)).toEqual(["catch_up"]);
 			expect(away.by(c, "GET", PART_DOWN)).toEqual([]);
 			expect(await texts(c, away.conversation, [away.sent.id])).toEqual([]);
-			// The key goes a minute on, and the catch-up comes in by itself.
-			away.a.clock.advance(60_000);
+			// The next READY reads the inbox: the key is in, and the catch-up comes in by itself.
+			deaf = false;
+			c.connect(deviceOf(c));
 			await until(async () => (await texts(c, away.conversation, [away.sent.id])).length === 1, 120_000);
 
 			// A share's offer waits for its key the same way.
-			const setup = { fake: away.fake, requests: away.requests, by: away.by };
-			const { fake, dee, conversation, a, d1 } = await deeJoins({ setup });
-			fake.refuse({ method: "POST", path: INBOX }, 500, { error: "internal server error" });
+			const { dee, conversation, a, d1 } = await deeJoins({ setup });
+			deaf = true;
+			cy = d1.token;
 			await a.engine.shareHistory(conversation, dee, "week");
 			await turnEnded(a);
 			await until(() => d1.heard.some((event) => event.type === "HISTORY_SHARE_CREATE"));
 			await turnEnded(d1);
 			expect(d1.engine.offers(conversation)).toEqual([]);
-			a.clock.advance(60_000);
+			deaf = false;
+			d1.connect(deviceOf(d1));
 			await until(() => d1.engine.offers(conversation).length === 1);
+		},
+		SLOW,
+	);
+
+	// Its key went first, as a share's keys go before its completion: the package, unknown here, comes after it.
+	test(
+		"a key that comes before its package waits for it",
+		async () => {
+			let deaf = false;
+			const { by, dee, conversation, a, d1 } = await deeJoins({
+				dee: { hears: (event) => !(deaf && event.type === "HISTORY_SHARE_CREATE") },
+			});
+			deaf = true;
+			await a.engine.shareHistory(conversation, dee, "week");
+			await turnEnded(a);
+			const share = lastShare(by, a);
+			await until(() => keysHeld(d1).includes(share));
+			await turnEnded(d1);
+			// Its key is kept, its package not known here yet: nothing is offered or fetched.
+			expect(d1.engine.offers(conversation)).toEqual([]);
+			expect(by(d1, "GET", PART_DOWN)).toEqual([]);
+			// A READY lists it: it's offered, by the key that came first.
+			deaf = false;
+			d1.connect(deviceOf(d1));
+			await until(() => d1.engine.offers(conversation).length === 1);
+			expect(d1.engine.offers(conversation)[0]).toMatchObject({ share_id: share });
 		},
 		SLOW,
 	);
@@ -383,6 +488,40 @@ describe.skipIf(!coreLibrary)("a conversation's history, shared", () => {
 				why: "refused",
 				error: "the history share doesn't fit in your storage",
 			});
+		},
+		SLOW,
+	);
+
+	// M1: the person was told it went once the API took it; one that ends for good after that is told to them, and
+	// nothing of it reached the group, as its keys and its completion come last.
+	test(
+		"a share that ends for good after the person heard it went is said",
+		async () => {
+			const { fake, by, dee, conversation, a } = await deeJoins();
+			const ended: unknown[] = [];
+			a.engine.onChangeRefused((...told) => ended.push(told));
+			fake.refuse({ method: "PUT", path: PART_UP }, 413, { error: "a part is 1 MiB and its tag at most" });
+			expect(await a.engine.shareHistory(conversation, dee, "week")).toMatchObject({ sent: true });
+			await turnEnded(a);
+			expect(ended).toEqual([[conversation, lastShare(by, a), "share"]]);
+			expect(by(a, "POST", INBOX)).toEqual([]);
+			expect(by(a, "POST", COMPLETE)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// M6: a member with devices is served only theirs; a served device the core takes off their list is the server's
+	// doing, not a member with none.
+	test(
+		"a share whose served devices aren't the member's list says it didn't go, not that they have none",
+		async () => {
+			const { by, dee, conversation, a } = await deeJoins({ anaHost: unlisted(testHost()) });
+			expect(await a.engine.shareHistory(conversation, dee, "week")).toEqual({
+				sent: false,
+				why: "refused",
+				error: null,
+			});
+			expect(by(a, "PUT", PACKAGE)).toEqual([]);
 		},
 		SLOW,
 	);
@@ -549,6 +688,334 @@ describe.skipIf(!coreLibrary)("the packages a device receives", () => {
 			c.connect(deviceOf(c));
 			await until(async () => (await texts(c, away.conversation, [away.sent.id])).length === 1, 120_000);
 			expect(c.store.read<unknown[]>(KEPT_LATER) ?? []).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// I1: the API lists a device's packages a page at a time, the oldest 100, and only acknowledgements move it.
+	test(
+		"a list lets a package go only when it's shorter than the API's page, and its key stays for when it's listed again",
+		async () => {
+			let lie: ((listed: HistoryShare[]) => HistoryShare[]) | null = null;
+			let dee = "";
+			const setup = setUp(undefined, async (seen, fake) => {
+				if (!lie || seen.token !== dee || seen.method !== "GET" || !LIST.test(seen.path)) return undefined;
+				const listed: HistoryShare[] = await (await fake.fetch(seen.request)).json();
+				return Response.json(lie(listed));
+			});
+			const { ana, conversation, a, d1, ...them } = await deeJoins({ setup });
+			dee = d1.token;
+			await a.engine.shareHistory(conversation, them.dee, "week");
+			await turnEnded(a);
+			await until(() => d1.engine.offers(conversation).length === 1);
+			const offered = d1.engine.offers(conversation);
+			const listed = async (made: typeof lie) => {
+				lie = made;
+				d1.connect(deviceOf(d1));
+				await turnEnded(d1);
+			};
+			// A whole page of others leaves it out: what's past the page isn't gone.
+			await listed(() => madeUp(PAGE, conversation, ana));
+			expect(d1.engine.offers(conversation)).toEqual(offered);
+			// A short list without it lets it go, its key kept: listed again, it's offered again.
+			await listed(() => madeUp(3, conversation, ana));
+			expect(d1.engine.offers(conversation)).toEqual([]);
+			expect(keysHeld(d1)).toContain(offered[0]!.share_id);
+			await listed(null);
+			expect(d1.engine.offers(conversation)).toEqual(offered);
+			// Past its 30 days its key goes from the record, as from the core: it's offered no more.
+			d1.clock.advance(31 * DAY);
+			expect(d1.engine.offers(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// I1: HISTORY_SHARE_CREATE comes outside the engine's turn, while a list asked before it may be on its way.
+	test(
+		"a package heard while a list asked before it is on its way stays",
+		async () => {
+			let holding = false;
+			let asked = false;
+			let release = () => {};
+			let dee = "";
+			const setup = setUp(undefined, async (seen, fake) => {
+				if (!holding || seen.token !== dee || seen.method !== "GET" || !LIST.test(seen.path)) return undefined;
+				// The API's answer, made now, before the share: it comes late.
+				const answer = await fake.fetch(seen.request);
+				asked = true;
+				await new Promise<void>((go) => (release = go));
+				return answer;
+			});
+			const { conversation, a, d1, ...them } = await deeJoins({ setup });
+			[dee, holding] = [d1.token, true];
+			d1.connect(deviceOf(d1));
+			await until(() => asked);
+			await a.engine.shareHistory(conversation, them.dee, "week");
+			await turnEnded(a);
+			await until(() => d1.heard.some((event) => event.type === "HISTORY_SHARE_CREATE"));
+			holding = false;
+			release();
+			// The list's answer, without it, doesn't let it go: its key, which the turn takes after that list, offers it.
+			await until(() => d1.engine.offers(conversation).length === 1, 20_000);
+		},
+		SLOW,
+	);
+
+	test(
+		"while the API's page is whole, each acknowledgement lists it again",
+		async () => {
+			let padded = false;
+			let dee = "";
+			const setup = setUp(undefined, async (seen, fake) => {
+				if (!padded || seen.token !== dee || seen.method !== "GET" || !LIST.test(seen.path)) return undefined;
+				const listed: HistoryShare[] = await (await fake.fetch(seen.request)).json();
+				return Response.json([...listed, ...madeUp(PAGE - listed.length, listed[0]?.conversation_id ?? "", "")]);
+			});
+			const { requests, by, conversation, a, d1, ...them } = await deeJoins({ setup });
+			dee = d1.token;
+			await a.engine.shareHistory(conversation, them.dee, "week");
+			await turnEnded(a);
+			await until(() => d1.engine.offers(conversation).length === 1);
+			// The page is whole, its share among the hundred.
+			padded = true;
+			d1.connect(deviceOf(d1));
+			await turnEnded(d1);
+			const lists = by(d1, "GET", LIST).length;
+			await d1.engine.importShared(d1.engine.offers(conversation)[0]!.share_id);
+			await turnEnded(d1);
+			// Its acknowledgement made room on the page: the ones past it are asked for.
+			const [ack] = by(d1, "POST", ACK);
+			expect(by(d1, "GET", LIST)).toHaveLength(lists + 1);
+			expect(requests.indexOf(ack!)).toBeLessThan(requests.indexOf(by(d1, "GET", LIST).at(-1)!));
+		},
+		SLOW,
+	);
+
+	test(
+		"a conversation offers its newest three; Dismiss lets one go for good, and the next shows",
+		async () => {
+			const { fake, by, dee, conversation, a, d1 } = await deeJoins();
+			for (let n = 0; n < 4; n++) await a.engine.shareHistory(conversation, dee, "day");
+			await turnEnded(a);
+			const newest = by(a, "PUT", PACKAGE)
+				.map((seen) => PACKAGE.exec(seen.path)![1]!)
+				.sort((x, y) => y.localeCompare(x));
+			await until(() => newest.every((share) => keyAndPackage(d1, share)));
+			await turnEnded(d1);
+			const offered = (device: TestDevice) => device.engine.offers(conversation).map((offer) => offer.share_id);
+			expect(offered(d1)).toEqual(newest.slice(0, 3));
+			// Dismissed, the newest shows no more and is acknowledged, unopened: the fourth shows.
+			d1.engine.dismissShared(newest[0]!);
+			expect(offered(d1)).toEqual(newest.slice(1));
+			await turnEnded(d1);
+			expect(by(d1, "POST", ACK).map((seen) => seen.path)).toEqual([`/api/history-shares/${newest[0]}/ack`]);
+			expect(by(d1, "GET", PART_DOWN)).toEqual([]);
+			// After a restart, it's still let go.
+			const again = await restarted(fake, d1);
+			await turnEnded(again);
+			expect(offered(again)).toEqual(newest.slice(1));
+			await again.engine.stop();
+		},
+		SLOW,
+	);
+
+	// I2: the core deletes a key once it imported its package: what's done is noted before the API is told.
+	test(
+		"a share's acknowledgement that failed goes again alone, and after a restart with no offer or download",
+		async () => {
+			const counts = { now: 0, most: 0, done: 0 };
+			const { fake, by, dee, conversation, a, d1 } = await deeJoins({
+				dee: { host: countingImports(testHost(), counts) },
+			});
+			await a.engine.shareHistory(conversation, dee, "week");
+			await turnEnded(a);
+			await until(() => d1.engine.offers(conversation).length === 1);
+			// The API doesn't take its acknowledgement: it's in all the same, and the person hears so.
+			fake.refuse({ method: "POST", path: ACK }, 500, { error: "internal server error" });
+			expect(await d1.engine.importShared(d1.engine.offers(conversation)[0]!.share_id)).toBeGreaterThan(0);
+			expect(d1.engine.offers(conversation)).toEqual([]);
+			await turnEnded(d1);
+			expect(by(d1, "POST", ACK)).toHaveLength(1);
+			// A minute on it goes again by itself, alone, and fails again.
+			fake.refuse({ method: "POST", path: ACK }, 500, { error: "internal server error" });
+			d1.clock.advance(60_000);
+			await until(() => by(d1, "POST", ACK).length === 2);
+			await turnEnded(d1);
+			const parts = by(d1, "GET", PART_DOWN).length;
+			// After a restart, the record says it's in: it's acknowledged, never offered or fetched again.
+			const again = await restarted(fake, d1);
+			await until(() => by(again, "POST", ACK).length === 3);
+			await turnEnded(again);
+			expect(again.engine.offers(conversation)).toEqual([]);
+			expect(by(again, "GET", PART_DOWN)).toHaveLength(parts);
+			expect(counts.done).toBe(1);
+			expect(await again.api.shares()).toEqual([]);
+			await again.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"a package whose key the core used up is done with, and acknowledged",
+		async () => {
+			let usedUp = false;
+			const counts = { now: 0, most: 0, done: 0 };
+			const host = countingImports(testHost(), counts, () =>
+				usedUp ? new CoreError("not_found", "no such share", { what: "share" }) : null,
+			);
+			const { fake, by, dee, conversation, a, d1 } = await deeJoins({ dee: { host } });
+			await a.engine.shareHistory(conversation, dee, "week");
+			await turnEnded(a);
+			await until(() => d1.engine.offers(conversation).length === 1);
+			// Its import ended before, unnoted: the core deleted the key then.
+			usedUp = true;
+			expect(await d1.engine.importShared(d1.engine.offers(conversation)[0]!.share_id)).toBe(0);
+			await turnEnded(d1);
+			expect(by(d1, "POST", ACK)).toHaveLength(1);
+			expect(d1.engine.offers(conversation)).toEqual([]);
+			const again = await restarted(fake, d1);
+			await turnEnded(again);
+			expect(again.engine.offers(conversation)).toEqual([]);
+			await again.engine.stop();
+		},
+		SLOW,
+	);
+
+	// I3: the key's kind, conversation and sharer are the core's, as the sender's device signed them; the API's list
+	// and HISTORY_SHARE_CREATE are a server's word, and history_import takes no kind: this is Ruling 22's whole guard.
+	test(
+		"a package the API lists as another kind, conversation or sharer than its key says brings nothing in",
+		async () => {
+			const { fake, by, bo, dee, conversation, a, d1, old, recent } = await deeJoins();
+			const other = crypto.randomUUID();
+			const lies: FakeApi["listedAs"][] = [
+				(view) => ({ ...view, kind: "catch_up" }),
+				(view) => ({ ...view, conversation_id: other }),
+				(view) => ({ ...view, from_user_id: bo }),
+			];
+			const ids = [old.id, ...recent.map((message) => message.id)];
+			for (const lie of lies) {
+				fake.listedAs = lie;
+				await a.engine.shareHistory(conversation, dee, "week");
+				await turnEnded(a);
+				const share = lastShare(by, a);
+				await until(() => keyAndPackage(d1, share));
+				await turnEnded(d1);
+			}
+			// Listed again, as the server lies: still nothing.
+			d1.connect(deviceOf(d1));
+			await turnEnded(d1);
+			for (const conv of [conversation, other]) expect(d1.engine.offers(conv)).toEqual([]);
+			expect(by(d1, "GET", PART_DOWN)).toEqual([]);
+			expect(by(d1, "POST", ACK)).toEqual([]);
+			expect(await texts(d1, conversation, ids)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a package listed with more parts than a package has is never fetched",
+		async () => {
+			const { fake, by, dee, conversation, a, d1 } = await deeJoins();
+			fake.listedAs = (view) => ({ ...view, parts: 65 });
+			await a.engine.shareHistory(conversation, dee, "week");
+			await turnEnded(a);
+			await until(() => keyAndPackage(d1, lastShare(by, a)));
+			await turnEnded(d1);
+			expect(d1.engine.offers(conversation)).toEqual([]);
+			expect(by(d1, "GET", PART_DOWN)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// M2: a failed import's parts aren't held through its wait; a catch-up that keeps failing waits for the person.
+	test(
+		"an import that failed lets its parts go, and a catch-up whose import failed three times waits as an offer",
+		async () => {
+			const away = await cyHasNoDevice();
+			let failing = true;
+			const counts = { now: 0, most: 0, done: 0 };
+			const host = countingImports(testHost(), counts, () =>
+				failing ? new CoreError("internal", "the call was cut") : null,
+			);
+			const c = await firstDevice(away.fake, away.cy, { host });
+			await until(() => counts.done === 1, 120_000);
+			await turnEnded(c);
+			expect(away.by(c, "GET", PART_DOWN)).toHaveLength(1);
+			// Its next try, a minute on, fetches its parts again; then two minutes on.
+			c.clock.advance(60_000);
+			await until(() => counts.done === 2);
+			await turnEnded(c);
+			expect(away.by(c, "GET", PART_DOWN)).toHaveLength(2);
+			c.clock.advance(120_000);
+			await until(() => counts.done === 3);
+			await turnEnded(c);
+			// Failed three times: it goes no more by itself, unacknowledged, and waits as an offer, with no range.
+			c.clock.advance(3600_000);
+			await turnEnded(c);
+			expect(counts.done).toBe(3);
+			expect(away.by(c, "POST", ACK)).toEqual([]);
+			expect(c.engine.offers(away.conversation)).toMatchObject([{ from_user_id: away.ana, range: null }]);
+			// The person tries it: it comes in.
+			failing = false;
+			expect(await c.engine.importShared(c.engine.offers(away.conversation)[0]!.share_id)).toBeGreaterThan(0);
+			expect(await texts(c, away.conversation, [away.sent.id])).toEqual(["while you were away"]);
+			expect(c.engine.offers(away.conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// M3: a 429 whose Retry-After is 0, or a date past, would ask again as often as the server answers so.
+	test(
+		"a 429 that asks for no wait waits a minute all the same",
+		async () => {
+			const away = await cyHasNoDevice();
+			const busy = { error: "too many requests, try again later" };
+			away.fake.refuse({ method: "GET", path: PART_DOWN }, 429, busy, { "Retry-After": "0" });
+			const c = await firstDevice(away.fake, away.cy);
+			await until(() => away.by(c, "GET", PART_DOWN).length === 1, 120_000);
+			await turnEnded(c);
+			c.clock.advance(1_000);
+			await turnEnded(c);
+			expect(away.by(c, "GET", PART_DOWN)).toHaveLength(1);
+			c.clock.advance(59_000);
+			await until(async () => (await texts(c, away.conversation, [away.sent.id])).length === 1, 120_000);
+		},
+		SLOW,
+	);
+
+	// M4: the core keeps nothing of a key it used: a key and a listing handed again bring the package in again unless
+	// the device keeps what it's done with.
+	test(
+		"a package's key and listing handed again once it's done with bring nothing in",
+		async () => {
+			let replay: HistoryShare | null = null;
+			let cy = "";
+			const setup = setUp(undefined, (seen) =>
+				replay && seen.token === cy && seen.method === "GET" && LIST.test(seen.path)
+					? Response.json([replay])
+					: undefined,
+			);
+			const away = await cyHasNoDevice(setup);
+			const counts = { now: 0, most: 0, done: 0 };
+			const c = await firstDevice(away.fake, away.cy, { host: countingImports(testHost(), counts) });
+			cy = c.token;
+			await until(() => away.by(c, "POST", ACK).length === 1, 120_000);
+			await turnEnded(c);
+			expect(counts.done).toBe(1);
+			// A server hands both again: the key in the inbox, the package on the list.
+			const [heard] = c.heard.filter((event) => event.type === "HISTORY_SHARE_CREATE");
+			replay = packageOf(heard);
+			expect(replay).not.toBeNull();
+			const { message } = await away.by(away.a, "POST", INBOX).at(-1)!.request.clone().json();
+			await away.a.api.sendToDevice(deviceOf(c), message);
+			await until(async () => (await c.api.inbox()).length === 0);
+			c.connect(deviceOf(c));
+			await turnEnded(c);
+			expect(counts.done).toBe(1);
+			expect(away.by(c, "GET", PART_DOWN)).toHaveLength(1);
+			expect(c.engine.offers(away.conversation)).toEqual([]);
+			expect(keysHeld(c)).toEqual([]);
 		},
 		SLOW,
 	);

@@ -519,6 +519,18 @@ interface Segment {
 	file: string;
 }
 
+/** A package as the API shows it (its HistoryShare). */
+interface ShareView {
+	id: string;
+	conversation_id: string;
+	from_user_id: string;
+	kind: "share" | "catch_up";
+	range: string | null;
+	starts_at: string;
+	size: number;
+	parts: number;
+}
+
 interface Share {
 	id: string;
 	conversation_id: string;
@@ -613,6 +625,11 @@ export class FakeApi {
 	#fileRows = new Map<string, { owner: string; row: FileRow }>();
 	/** The most bytes one file takes, as Duvet's storage does: what goes up encrypted counts. */
 	fileLimit = 20 << 20;
+	/**
+	 * How the API shows a package to its recipient (their list, and HISTORY_SHARE_CREATE): as it is, unless a test has
+	 * it lie, as a server could, of its conversation, sharer, kind or parts.
+	 */
+	listedAs = (view: ShareView): ShareView => view;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -1157,10 +1174,12 @@ export class FakeApi {
 				this.#completeShare(ctx),
 			),
 			route("GET", `${me}/history-shares`, "device", ({ session, device }) => {
-				const waiting = [...this.#shares.values()].filter(
-					(share) => share.completed && share.to_user_id === session.user && !share.acked.has(device!.id),
-				);
-				return ok(waiting.map((share) => this.#shareView(share)));
+				// As the API's: the oldest 100 by ID, the device acknowledging them to see the next.
+				const waiting = [...this.#shares.values()]
+					.filter((share) => share.completed && share.to_user_id === session.user && !share.acked.has(device!.id))
+					.sort((a, b) => a.id.localeCompare(b.id))
+					.slice(0, 100);
+				return ok(waiting.map((share) => this.listedAs(this.#shareView(share))));
 			}),
 			route("GET", `/api/history-shares/(?<share>${UUID_PATH})/parts/(?<n>\\d+)`, "session", ({ session, params }) => {
 				const share = this.#shares.get(params.share!);
@@ -2182,7 +2201,7 @@ export class FakeApi {
 	}
 
 	/** A package as clients get it: a catch-up has no range (null, as the API's *string gives it). */
-	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share) {
+	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share): ShareView {
 		return { id, conversation_id, from_user_id, kind, range: range || null, starts_at, size, parts };
 	}
 
@@ -2252,7 +2271,7 @@ export class FakeApi {
 		if (share.uploaded.size < share.parts) throw fail(409, "the share is missing parts");
 		if (share.completed) return NO_CONTENT;
 		share.completed = true;
-		this.#emit(share.to_user_id, "HISTORY_SHARE_CREATE", this.#shareView(share));
+		this.#emit(share.to_user_id, "HISTORY_SHARE_CREATE", this.listedAs(this.#shareView(share)));
 		if (share.kind === "share") {
 			const conv = this.#conversations.get(share.conversation_id)!;
 			const at = now();

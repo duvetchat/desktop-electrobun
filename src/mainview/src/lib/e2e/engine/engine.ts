@@ -192,7 +192,9 @@ export class E2EEngine {
 	/** The messages this device sends, edits and deletes. */
 	readonly #sends: Sends;
 	readonly #messageListeners = new Set<MessagesListener>();
-	readonly #refusedListeners = new Set<(conversationId: string, messageId: string, kind: "edit" | "delete") => void>();
+	readonly #refusedListeners = new Set<
+		(conversationId: string, id: string, kind: "edit" | "delete" | "share") => void
+	>();
 	readonly #sentListeners = new Set<(conversationId: string, nonce: string, message: DirectMessage) => void>();
 	readonly #deviceListeners = new Set<(notice: DeviceNotice) => void>();
 	/** The person's shares of a conversation's history going up, and the packages this device is handed (Task 30). */
@@ -231,7 +233,9 @@ export class E2EEngine {
 			messagesChanged,
 			(id) => this.#received.forget(id),
 		);
-		this.#shares = new Shares(parts);
+		this.#shares = new Shares(parts, (id, shareId) => {
+			for (const listener of this.#refusedListeners) listener(id, shareId, "share");
+		});
 		this.#received = new Received(parts, {
 			turn: (work) => this.#act(work),
 			quiet: (work) => this.#quietly(work),
@@ -242,6 +246,7 @@ export class E2EEngine {
 				const offers = this.#received.offers(id);
 				for (const listener of this.#offerListeners) listener(id, offers);
 			},
+			list: () => soon(() => this.#received.listed()),
 		});
 		this.#sends = new Sends(
 			parts,
@@ -373,8 +378,13 @@ export class E2EEngine {
 		return () => void this.#messageListeners.delete(listener);
 	}
 
-	/** Each edit or deletion of the person's that the API refused for good: it shows on this device alone. */
-	onChangeRefused(listener: (conversationId: string, messageId: string, kind: "edit" | "delete") => void): () => void {
+	/**
+	 * Each edit or deletion of the person's that the API refused for good, which shows on this device alone (by its
+	 * message's ID); and each share of a conversation's history they were told went, which ended for good (by its ID).
+	 */
+	onChangeRefused(
+		listener: (conversationId: string, id: string, kind: "edit" | "delete" | "share") => void,
+	): () => void {
 		this.#refusedListeners.add(listener);
 		return () => void this.#refusedListeners.delete(listener);
 	}
@@ -512,7 +522,10 @@ export class E2EEngine {
 		return answer;
 	}
 
-	/** The members' shares of the conversation this device offers, until the person adds them (Ruling 22). */
+	/**
+	 * What the conversation offers, its newest three, until the person adds or dismisses them (Ruling 22): members'
+	 * shares, and catch-ups whose import failed three times.
+	 */
 	offers(conversationId: string): SharedOffer[] {
 		return this.#received.offers(conversationId);
 	}
@@ -530,6 +543,14 @@ export class E2EEngine {
 	importShared(shareId: string): Promise<number> {
 		if (this.state.name !== "ready") return Promise.reject(new CoreError("not_ready", NOT_READY));
 		return this.#received.add(shareId);
+	}
+
+	/**
+	 * The person's Dismiss of an offer: it shows no more, and the API is told this device is done with it. A device that
+	 * isn't ready takes it too, as only the API is told.
+	 */
+	dismissShared(shareId: string): void {
+		this.#received.dismiss(shareId);
 	}
 
 	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */

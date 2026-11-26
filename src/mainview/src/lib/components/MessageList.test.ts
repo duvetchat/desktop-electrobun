@@ -339,12 +339,24 @@ describe("a shared history's notice", () => {
 		expect(drawn(shared(ME, "all"))).toContain(notice("shared_with_you", { a: "Ana", range: NOTICES.range_all }));
 	});
 
-	test("is a notice, which nobody edits or pins", async () => {
+	// A row's hover bar and its menu mount only under the pointer or on a right click, which a server render never has:
+	// what holds is the menu's branch for a notice, Delete alone, and the bar's edit, which takes a text a notice lacks.
+	test("is a notice, whose menu has Delete alone, and whose row has no text to edit", async () => {
 		const { isNotice } = await import("$lib/types");
-		expect(isNotice({ type: MessageType.HistoryShare })).toBe(true);
-		const html = drawn(shared(BEA, "day"));
-		expect(html).not.toContain("Edit message");
-		expect(html).not.toContain("Pin message");
+		const notice = shared(BEA, "day");
+		expect(isNotice(notice)).toBe(true);
+		expect(notice.content).toBeNull();
+		const list = source("MessageList.svelte").replaceAll("\r\n", "\n");
+		const start = list.indexOf("{#snippet messageItems(message: Message)}");
+		const menu = list.slice(start, list.indexOf("{/snippet}", start));
+		const [forNotice, forOthers] = menu.split("{:else}");
+		expect(forNotice).toContain("{#if isNotice(message)}");
+		expect(forNotice).toContain("Delete message");
+		expect(forNotice).not.toContain("Edit message");
+		expect(forNotice).not.toContain("Pin message");
+		expect(forOthers).toContain("Edit message");
+		expect(forOthers).toContain("Pin message");
+		expect(list).toContain('mine &&\n\t\t\t(message.content ?? "").trim() !== "" &&');
 	});
 });
 

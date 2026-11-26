@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import en from "../../../messages/en.json";
-import { SHARE_RANGES } from "./engine/history";
+import { SHARE_RANGES, type ShareOutcome, type ShareRange } from "./engine/history";
+import { CoreError } from "./errors";
 import { notice, NOTICES, type NoticeKey } from "./notices";
-import { outcomeLine, RANGE_WORDS, sharedLine } from "./sharing";
+import { outcomeLine, pickedRange, RANGE_WORDS, shareFromDialog, sharedLine } from "./sharing";
 
 // What the app says of a conversation's shared history (PLAN-E2E-CLIENTES.md, Task 30): its ranges, a share's notice
 // and what the person's share came to, each in the notices' table's words, which the mobile app says too.
@@ -53,6 +54,35 @@ describe("a shared history's words", () => {
 			outcomeLine({ sent: false, why: "refused", error: "the history share doesn't fit in your storage" }, "Bo"),
 		).toBe("the history share doesn't fit in your storage");
 		expect(outcomeLine({ sent: false, why: "refused", error: null }, "Bo")).toBe(NOTICES.share_history_failed);
+	});
+
+	// The share dialog's pick and its Share (ShareHistoryDialog.svelte goes through them).
+	test("the dialog shares as far back as the person picked, and says what came of it", async () => {
+		expect(pickedRange("month", "week")).toBe("month");
+		expect(pickedRange("a year", "week")).toBe("week");
+		const asked: ShareRange[] = [];
+		const answering = (outcome: ShareOutcome) => async (range: ShareRange) => (asked.push(range), outcome);
+		expect(await shareFromDialog(answering({ sent: true, truncated: false, start: 0 }), "month", "Bo")).toBeNull();
+		const start = Date.UTC(2026, 10, 19, 12);
+		expect(await shareFromDialog(answering({ sent: true, truncated: true, start }), "all", "Bo")).toEqual({
+			text: notice("share_history_truncated", { name: "Bo", date: "November 19, 2026" }),
+			done: true,
+		});
+		expect(await shareFromDialog(answering({ sent: false, why: "no_device" }), "day", "Bo")).toEqual({
+			text: notice("share_history_no_device", { name: "Bo" }),
+			done: false,
+		});
+		expect(asked).toEqual(["month", "all", "day"]);
+		// One that failed: not ready says so, anything else in the app's words.
+		const failing = (error: Error) => () => Promise.reject(error);
+		expect(await shareFromDialog(failing(new CoreError("not_ready")), "week", "Bo")).toEqual({
+			text: en.e2e_not_ready,
+			done: false,
+		});
+		expect(await shareFromDialog(failing(new TypeError("offline")), "week", "Bo")).toEqual({
+			text: NOTICES.share_history_failed,
+			done: false,
+		});
 	});
 
 	test("the app's words are the table's", () => {

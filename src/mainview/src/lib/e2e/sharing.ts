@@ -3,7 +3,8 @@
 // share came to. In the app's words (en.json), which say the notices' table's, in the language of the moment.
 import { t, type MessageKey } from "$lib/i18n";
 import { formatDate, formatRelativeTime } from "$lib/i18n/format";
-import type { ShareOutcome, ShareRange } from "./engine/history";
+import { SHARE_RANGES, type ShareOutcome, type ShareRange } from "./engine/history";
+import { CoreError } from "./errors";
 
 /** Each range's words: the dialog's choices, and what a notice says of how far back. */
 export const RANGE_WORDS: Record<ShareRange, MessageKey> = {
@@ -45,5 +46,29 @@ export function outcomeLine(outcome: ShareOutcome, name: string): string | null 
 			return t("e2e_share_history_no_device", { name });
 		case "refused":
 			return outcome.error ?? t("e2e_share_history_failed");
+	}
+}
+
+/** The range a radio's pick names, or the one picked before when it names none (the share dialog's binding). */
+export const pickedRange = (picked: string, before: ShareRange): ShareRange =>
+	SHARE_RANGES.find((one) => one === picked) ?? before;
+
+/**
+ * The share dialog's Share: the person's share as far back as they picked, then what the dialog says, `done` once it
+ * went (cut), so nothing more is offered; nothing when it went whole, as the dialog closes.
+ */
+export async function shareFromDialog(
+	share: (range: ShareRange) => Promise<ShareOutcome>,
+	range: ShareRange,
+	name: string,
+): Promise<{ text: string; done: boolean } | null> {
+	try {
+		const outcome = await share(range);
+		const text = outcomeLine(outcome, name);
+		return text === null ? null : { text, done: outcome.sent };
+	} catch (error) {
+		console.error("[e2e] A conversation's history wasn't shared:", error);
+		const notReady = error instanceof CoreError && error.code === "not_ready";
+		return { text: t(notReady ? "e2e_not_ready" : "e2e_share_history_failed"), done: false };
 	}
 }
