@@ -4,7 +4,7 @@
 // (a new password's remove_devices, step 3's ruling 23), which no list or change of keys of this device's names again.
 // This device never takes itself off the list: the API takes no list without the session's device.
 import { FetchError } from "$lib/api/api";
-import type { Device, E2eApi, Identity } from "$lib/api/e2e";
+import type { Device, E2eApi } from "$lib/api/e2e";
 import type { UserDevice } from "$lib/types";
 import { listDevices } from "../cbor";
 import { CoreError } from "../errors";
@@ -177,28 +177,54 @@ export interface KeysMade {
 	replaces: string;
 }
 
-/** The devices a change of keys under way takes off: as the record kept them, else the served list's that its new list
- * lacks (a record the page's storage lost). */
-function rotationRemoves(store: EngineStore, served: Identity, status: CoreStatus): string[] {
+/**
+ * The devices a change of keys under way takes off: as the record kept them, else as the core says (status'
+ * waiting_remove: a record the page's storage lost). Never the served list's that its new list lacks, which also names
+ * what an earlier list of this device's left out, when the change was signed on top of one the API never took (task
+ * 25's review, M5).
+ */
+function rotationRemoves(store: EngineStore, status: CoreStatus): string[] {
 	const kept = store.read<{ remove?: unknown }>(KEPT_ROTATION)?.remove;
 	if (Array.isArray(kept) && kept.every((id) => typeof id === "string")) return kept;
-	const staying = heldDevices(status);
-	return (listDevices(served.device_list) ?? []).filter((id) => !staying.includes(id));
+	return status.waiting_remove ?? [];
+}
+
+/**
+ * The devices a change of keys that waits keeps and the API's list no longer names, never this one (duvetchat/e2e#49):
+ * another device took them off with a list of the identity this change replaces, and the API no longer serves their
+ * certificates, so the change can't run again with them (`bad_command` `certificates`), nor go up (its transfer to one
+ * is the API's 400). Its run again goes on without them (`gone`), on the person's yes. None when nothing waits, or when
+ * the API serves the change's own identity: its upload landed, its answer lost, which only its confirmation is left of.
+ */
+export async function goneDevices(parts: EngineParts): Promise<string[]> {
+	const status = await coreStatus(parts.host);
+	if (status.waiting_upload !== "rotate_keys") return [];
+	const served = await servedIdentity(parts);
+	if (!served || served.identity_key === status.identity_key) return [];
+	const listed = listDevices(served.device_list) ?? [];
+	return heldDevices(status).filter((id) => id !== status.device_id && !listed.includes(id));
 }
 
 /**
  * New keys (rotate_keys), taking `remove` off the list, with the devices the API took away: the own user observed
  * first, so the new list leaves out no device listed since, and each device that stays sealed to as its certificate is
  * served. The devices it takes off are kept in the record until its upload is confirmed, as only the same ones run it
- * again. While a change of keys waits for its upload, it's that one again, whatever `remove` says (Review Focus 3).
+ * again. While a change of keys waits for its upload, it's that one again, whatever `remove` says (Review Focus 3); run
+ * so with `gone` (goneDevices, which the person said yes to), its list is signed again without them, the list the API
+ * serves its proof (duvetchat/e2e#49).
  */
-export async function makeKeys(parts: EngineParts, remove: readonly string[]): Promise<KeysMade> {
+export async function makeKeys(
+	parts: EngineParts,
+	remove: readonly string[],
+	gone: readonly string[] = [],
+): Promise<KeysMade> {
 	const { host, store } = parts;
 	const served = await servedIdentity(parts);
 	if (!served) throw new Error("this user has no identity to change");
 	let status = await coreStatus(host);
 	let removing: string[];
-	if (status.waiting_upload === "rotate_keys") removing = rotationRemoves(store, served, status);
+	const again = status.waiting_upload === "rotate_keys";
+	if (again) removing = rotationRemoves(store, status);
 	else {
 		await observeOwn(parts, served);
 		status = await coreStatus(host);
@@ -211,6 +237,7 @@ export async function makeKeys(parts: EngineParts, remove: readonly string[]): P
 		cmd: "rotate_keys",
 		remove: removing,
 		certificates: served.certificates,
+		...(again && gone.length ? { gone, served_list: served.device_list } : {}),
 	});
 	return { ...made, replaces: served.identity_key };
 }

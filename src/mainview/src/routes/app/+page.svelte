@@ -89,6 +89,7 @@
 		changeKeys,
 		createDM,
 		encryption,
+		finishKeysWithout,
 		keySaved,
 		makeIdentity,
 		setupActions,
@@ -1137,7 +1138,8 @@
 			onKeySaved={keySaved}
 			onLater={uploadLater}
 			onStartOver={startOver}
-			onFinishKeys={changeKeys}
+			onChangeKeys={changeKeys}
+			onFinishWithout={finishKeysWithout}
 			{setupActions}
 			{approvalActions}
 		/>

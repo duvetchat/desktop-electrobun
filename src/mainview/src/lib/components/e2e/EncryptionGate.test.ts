@@ -22,7 +22,8 @@ const props = (state: EngineState, web = false) => ({
 	onKeySaved: async () => {},
 	onLater: async () => {},
 	onStartOver: async () => {},
-	onFinishKeys: async () => {},
+	onChangeKeys: async () => {},
+	onFinishWithout: async () => {},
 	setupActions: {
 		recover: async () => {},
 		beginApproval: async () => {},
@@ -94,6 +95,28 @@ describe("the encryption gate", () => {
 		const stuck = drawn({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
 		expect(stuck).toContain(en.e2e_rotation_stuck);
 		expect(stuck).not.toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+	});
+
+	// duvetchat/e2e#49: devices the API no longer has hold it, which it goes on without on the person's yes; another
+	// device's change of keys that kept a device it takes off made it impossible.
+	test("a change of keys devices gone hold offers to go on without them; one made impossible says so", async () => {
+		const id = "0193b7c1-0000-7000-8000-0000000000a4";
+		const gone: EngineState = { name: "ready", rotation: { recoveryKey: null, stuck: true, gone: [id] } };
+		expect(drawn(gone)).toContain(en.e2e_rotation_gone.replace("{devices}", id.slice(0, 8)));
+		expect(drawn(gone)).toMatch(/<button [^>]*>\s*Finish without them\s*<\/button>/);
+		const relisted: EngineState = { name: "ready", rotation: { recoveryKey: null, stuck: true, relisted: true } };
+		expect(drawn(relisted)).toContain(en.e2e_rotation_relisted);
+		expect((await buttons(relisted)).map((button) => button.attributes["aria-label"])).toEqual(["Dismiss"]);
+	});
+
+	// The core's R1: a device a change without devices dropped may still hold the keys; a new change shuts it out.
+	test("after a change of keys that went on without devices, offers another, asked first", () => {
+		const again: EngineState = { name: "ready", keysAgain: true };
+		expect(drawn(again)).toContain(en.e2e_keys_again);
+		expect(drawn(again)).toMatch(/<button [^>]*>\s*Change security keys\s*<\/button>/);
+		expect(source("EncryptionGate.svelte")).toContain(
+			'confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys)',
+		);
 	});
 
 	test("says it in the notices' words", () => {

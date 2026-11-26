@@ -9,10 +9,11 @@
 //   person types; the approving device confirms on their Confirm (on the desktop after Bun's box) and sends the transfer.
 // The new device takes the transfer (approval_receive): one sealed to its commitment's key only once the code typed was
 // accepted, so one that came before is kept, and taken after it. Then it goes on as with the recovery key (recover.ts'
-// putFirstList). The approving device changes no list and no key until that device's list is up (task 24's review, M2).
+// putFirstList). The approving device changes no list and no key until that device's list is up (task 24's review, M2),
+// and asks of no other new device meanwhile (task 27's review, M5).
 import type { InboxMessage } from "$lib/api/e2e";
 import { base64Bytes } from "$lib/activity-thumbnail";
-import { listDevices } from "../cbor";
+import { commitmentDevice, listDevices } from "../cbor";
 import { approvalFingerprint, approvalFrameMessage, readApprovalFrame, type ApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
 import { coreStatus } from "./bootstrap";
@@ -79,8 +80,11 @@ interface Asked {
 	code?: string;
 	ended?: "over" | "listed";
 	unfinished: boolean;
-	/** A confirmed approval's transfer while its send failed: the same bytes go on the next Confirm. */
-	transfer?: string;
+	/**
+	 * A confirmed approval's transfer while its send failed, with the device the core approved, which it goes to: the
+	 * same bytes go on the next Confirm.
+	 */
+	transfer?: { device: string; data: string };
 	stop: () => void;
 }
 
@@ -105,14 +109,22 @@ export class Approvals {
 	readonly #soon: (work: () => Promise<void>) => void;
 	/** What the views show changed. */
 	readonly #changed: () => void;
+	/** The hold ended by its timer: the questions that waited for it are asked, in the engine's turn. */
+	readonly #released: () => Promise<void>;
 	#attempt: Attempt | null = null;
 	#asked: Asked | null = null;
 	#confirmed: Confirmed | null = null;
 
-	constructor(parts: EngineParts, soon: (work: () => Promise<void>) => void, changed: () => void) {
+	constructor(
+		parts: EngineParts,
+		soon: (work: () => Promise<void>) => void,
+		changed: () => void,
+		released: () => Promise<void>,
+	) {
 		this.#parts = parts;
 		this.#soon = soon;
 		this.#changed = changed;
+		this.#released = released;
 	}
 
 	/** What the new device shows of its attempt. */
@@ -144,6 +156,16 @@ export class Approvals {
 	/** A device this one approved hasn't put up its list yet: no list or key change of this device's may leave it out. */
 	holds(): boolean {
 		return this.#confirmed !== null;
+	}
+
+	/**
+	 * While a device this one approved sets up, no other one is approved (task 27's review, M5): its transfer would carry
+	 * a list naming the first one without its certificate. The same device again is its way out (`unfinished`).
+	 */
+	#refuseWhileHeld(device: string) {
+		if (this.#confirmed && this.#confirmed.device !== device) {
+			throw new CoreError("approval_waits", "a device this one approved hasn't put up its list yet");
+		}
 	}
 
 	/** Nothing goes on: timers called off, nothing shown. */
@@ -238,6 +260,7 @@ export class Approvals {
 	 * `sign_device_list`, which Bun asks about in its own box on the desktop).
 	 */
 	async approve(device: string): Promise<"replaced" | void> {
+		this.#refuseWhileHeld(device);
 		const asked = this.#asked;
 		if (asked?.device !== device || asked.step !== "asked") return;
 		const { api, host } = this.#parts;
@@ -297,24 +320,27 @@ export class Approvals {
 
 	/**
 	 * The person's Confirm, after they saw the new device accept the code: approval_confirm (on the desktop, after Bun's
-	 * box, whose no keeps the code shown), then the transfer to the new device, the same bytes again after a send that
-	 * failed. The same offer is made again right before (the core answers it alike): Bun, its core worker started
+	 * box, whose no keeps the code shown), then the transfer to the device the core approved, which its answer names
+	 * (duvetchat/e2e#53; the inbox's sender is the API's word: task 27's review, M6), the same bytes again after a send
+	 * that failed. The same offer is made again right before (the core answers it alike): Bun, its core worker started
 	 * again, knows only from an offer what its box names. An attempt the core no longer has (`not_found`: another offer
 	 * since, or its ten minutes) is over, and says so.
 	 */
 	async confirm(device: string): Promise<void> {
 		const asked = this.#asked;
 		if (asked?.device !== device || asked.step !== "code" || !asked.code) return;
+		this.#refuseWhileHeld(device);
 		if (!asked.transfer) {
 			const { host } = this.#parts;
 			const frame = this.#commitmentOf(asked);
 			if (!frame) return this.#end(asked, "over");
 			try {
 				await host.handle({ cmd: "approval_offer", commitment: frame.data });
-				({ transfer: asked.transfer } = await host.handle<{ transfer: string }>({
+				const confirmed = await host.handle<{ device_id: string; transfer: string }>({
 					cmd: "approval_confirm",
 					code: asked.code,
-				}));
+				});
+				asked.transfer = { device: confirmed.device_id, data: confirmed.transfer };
 			} catch (error) {
 				// The person's no in Bun's box: not yet, the code still shown.
 				if (error instanceof CoreError && error.code === "refused") return;
@@ -322,13 +348,19 @@ export class Approvals {
 				throw error;
 			}
 		}
-		const message = approvalFrameMessage({ duvet: "approval", step: "transfer", data: asked.transfer });
-		await this.#parts.api.sendToDevice(device, message);
+		const approved = asked.transfer.device;
+		const message = approvalFrameMessage({ duvet: "approval", step: "transfer", data: asked.transfer.data });
+		await this.#parts.api.sendToDevice(approved, message);
 		this.#forget(device);
 		this.#confirmed?.stop();
-		const confirmed: Confirmed = { device, name: asked.name, fingerprint: asked.fingerprint, stop: () => {} };
-		// The new device's attempt is over within ten minutes of its offer, which came first: so is the wait.
-		confirmed.stop = this.#after(ATTEMPT_MS, () => (this.#confirmed === confirmed ? this.#release() : undefined));
+		const confirmed: Confirmed = { device: approved, name: asked.name, fingerprint: asked.fingerprint, stop: () => {} };
+		// The new device's attempt is over within ten minutes of its offer, which came first: so is the wait, after which
+		// the questions that waited for it are asked.
+		confirmed.stop = this.#after(ATTEMPT_MS, async () => {
+			if (this.#confirmed !== confirmed) return;
+			this.#release();
+			await this.#released();
+		});
 		this.#confirmed = confirmed;
 		this.#changed();
 	}
@@ -407,6 +439,13 @@ export class Approvals {
 				if (asked?.message === message.id && asked.step === "asked") this.#forget(device);
 				return false;
 			}
+			// One that names another device than its sender, which the API names, asks nothing (task 27's review, M6).
+			if (commitmentDevice(frame.data) !== device) {
+				console.warn("[e2e] A new device's request names another device than the one that sent it, and goes.");
+				return false;
+			}
+			// While a device this one approved sets up, another one's question waits for its list (M5).
+			if (this.#confirmed && this.#confirmed.device !== device) return true;
 			if (asked && asked.device !== device) return true;
 			if (asked?.message === message.id) return true;
 			// A new attempt of the device's, or the first ask: the question starts over, and ends with that attempt.

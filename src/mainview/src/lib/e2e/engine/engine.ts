@@ -18,6 +18,7 @@ import {
 	addedToTell,
 	confirmKeys,
 	devicesAlong,
+	goneDevices,
 	inactiveToTell,
 	makeKeys,
 	publishKeys,
@@ -46,7 +47,16 @@ import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from 
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
 import { makeReset, replacedByReset } from "./start-over";
-import { DEVICE_RECORD, EXTERNAL_SENDER, KEPT_RESET, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
+import {
+	DEVICE_RECORD,
+	EXTERNAL_SENDER,
+	KEPT_RESET,
+	KEYS_AGAIN,
+	RELISTED,
+	TOLD_ADDED,
+	TOLD_INACTIVE,
+	type EngineStore,
+} from "./store";
 import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
@@ -119,9 +129,12 @@ export interface EngineParts {
  * make its identity, then shows its recovery key (`recoveryKey`) until it's saved; `finishing` when an identity it made
  * before the app closed still waits for its upload. A ready device changing its keys (Task 24) shows their new recovery
  * key the same way (`rotation`), or, with none, one made before the app closed that the person's Finish brings back;
- * `stuck`, one that can't finish, as another device took off a device it keeps or changed the keys first. A ready
- * device shows its encrypted backup (`backup`, Task 32) while it restores, goes up or is paused: none, up to date.
- * `failed` with `lostKey` is a database its key no longer opens.
+ * `stuck`, one that can't finish, as another device took off a device it keeps or changed the keys first: `gone`, the
+ * devices the API no longer has that hold it, which it goes on without on the person's yes; `relisted`, another device's
+ * change kept a device it takes off (duvetchat/e2e#49). `keysAgain`: a change that went on without devices went up, and
+ * another one is offered, as one of them may still hold the keys. A ready device shows its encrypted backup (`backup`,
+ * Task 32) while it restores, goes up or is paused: none, up to date. `failed` with `lostKey` is a database its key no
+ * longer opens.
  */
 export type EngineState =
 	| { name: "starting" }
@@ -129,8 +142,9 @@ export type EngineState =
 	| { name: "new_device"; setup?: DeviceSetup }
 	| {
 			name: "ready";
-			rotation?: { recoveryKey: string | null; stuck?: true };
+			rotation?: { recoveryKey: string | null; stuck?: true; gone?: string[]; relisted?: true };
 			approval?: DeviceApproval;
+			keysAgain?: true;
 			backup?: BackupShown;
 	  }
 	| { name: "removed" }
@@ -199,8 +213,15 @@ export class E2EEngine {
 	#made: IdentityMade | null = null;
 	/** What rotate_keys answered, until it's uploaded: never kept elsewhere, as the core runs the same change again. */
 	#keys: KeysMade | null = null;
-	/** The change of keys under way can't finish (stuckKeys): until the core lets it go, Finish says so. */
-	#stuck = false;
+	/**
+	 * The change of keys under way can't finish (stuckKeys): until the core lets it go, Finish says so, naming the devices
+	 * gone that hold it (goneDevices).
+	 */
+	#stuck: { gone: string[] } | null = null;
+	/** Another device's change of keys kept a device the one under way takes off (removed_device_listed): it can't end. */
+	#relisted = false;
+	/** A change of keys of this device's went on without devices (gone): another one is offered until one is made. */
+	#keysAgain = false;
 	/** This installation's device, as its database names it, whether or not the session is bound to it yet. */
 	#self: string | null = null;
 	/** How many rounds each inbox message's call was cut (inbox.ts). */
@@ -252,6 +273,7 @@ export class E2EEngine {
 			parts,
 			(work) => this.#soon(work),
 			() => this.#set(this.state),
+			() => this.#takeApprovals(),
 		);
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
@@ -450,6 +472,30 @@ export class E2EEngine {
 	}
 
 	/**
+	 * The person's yes to going on without the devices another device took off meanwhile, which a change of keys that
+	 * can't finish names (`gone`, duvetchat/e2e#49): the same change, its list signed again without them, its recovery
+	 * key shown again to be saved. On the desktop Bun names them in its own box first, and its no changes nothing. Once
+	 * it's up another change is offered (`keysAgain`): such a device may still hold the keys, if the API worked with
+	 * whoever has it.
+	 */
+	finishKeysWithout(): Promise<void> {
+		return this.#act(async () => {
+			const { state } = this;
+			const gone = state.name === "ready" && !state.rotation?.relisted ? (state.rotation?.gone ?? []) : [];
+			if (!gone.length) return;
+			this.#holdForApproval();
+			await this.#makeKeys([], gone);
+			if (this.#keys) this.#offerKeysAgain(true);
+		});
+	}
+
+	/** Whether another change of keys is offered (`keysAgain`), in memory and in the record. */
+	#offerKeysAgain(offer: boolean) {
+		this.#keysAgain = offer;
+		this.#parts.store.write(KEYS_AGAIN, offer || null);
+	}
+
+	/**
 	 * A device this one approved hasn't put up its list yet (task 24's review, M2): it has no certificate of the identity
 	 * until then, so a list or a change of keys now would leave it out, and its own list would lose to it (409).
 	 */
@@ -493,7 +539,7 @@ export class E2EEngine {
 			this.#halt();
 			this.#made = null;
 			this.#keys = null;
-			this.#stuck = false;
+			this.#stuck = null;
 			this.#setup = null;
 			this.#replaces = null;
 			this.#set({ name: "starting" });
@@ -983,36 +1029,62 @@ export class E2EEngine {
 
 	/**
 	 * New keys (rotate_keys), made once at a time: a change already showing its key goes on. A no in Bun's own box means
-	 * not yet, and changes nothing.
+	 * not yet, and changes nothing. Run again while a change waits, with `gone`, it goes on without those devices. A new
+	 * change, not the Finish of one that waits, takes up the offer of one after a gone once it's made, as the change that
+	 * waits then carries it (task 27's review, M1).
 	 */
-	async #makeKeys(remove: readonly string[]): Promise<void> {
+	async #makeKeys(remove: readonly string[], gone: readonly string[] = []): Promise<void> {
 		if (this.#keys) return;
+		const fresh = !(this.state.name === "ready" && this.state.rotation);
 		try {
-			this.#keys = await makeKeys(this.#parts, remove);
+			this.#keys = await makeKeys(this.#parts, remove, gone);
 		} catch (error) {
-			if (error instanceof CoreError && error.code === "refused") return;
+			if (!(error instanceof CoreError)) throw error;
+			if (error.code === "refused") return;
+			const waiting = async () => (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys";
 			// The same change again needs the served certificate of each device it keeps, signed by the identity it
-			// replaces: one taken off meanwhile has none, and another device's change signed them all anew (I1).
-			const refusedAgain =
-				error instanceof CoreError &&
-				((error.code === "bad_command" && error.field === "certificates") || error.code === "invalid_signature");
-			if (refusedAgain && (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") {
-				return this.#stuckKeys();
+			// replaces: one taken off meanwhile has none, which the change can go on without (I1, gone).
+			if (error.code === "bad_command" && error.field === "certificates" && (await waiting())) {
+				return this.#stuckKeys(await goneDevices(this.#parts));
 			}
-			throw error;
+			// Another device's change signed them all anew: its transfer, which the inbox may bring, ends this change
+			// (duvetchat/e2e#49).
+			if (error.code !== "invalid_signature" || !(await waiting())) throw error;
+			await this.#inbox();
+			if (await waiting()) this.#stuckKeys([]);
+			return;
 		}
+		this.#stuck = null;
+		if (fresh && this.#keysAgain) this.#offerKeysAgain(false);
 		this.#set({ name: "ready", rotation: { recoveryKey: this.#keys.recovery_key } });
 	}
 
 	/**
-	 * A change of keys that can't finish (I1): another device took off a device it keeps, or changed the keys first, and
-	 * the core runs only the same change again until its upload, refusing another change's transfer meanwhile
-	 * (invalid_signature; duvetchat/e2e#49). Only deleting this device's data ends it; the views say so.
+	 * A change of keys that can't finish (I1): the core runs only the same change again until its upload. Another device
+	 * took off a device it keeps (`gone`), which it can go on without on the person's yes (finishKeysWithout), or changed
+	 * the keys first, whose transfer the core takes over this change, which then ends; deleting this device's data ends it
+	 * too (duvetchat/e2e#49). The views say which.
 	 */
-	#stuckKeys() {
+	#stuckKeys(gone: string[]) {
 		this.#keys = null;
-		this.#stuck = true;
-		this.#set({ name: "ready", rotation: { recoveryKey: null, stuck: true } });
+		this.#stuck = { gone };
+		this.#set({ name: "ready", rotation: this.#stuckRotation() });
+	}
+
+	/** What a change of keys that can't finish shows: why, and the devices gone it can go on without. */
+	#stuckRotation(): { recoveryKey: null; stuck: true; gone?: string[]; relisted?: true } {
+		if (this.#relisted) return { recoveryKey: null, stuck: true, relisted: true };
+		const gone = this.#stuck?.gone ?? [];
+		return gone.length ? { recoveryKey: null, stuck: true, gone } : { recoveryKey: null, stuck: true };
+	}
+
+	/**
+	 * The core refused another device's change of keys that keeps a device this one's change takes off: this change can't
+	 * finish, which is said, after a restart too, until it ends.
+	 */
+	#relistedSeen() {
+		this.#relisted = true;
+		this.#parts.store.write(RELISTED, true);
 	}
 
 	/**
@@ -1028,21 +1100,22 @@ export class E2EEngine {
 				this.#keys = null;
 				return this.#set({ name: "update", minimum: error.minimum });
 			}
-			// A transfer to a device the API took away, which the same change can't leave out.
+			// A transfer to a device the API took away, which the same change can go on without (gone).
 			const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
 			if (
 				statusOf(error) === 400 &&
 				typeof refusal === "string" &&
 				/isn't a registered device of yours/.test(refusal)
 			) {
-				return this.#stuckKeys();
+				return this.#stuckKeys(await goneDevices(this.#parts));
 			}
 			if (statusOf(error) !== 409) throw error;
 			this.#keys = null;
 			await this.#inbox();
-			// The API holds another device's keys, whose transfer the core can't take while this change waits: the same
-			// bytes are refused every time (I1).
-			if ((await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") return this.#stuckKeys();
+			// The API holds another device's keys, whose transfer the core takes over this change, which ends
+			// (duvetchat/e2e#49); one that keeps a device this change takes off is refused (removed_device_listed), and
+			// this change can't finish.
+			if ((await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") return this.#stuckKeys([]);
 		}
 		this.#keys = null;
 		this.#set(await this.#identity());
@@ -1111,10 +1184,16 @@ export class E2EEngine {
 			return setup ? { name: "new_device", setup } : { name: "new_device" };
 		}
 		if (state.name !== "ready") return state;
-		const { approval: _shown, backup: _backup, ...ready } = state;
+		const { approval: _shown, keysAgain: _offered, backup: _backup, ...ready } = state;
 		const approval = ready.rotation ? null : this.#approvals.shown();
 		const backup = this.#backups.shown();
-		return { ...ready, ...(approval ? { approval } : {}), ...(backup ? { backup } : {}) };
+		return {
+			...ready,
+			...(approval ? { approval } : {}),
+			// Another change of keys is offered once none waits (the one that waits carries the offer).
+			...(!ready.rotation && this.#keysAgain ? { keysAgain: true as const } : {}),
+			...(backup ? { backup } : {}),
+		};
 	}
 
 	/**
@@ -1275,11 +1354,7 @@ export class E2EEngine {
 					// a commit is due to take them out.
 					if (state.name === "ready") {
 						this.#set(await this.#identity());
-						// The list of a device this one approved, up: this device's own changes go on.
-						if (this.#approvals.holds()) {
-							const served = await servedIdentity(this.#parts);
-							if (served) this.#approvals.listed(served);
-						}
+						await this.#releaseHold();
 						await this.#whenReady(() => this.#groups.all());
 					} else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
 				});
@@ -1296,10 +1371,16 @@ export class E2EEngine {
 		const state = await identityState(this.#parts, () => this.#takeInbox());
 		if (state.name === "ready" && (await coreStatus(this.#parts.host)).waiting_upload === "rotate_keys") {
 			const recoveryKey = this.#keys?.recovery_key ?? null;
-			return { name: "ready", rotation: this.#stuck ? { recoveryKey, stuck: true } : { recoveryKey } };
+			// One another device's change made impossible, as the record says after a restart too, is said at once.
+			const stuck = recoveryKey === null && (this.#stuck !== null || this.#relisted);
+			return { name: "ready", rotation: stuck ? this.#stuckRotation() : { recoveryKey } };
 		}
 		this.#keys = null;
-		this.#stuck = false;
+		this.#stuck = null;
+		if (this.#relisted) {
+			this.#relisted = false;
+			this.#parts.store.write(RELISTED, null);
+		}
 		return state;
 	}
 
@@ -1334,11 +1415,30 @@ export class E2EEngine {
 	async #inbox(): Promise<void> {
 		if (await this.#takeInbox()) this.#set(await this.#identity());
 		await this.#takeApprovals();
+		await this.#releaseHold();
+	}
+
+	/**
+	 * The list of a device this one approved, up (the served list names it): this device's own changes go on, and the
+	 * questions of the new devices that waited for it are asked (task 27's review, M5). At its IDENTITY_UPDATE and at
+	 * each round of the inbox, a READY's too, so a gateway down as it came holds nothing (the review's choice 3).
+	 */
+	async #releaseHold(): Promise<void> {
+		if (!this.#approvals.holds()) return;
+		const served = await servedIdentity(this.#parts);
+		if (served) this.#approvals.listed(served);
+		if (!this.#approvals.holds()) await this.#takeApprovals();
 	}
 
 	/** The inbox read and handled, a package's key kept by what receives them. */
 	#takeInbox(): Promise<boolean> {
-		return takeInbox(this.#parts, this.#tries, this.#failures, (key) => this.#received.keyCame(key));
+		return takeInbox(
+			this.#parts,
+			this.#tries,
+			this.#failures,
+			(key) => this.#received.keyCame(key),
+			() => this.#relistedSeen(),
+		);
 	}
 
 	/** Which approvals this device takes part in: as a new one, or as one that may approve the user's new ones. */
@@ -1432,6 +1532,8 @@ export class E2EEngine {
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);
+			this.#keysAgain = parts.store.read(KEYS_AGAIN) === true;
+			this.#relisted = parts.store.read(RELISTED) === true;
 			const { status, keys } = await ownDevice(parts);
 			const device = status.device_id;
 			this.#self = device ?? null;

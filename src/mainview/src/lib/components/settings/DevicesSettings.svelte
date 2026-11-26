@@ -16,6 +16,8 @@
 		readonly encryption: { readonly state: EngineState };
 		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
 		changeKeys(): Promise<void>;
+		/** A change of keys that can't finish, gone on with without the devices another device took off. */
+		finishKeysWithout(): Promise<void>;
 		/** What an earlier removal that never went up takes along with the next list or change of keys. */
 		alsoRemoved(): Promise<string[]>;
 		removeThisDevice(): Promise<void>;
@@ -38,11 +40,16 @@
 	}
 
 	/**
-	 * What a removal that failed says: while a device this one approved sets up, why it waits; the API's refusal of a
-	 * list naming a device this one approved that never finished (task 26's I1), in words; anything else, the API's.
+	 * What a removal or a change of keys that failed says: while a device this one approved sets up, why it waits; the
+	 * API's refusal of a list naming a device this one approved that never finished (task 26's I1), and the core's of a
+	 * change of keys keeping such a device, which no certificate the API serves leaves out (task 27's review, M4), in
+	 * words; anything else, the API's.
 	 */
 	export function removalProblem(error: unknown): string {
 		if (error instanceof CoreError && error.code === "approval_waits") return t("e2e_approval_waits");
+		if (error instanceof CoreError && error.code === "bad_command" && error.field === "certificates") {
+			return t("e2e_device_unfinished");
+		}
 		const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
 		if (typeof refusal === "string" && /has no certificate of this identity/.test(refusal)) {
 			return t("e2e_device_unfinished");
@@ -50,7 +57,7 @@
 		return getApiError(error, t("e2e_device_action_failed"));
 	}
 
-	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3). */
+	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3); a failure in words. */
 	export function askToChangeKeys(
 		devices: readonly Device[] | null,
 		along: readonly string[],
@@ -58,7 +65,11 @@
 	): Promise<void> {
 		const line = alongLine(along, devices);
 		const message = line ? `${t("e2e_change_keys_confirm")} ${line}` : t("e2e_change_keys_confirm");
-		return confirmAction(message, t("e2e_change_keys"), run);
+		return confirmAction(message, t("e2e_change_keys"), () =>
+			run().catch((error: unknown) => {
+				throw new Error(removalProblem(error), { cause: error });
+			}),
+		);
 	}
 
 	/**
@@ -100,6 +111,7 @@
 	} from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import { stuckText } from "$lib/components/e2e/EncryptionGate.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
 	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
@@ -121,6 +133,7 @@
 		onReload,
 		onRemove,
 		onChangeKeys,
+		onFinishWithout = async () => {},
 		onAlsoRemoved = async () => [],
 		onRemoveThis,
 	}: {
@@ -138,6 +151,8 @@
 		onRemove: (deviceId: string, changeKeys: boolean) => Promise<void>;
 		/** Also Finish, for a change that waits. */
 		onChangeKeys: () => Promise<void>;
+		/** A change of keys that can't finish, gone on with without the devices another device took off. */
+		onFinishWithout?: () => Promise<void>;
 		/** What an earlier removal that never went up takes along with the next one. */
 		onAlsoRemoved?: () => Promise<string[]>;
 		onRemoveThis: () => Promise<void>;
@@ -264,14 +279,22 @@
 	{#if ready || hasData || waiting}
 		<SettingsGroup>
 			{#if waiting?.stuck}
-				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_rotation_stuck")} icon={KeyIcon} />
+				<SettingsRow label={t("e2e_change_keys")} line={stuckText(waiting)} icon={KeyIcon}>
+					{#if waiting.gone?.length && !waiting.relisted}
+						<Button size="sm" onclick={() => void onFinishWithout()}>{t("e2e_finish_without")}</Button>
+					{/if}
+				</SettingsRow>
 			{:else if waiting}
 				<SettingsRow label={t("e2e_finish_keys")} icon={KeyIcon}>
 					<Button size="sm" onclick={() => void onChangeKeys()}>{t("e2e_finish")}</Button>
 				</SettingsRow>
 			{/if}
 			{#if ready}
-				<SettingsRow label={t("e2e_change_keys")} line={t("e2e_change_keys_line")} icon={KeyIcon}>
+				<SettingsRow
+					label={t("e2e_change_keys")}
+					line={encryption.name === "ready" && encryption.keysAgain ? t("e2e_keys_again") : t("e2e_change_keys_line")}
+					icon={KeyIcon}
+				>
 					<Button variant="secondary" size="sm" onclick={() => void askToChange()}>
 						{t("e2e_change_keys")}
 					</Button>

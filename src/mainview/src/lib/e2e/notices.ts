@@ -85,7 +85,7 @@ export const NOTICES = {
 	new_message: "New message",
 	// A new device's setup and its approval (task 26).
 	use_code: "Use a code instead",
-	approval_code_hint: "A computer approving this device will show this code",
+	approval_code_hint: "Type the code your other device shows",
 	code_accepted: "Code accepted: confirm it on your other device.",
 	code_mismatch: "That isn't the code your other device shows.",
 	approval_ask: "Is this device yours?",
