@@ -16,6 +16,7 @@ import {
 	withPage,
 	type LoadedCalls,
 } from "$lib/call-history";
+import { callNoticeSentence } from "$lib/call-notices";
 import { MessageType } from "$lib/types";
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
@@ -243,16 +244,18 @@ describe("a call's row", () => {
 			title: "alice",
 			group: false,
 			avatar: `https://api.test/attachments/${ALICE_AVATAR}`,
-			line: { missed: false, before: "", name: "alice", after: " started a call that lasted 5 minutes." },
+			line: {
+				missed: false,
+				key: "chat_call_notice_started",
+				values: { name: "alice", duration: "5 minutes" },
+			},
 			at: "2026-11-01T12:00:00Z",
 		});
+		expect(callNoticeSentence(callRow(notice(9), dm, ME)!.line)).toBe("alice started a call that lasted 5 minutes.");
 		// The user's own call nobody answered.
-		expect(callRow(notice(9, { caller: ME, participants: [ME] }), dm, ME)?.line).toEqual({
-			missed: false,
-			before: "You started a call. No one answered.",
-			name: "",
-			after: "",
-		});
+		const own = callRow(notice(9, { caller: ME, participants: [ME] }), dm, ME)!.line;
+		expect(own).toMatchObject({ missed: false, key: "chat_call_notice_you_unanswered" });
+		expect(callNoticeSentence(own)).toBe("You started a call. No one answered.");
 	});
 
 	// #376: with no avatar, a row drew a face made from its title, as for a person without a picture.
@@ -261,10 +264,10 @@ describe("a call's row", () => {
 		expect(row).toMatchObject({ title: "Band", group: true, avatar: null });
 		expect(row?.line).toEqual({
 			missed: true,
-			before: "You missed a call from ",
-			name: "bob",
-			after: " that lasted 5 minutes.",
+			key: "chat_call_notice_missed",
+			values: { name: "bob", duration: "5 minutes" },
 		});
+		expect(callNoticeSentence(row!.line)).toBe("You missed a call from bob that lasted 5 minutes.");
 	});
 
 	test("a conversation this client doesn't know is named as one, and anything but a call notice has none", () => {
@@ -282,18 +285,10 @@ describe("a call's row", () => {
 		};
 		const before = (participants: string[]) =>
 			callRow(notice(9, { conversation: GROUP, caller: BOB, participants }), joinedLate, ME)?.line;
-		expect(before([BOB, ALICE])).toEqual({
-			missed: false,
-			before: "",
-			name: "bob",
-			after: " started a call that lasted 5 minutes.",
-		});
-		expect(before([BOB])).toEqual({
-			missed: false,
-			before: "",
-			name: "bob",
-			after: " started a call. No one answered.",
-		});
+		expect(before([BOB, ALICE])).toMatchObject({ missed: false, key: "chat_call_notice_started" });
+		expect(callNoticeSentence(before([BOB, ALICE])!)).toBe("bob started a call that lasted 5 minutes.");
+		expect(before([BOB])).toMatchObject({ missed: false, key: "chat_call_notice_unanswered" });
+		expect(callNoticeSentence(before([BOB])!)).toBe("bob started a call. No one answered.");
 		const after = callRow(notice(11, { conversation: GROUP, caller: BOB, participants: [BOB, ALICE] }), joinedLate, ME);
 		expect(after?.line.missed).toBe(true);
 	});
@@ -324,19 +319,35 @@ describe("when a call rang", () => {
 	const now = new Date(2026, 10, 9, 18, 0);
 	const at = (...args: [number, number, number, number?, number?]) =>
 		new Date(args[0], args[1], args[2], args[3] ?? 12, args[4] ?? 0).toISOString();
+	// The system's languages, which lib/i18n/format.ts writes dates in when the first of the app's language is there.
+	const systemIn = (...languages: string[]) =>
+		Object.defineProperty(navigator, "languages", { value: languages, configurable: true });
+	afterEach(() => Reflect.deleteProperty(navigator, "languages"));
 
 	test("says the time today, Yesterday, the day within a week, and the date before", () => {
-		expect(callTime(at(2026, 10, 9, 15, 42), now, "en-GB")).toBe("15:42");
-		expect(callTime(at(2026, 10, 9, 0, 5), now, "en-GB")).toBe("00:05");
-		expect(callTime(at(2026, 10, 8, 23, 59), now, "en-GB")).toBe("Yesterday");
-		expect(callTime(at(2026, 10, 4), now, "en-GB")).toBe("Wed");
-		expect(callTime(at(2026, 10, 3), now, "en-GB")).toBe("Tue");
-		expect(callTime(at(2026, 10, 2), now, "en-GB")).toBe("02/11");
-		expect(callTime(at(2025, 10, 9), now, "en-GB")).toBe("09/11/25");
+		systemIn("en-GB");
+		expect(callTime(at(2026, 10, 9, 15, 42), now)).toBe("15:42");
+		expect(callTime(at(2026, 10, 9, 0, 5), now)).toBe("00:05");
+		expect(callTime(at(2026, 10, 8, 23, 59), now)).toBe("Yesterday");
+		expect(callTime(at(2026, 10, 4), now)).toBe("Wed");
+		expect(callTime(at(2026, 10, 3), now)).toBe("Tue");
+		expect(callTime(at(2026, 10, 2), now)).toBe("02/11");
+		expect(callTime(at(2025, 10, 9), now)).toBe("09/11/25");
 	});
 
-	test("says the day's name in English whatever the locale, and nothing for a date it can't read", () => {
-		expect(callTime(at(2026, 10, 4), now, "es-ES")).toBe("Wed");
+	test("says the day's name in the app's language whatever the system's, and nothing for a date it can't read", () => {
+		systemIn("es-ES");
+		expect(callTime(at(2026, 10, 4), now)).toBe("Wed");
 		expect(callTime("not a date", now)).toBe("");
+	});
+
+	// The time keeps the system's clock, as a message's does (message-groups.ts), as it did before #464. A date is
+	// written in the app's language: on a system in another one, as the app's language writes it (#464's dates).
+	test("keeps the system's clock on a system in another language than the app's, and writes its dates in the app's", () => {
+		systemIn("de-DE");
+		expect(callTime(at(2026, 10, 9, 15, 42), now)).toBe("15:42");
+		expect(callTime(at(2026, 10, 2), now)).toBe("11/2");
+		systemIn("en-US");
+		expect(callTime(at(2026, 10, 9, 15, 42), now)).toBe("03:42 PM");
 	});
 });

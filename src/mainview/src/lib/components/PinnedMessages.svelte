@@ -9,6 +9,8 @@
 	import { getRoomPins, unpinRoomMessage } from "$lib/api/messages";
 	import { getConversationPins, unpinConversationMessage, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { toast } from "$lib/stores/toast.svelte";
 	import {
 		gatewaySpaces,
@@ -96,7 +98,7 @@
 			}
 		} catch (err) {
 			if (ctl.signal.aborted) return;
-			failure = getApiError(err, "Couldn't load the pinned messages");
+			failure = getApiError(err, t("chat_pins_load_failed"));
 		} finally {
 			if (controller === ctl) loading = false;
 		}
@@ -136,7 +138,7 @@
 			await (conversation ? unpinConversationMessage : unpinRoomMessage)(channelId, m.id);
 			pins = pins.filter((p) => p.id !== m.id);
 		} catch (err) {
-			toast(getApiError(err, "Couldn't unpin the message"), "error");
+			toast(getApiError(err, t("chat_unpin_failed")), "error");
 		}
 	}
 
@@ -149,7 +151,7 @@
 </script>
 
 <Popover.Root bind:open>
-	<Popover.Trigger class={iconButtonClass("md", open)} title="Pinned messages" aria-label="Pinned messages">
+	<Popover.Trigger class={iconButtonClass("md", open)} title={t("chat_pins_title")} aria-label={t("chat_pins_title")}>
 		<PinIcon size={16} />
 	</Popover.Trigger>
 	<Popover.Portal>
@@ -165,13 +167,13 @@
 					collisionPadding={10}
 					updatePositionStrategy="always"
 					role="dialog"
-					aria-label="Pinned messages"
+					aria-label={t("chat_pins_title")}
 					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(360px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] font-normal outline-none"
 				>
 					<div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1.5">
-						<span class="text-duvet-ink text-[13.5px] font-semibold">Pinned messages</span>
+						<span class="text-duvet-ink text-[13.5px] font-semibold">{t("chat_pins_title")}</span>
 						{#if pins.length > 0}
-							<span class="text-duvet-ink2 text-xs">{pins.length}</span>
+							<span class="text-duvet-ink2 text-xs">{formatNumber(pins.length)}</span>
 						{/if}
 					</div>
 					<div class="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" onclickcapture={(e) => mentionProfile.open(e)}>
@@ -179,7 +181,7 @@
 							<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
 						{:else if pins.length === 0}
 							<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">
-								{loading ? "Loading…" : `This ${conversation ? "chat" : "room"} has no pinned messages yet`}
+								{loading ? t("chat_pins_loading") : t("chat_pins_empty", { place: conversation ? "chat" : "room" })}
 							</p>
 						{/if}
 						{#each pins as m (m.id)}
@@ -202,13 +204,13 @@
 										class="bg-duvet-card text-duvet-accent-text shadow-duvet-raised hover:shadow-duvet-lifted rounded-chip h-[22px] px-2 text-[11.5px] font-medium"
 										onclick={() => jump(m)}
 									>
-										Jump
+										{t("chat_pins_jump")}
 									</button>
 									{#if canPin}
 										<button
 											class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger rounded-chip grid size-[22px] place-items-center"
-											title="Unpin message"
-											aria-label="Unpin message"
+											title={t("chat_unpin")}
+											aria-label={t("chat_unpin")}
 											onclick={() => unpin(m)}
 										>
 											<XIcon size={14} />

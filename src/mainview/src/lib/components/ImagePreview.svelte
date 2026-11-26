@@ -2,6 +2,8 @@
 	import { Dialog } from "bits-ui";
 	import { X as XIcon, ZoomIn, ZoomOut, RotateCcw, RotateCw } from "@lucide/svelte";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 
 	// An image, whole, over the page: zoom, rotate and drag it. It is a dialog of its own (bits-ui's), so it comes in
 	// front of whatever opened it, a Settings sheet included, and that one holds its focus and its presses while this
@@ -126,7 +128,7 @@
 			onkeydown={handleKeyDown}
 			onwheel={handleWheel}
 		>
-			<Dialog.Title class="sr-only">{alt ? `Image: ${alt}` : "Image"}</Dialog.Title>
+			<Dialog.Title class="sr-only">{alt ? t("media_image_named", { name: alt }) : t("media_image")}</Dialog.Title>
 
 			<!-- Toolbar -->
 			<div
@@ -135,35 +137,35 @@
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={zoomIn}
-					title="Zoom in (+)"
+					title={t("media_image_zoom_in")}
 				>
 					<ZoomIn class="size-4" />
 				</button>
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={zoomOut}
-					title="Zoom out (-)"
+					title={t("media_image_zoom_out")}
 				>
 					<ZoomOut class="size-4" />
 				</button>
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={() => rotateLeft(90)}
-					title="Rotate left 90° ([)"
+					title={t("media_image_rotate_left")}
 				>
 					<RotateCcw class="size-4" />
 				</button>
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={() => rotateRight(90)}
-					title="Rotate right 90° (])"
+					title={t("media_image_rotate_right")}
 				>
 					<RotateCw class="size-4" />
 				</button>
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={reset}
-					title="Reset (0)"
+					title={t("media_image_reset")}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -181,7 +183,7 @@
 				<button
 					class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 					onclick={() => (open = false)}
-					title="Close (Esc)"
+					title={t("media_image_close")}
 				>
 					<XIcon class="size-4" />
 				</button>
@@ -192,7 +194,7 @@
 				<div
 					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-lg px-2.5 py-1 text-[11px] font-semibold tabular-nums backdrop-blur-md select-none"
 				>
-					{Math.round(scale * 100)}%
+					{formatNumber(scale, { style: "percent", maximumFractionDigits: 0 })}
 				</div>
 			{/if}
 

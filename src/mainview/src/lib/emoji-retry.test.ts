@@ -5,6 +5,7 @@ import {
 	EmojiRetries,
 	GIVE_UP_MS,
 	retryAfterMs,
+	retitleFailedEmojis,
 	retryEmojis,
 	retryWait,
 	type EmojiImage,
@@ -327,11 +328,19 @@ function fakeDocument() {
 }
 
 // An <img> as retryEmojis reads it.
+/** The name a custom emoji that gave up shows in its place. */
+interface FailedEmoji {
+	title?: string;
+	textContent?: string;
+	dataset?: Record<string, string>;
+}
+
 class FakeImage {
 	readonly isConnected = true;
-	readonly ownerDocument = { createElement: () => ({}) };
+	readonly ownerDocument = { createElement: () => ({ dataset: {} }) };
+	readonly dataset: Record<string, string> = {};
 	readonly classList: { contains: (name: string) => boolean };
-	readonly replaced = Promise.withResolvers<{ title?: string; textContent?: string }>();
+	readonly replaced = Promise.withResolvers<FailedEmoji>();
 	constructor(
 		public src: string,
 		public title: string,
@@ -339,7 +348,7 @@ class FakeImage {
 	) {
 		this.classList = { contains: (name) => classes.includes(name) };
 	}
-	replaceWith(node: { title?: string; textContent?: string }) {
+	replaceWith(node: FailedEmoji) {
 		this.replaced.resolve(node);
 	}
 }
@@ -362,7 +371,31 @@ describe("retryEmojis", () => {
 		const img = new FakeImage(URL_A, "party", [CUSTOM_EMOJI_CLASS]);
 		doc.fail(img);
 		expect(fetched.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([[URL_A, "HEAD"]]);
-		expect(await img.replaced.promise).toEqual({ title: "Emoji failed to load", textContent: "party" });
+		const shown = await img.replaced.promise;
+		expect(shown).toEqual({ title: "Emoji failed to load", textContent: "party", dataset: { emojiFailed: "" } });
+		// #464: its tooltip is written again in the language the app changes to.
+		shown.title = "stale";
+		retitleFailedEmojis([shown]);
+		expect(shown.title).toBe("Emoji failed to load");
+		expect(shown.textContent).toBe("party");
+	});
+
+	test("writes the words in place of one without a name again in the language the app changes to", async () => {
+		const doc = fakeDocument();
+		retryEmojis(doc);
+		// A component's emoji of a Space the user isn't in, which has no name (MessageComponents, InteractionModal).
+		const img = new FakeImage(URL_A, ":emoji:", [CUSTOM_EMOJI_CLASS]);
+		img.dataset.emojiUnnamed = "";
+		doc.fail(img);
+		const shown = await img.replaced.promise;
+		expect(shown).toEqual({
+			title: "Emoji failed to load",
+			textContent: ":emoji:",
+			dataset: { emojiFailed: "", emojiUnnamed: "" },
+		});
+		shown.textContent = ":stale:";
+		retitleFailedEmojis([shown]);
+		expect(shown.textContent).toBe(":emoji:");
 	});
 
 	test("leaves any other image alone", async () => {

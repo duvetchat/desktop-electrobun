@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { setLocalePref } from "$lib/i18n";
+import { PSEUDO } from "$lib/i18n/locale";
 import {
 	IDLE_MEDIA,
+	facesLabel,
 	liveLabel,
 	isLive,
 	isMicInUse,
@@ -123,7 +126,7 @@ describe("in a voice room", () => {
 	test("the user is among the faces even before the gateway lists them", () => {
 		const state = mediaStateOf(inputs({ place: lounge([ANA]) }));
 		expect(state.faces.map((face) => face.id)).toEqual(["ana", "me"]);
-		expect(state.facesLabel).toBe("2 people in voice");
+		expect(facesLabel(state)).toBe("2 people in voice");
 	});
 
 	test("three faces show, and the rest are counted", () => {
@@ -131,23 +134,24 @@ describe("in a voice room", () => {
 		const state = mediaStateOf(inputs({ place: lounge([...crowd, ME]) }));
 		expect(state.faces.map((face) => face.id)).toEqual(["a", "b", "c"]);
 		expect(state.more).toBe(3);
-		expect(state.facesLabel).toBe("6 people in voice");
+		expect(facesLabel(state)).toBe("6 people in voice");
 	});
 
 	test("whoever speaks, and isn't muted, is ringed and named", () => {
 		const state = mediaStateOf(inputs({ place: lounge([ME, ANA, LEO]), speaking: new Set(["ana", "leo"]) }));
 		expect(state.faces.filter((face) => face.speaking).map((face) => face.id)).toEqual(["ana"]);
-		expect(state.facesLabel).toBe("3 people in voice, Ana speaking");
+		expect(state.speakers).toEqual(["Ana"]);
+		expect(facesLabel(state)).toBe("3 people in voice, Ana speaking");
 	});
 
 	test("the user's own mute counts at once, before the gateway echoes it", () => {
 		const state = mediaStateOf(inputs({ place: lounge([ME, ANA]), muted: true, speaking: new Set(["me"]) }));
 		expect(state.faces.find((face) => face.id === "me")?.speaking).toBe(false);
-		expect(state.facesLabel).toBe("2 people in voice");
+		expect(facesLabel(state)).toBe("2 people in voice");
 	});
 
 	test("alone, it's one person", () => {
-		expect(mediaStateOf(inputs({ place: lounge() })).facesLabel).toBe("1 person in voice");
+		expect(facesLabel(mediaStateOf(inputs({ place: lounge() })))).toBe("1 person in voice");
 	});
 });
 
@@ -340,10 +344,28 @@ describe("a mirrored state", () => {
 		expect(parseMediaState({ ...state, ping: "24" })).toBeNull();
 		expect(parseMediaState({ ...state, faces: "ana" })).toBeNull();
 		expect(parseMediaState({ ...state, live: "audio" })).toBeNull();
+		expect(parseMediaState({ ...state, speakers: "Ana" })).toBeNull();
 	});
 
 	test("a face that isn't one is left out, and the rest stays", () => {
 		const parsed = parseMediaState({ ...state, faces: [...state.faces, { id: 4 }, null] });
 		expect(parsed?.faces).toEqual(state.faces);
+		expect(parseMediaState({ ...state, speakers: ["Ana", 4] })?.speakers).toEqual(["Ana"]);
+	});
+
+	test("carries who is there, not the words: the pop-out says them in the language of the moment (#464)", async () => {
+		const mirrored = parseMediaState(JSON.parse(JSON.stringify(state)));
+		if (!mirrored) throw new Error("the state didn't cross");
+		const english = openPlaceLabel(mirrored);
+		expect(english).toBe("Open Lounge · Harbour Lights, 2 people in voice, Ana speaking");
+		try {
+			await setLocalePref(PSEUDO);
+			expect(openPlaceLabel(mirrored)).not.toBe(english);
+			expect(openPlaceLabel(mirrored)).toContain("Lounge · Harbour Lights");
+			expect(facesLabel(mirrored)).toContain("Ana");
+		} finally {
+			await setLocalePref("system");
+		}
+		expect(openPlaceLabel(mirrored)).toBe(english);
 	});
 });

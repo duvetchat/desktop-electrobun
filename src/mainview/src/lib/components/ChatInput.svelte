@@ -20,6 +20,8 @@
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
+	import Rich from "$lib/components/Rich.svelte";
+	import { currentLocale, t } from "$lib/i18n";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
@@ -137,11 +139,11 @@
 	let showPlusMenu = $state(false);
 	const pickerTabs = $derived<{ value: PickerTab; label: string }[]>(
 		editing
-			? [{ value: "emoji", label: "Emoji" }]
+			? [{ value: "emoji", label: t("chat_picker_emoji") }]
 			: [
-					{ value: "emoji", label: "Emoji" },
-					{ value: "gif", label: "GIFs" },
-					...(stickerGroups.length > 0 ? [{ value: "sticker" as const, label: "Stickers" }] : []),
+					{ value: "emoji", label: t("chat_picker_emoji") },
+					{ value: "gif", label: t("chat_picker_gifs") },
+					...(stickerGroups.length > 0 ? [{ value: "sticker" as const, label: t("chat_picker_stickers") }] : []),
 				],
 	);
 	// Once the + menu has closed and given the focus back: the picker opening under it would close with it.
@@ -203,7 +205,7 @@
 				},
 			});
 			if (destroyed) {
-				rawStream.getTracks().forEach((t) => t.stop());
+				rawStream.getTracks().forEach((track) => track.stop());
 				return;
 			}
 			const recordStream = rawStream;
@@ -214,7 +216,7 @@
 				if (e.data.size > 0) chunks.push(e.data);
 			};
 			mediaRecorder.onstop = () => {
-				rawStream.getTracks().forEach((t) => t.stop());
+				rawStream.getTracks().forEach((track) => track.stop());
 				if (chunks.length > 0 && !destroyed) {
 					const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
 					onVoiceNote?.(blob);
@@ -263,7 +265,7 @@
 		if (mediaRecorder && mediaRecorder.state !== "inactive") {
 			mediaRecorder.ondataavailable = null;
 			mediaRecorder.onstop = () => {
-				mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
+				mediaRecorder?.stream.getTracks().forEach((track) => track.stop());
 			};
 			mediaRecorder.stop();
 		}
@@ -320,9 +322,9 @@
 	});
 
 	// A draft can come back before its space's members and rooms do (a READY brings them again): its chips follow them,
-	// in place, as rebuilding the text would end a composition.
+	// in place, as rebuilding the text would end a composition. An unknown room's chip follows the app's language too.
 	$effect(() => {
-		void [members, $roomNames];
+		void [members, $roomNames, currentLocale()];
 		untrack(() => {
 			for (const chip of inputEl?.querySelectorAll<HTMLElement>("[data-mention], [data-room]") ?? []) {
 				const { mention, room } = chip.dataset;
@@ -420,7 +422,7 @@
 
 	// As messages show it: a room the user can't view, or one that's gone, has no name to show.
 	function roomMentionText(id: string): string {
-		return `#${$roomNames[id] ?? "unknown"}`;
+		return `#${$roomNames[id] ?? t("chat_room_unknown")}`;
 	}
 
 	function resolveCustomEmojiName(id: string): string {
@@ -1165,14 +1167,14 @@
 			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-commands"
 			role="listbox"
-			aria-label="Commands"
+			aria-label={t("chat_commands_label")}
 			bind:this={commandMenuEl}
 		>
 			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				{#if commandQuery}
-					Commands matching <strong>/{commandQuery}</strong>
+					<Rich key="chat_commands_matching" values={{ query: commandQuery }} tags={{ b: typed }} />
 				{:else}
-					Commands
+					{t("chat_commands_label")}
 				{/if}
 			</div>
 			{#each commandSuggestions as entry, i (`${entry.command.id} ${entry.name}`)}
@@ -1212,14 +1214,19 @@
 			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-mentions"
 			role="listbox"
-			aria-label="Mention suggestions"
+			aria-label={t("chat_mention_suggestions")}
 		>
 			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
-				Members matching <strong
-					>@{getRaw(inputEl)
-						.slice(0, getOffset())
-						.match(/@([\p{L}\p{N}_]*)$/u)?.[1]}</strong
-				>
+				<Rich
+					key="chat_members_matching"
+					values={{
+						query:
+							getRaw(inputEl)
+								.slice(0, getOffset())
+								.match(/@([\p{L}\p{N}_]*)$/u)?.[1] ?? "",
+					}}
+					tags={{ b: typed }}
+				/>
 			</div>
 			{#each mentionSuggestions as member, i}
 				<button
@@ -1257,14 +1264,19 @@
 			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-rooms"
 			role="listbox"
-			aria-label="Room suggestions"
+			aria-label={t("chat_room_suggestions")}
 		>
 			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
-				Rooms matching <strong
-					>#{getRaw(inputEl)
-						.slice(0, getOffset())
-						.match(/#([\p{L}\p{N}_-]*)$/u)?.[1]}</strong
-				>
+				<Rich
+					key="chat_rooms_matching"
+					values={{
+						query:
+							getRaw(inputEl)
+								.slice(0, getOffset())
+								.match(/#([\p{L}\p{N}_-]*)$/u)?.[1] ?? "",
+					}}
+					tags={{ b: typed }}
+				/>
 			</div>
 			{#each roomSuggestions as room, i (room.id)}
 				<button
@@ -1282,7 +1294,7 @@
 					onmouseenter={() => (roomSelectedIdx = i)}
 				>
 					{#if room.type === 2}
-						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" role="img" aria-label="Voice room" />
+						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" role="img" aria-label={t("chat_voice_room")} />
 					{:else}
 						<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
 					{/if}
@@ -1298,14 +1310,19 @@
 			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-emoji"
 			role="listbox"
-			aria-label="Emoji suggestions"
+			aria-label={t("chat_emoji_suggestions")}
 		>
 			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
-				Emoji matching <strong
-					>:{getRaw(inputEl)
-						.slice(0, getOffset())
-						.match(/:([\w\d]*)$/)?.[1]}</strong
-				>
+				<Rich
+					key="chat_emoji_matching"
+					values={{
+						query:
+							getRaw(inputEl)
+								.slice(0, getOffset())
+								.match(/:([\w\d]*)$/)?.[1] ?? "",
+					}}
+					tags={{ b: typed }}
+				/>
 			</div>
 			{#each suggestions as entry, i}
 				<button
@@ -1351,8 +1368,8 @@
 			<button
 				type="button"
 				class="text-duvet-danger hover:bg-duvet-hover my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
-				title="Cancel recording"
-				aria-label="Cancel recording"
+				title={t("chat_recording_cancel")}
+				aria-label={t("chat_recording_cancel")}
 				onclick={cancelRecording}
 			>
 				<DiscardIcon size={18} />
@@ -1375,12 +1392,14 @@
 					></span>
 				{/each}
 			</span>
-			<span class="text-duvet-ink2 shrink-0 text-xs max-sm:hidden">{paused ? "Paused" : "Recording a voice note"}</span>
+			<span class="text-duvet-ink2 shrink-0 text-xs max-sm:hidden"
+				>{paused ? t("chat_recording_paused") : t("chat_recording_on")}</span
+			>
 			<button
 				type="button"
 				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
-				title={paused ? "Resume recording" : "Pause recording"}
-				aria-label={paused ? "Resume recording" : "Pause recording"}
+				title={paused ? t("chat_recording_resume") : t("chat_recording_pause")}
+				aria-label={paused ? t("chat_recording_resume") : t("chat_recording_pause")}
 				onclick={togglePause}
 			>
 				{#if paused}
@@ -1392,8 +1411,8 @@
 			<button
 				type="button"
 				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-transform active:scale-[0.94] motion-reduce:transition-none"
-				title="Send voice note"
-				aria-label="Send voice note"
+				title={t("chat_recording_send")}
+				aria-label={t("chat_recording_send")}
 				onclick={stopRecording}
 			>
 				<SendIcon size={18} />
@@ -1401,23 +1420,23 @@
 		{:else}
 			{#if !editing}
 				<!-- Files, and the pickers for a sticker or a GIF, which send at once -->
-				<Menu bind:open={showPlusMenu} side="top" align="start" label="Add files and more">
+				<Menu bind:open={showPlusMenu} side="top" align="start" label={t("chat_add_menu")}>
 					{#snippet trigger(props)}
 						<button
 							{...props}
 							type="button"
 							class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
-							title="Add files and more"
-							aria-label="Add files and more"
+							title={t("chat_add_menu")}
+							aria-label={t("chat_add_menu")}
 						>
 							<Plus size={18} />
 						</button>
 					{/snippet}
-					<MenuItem icon={AttachIcon} onSelect={() => fileInputEl?.click()}>Attach files</MenuItem>
+					<MenuItem icon={AttachIcon} onSelect={() => fileInputEl?.click()}>{t("chat_add_files")}</MenuItem>
 					{#if stickerGroups.length > 0}
-						<MenuItem icon={StickerIcon} onSelect={() => openPicker("sticker")}>Sticker</MenuItem>
+						<MenuItem icon={StickerIcon} onSelect={() => openPicker("sticker")}>{t("chat_add_sticker")}</MenuItem>
 					{/if}
-					<MenuItem icon={GifIcon} onSelect={() => openPicker("gif")}>GIF</MenuItem>
+					<MenuItem icon={GifIcon} onSelect={() => openPicker("gif")}>{t("chat_add_gif")}</MenuItem>
 				</Menu>
 			{/if}
 			<div
@@ -1447,8 +1466,8 @@
 			<Popover.Root bind:open={showPicker} onOpenChange={(open) => !open && (pickerTab = "emoji")}>
 				<Popover.Trigger
 					class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink data-[state=open]:bg-duvet-accent-tint data-[state=open]:text-duvet-accent-text my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
-					title={editing ? "Emoji" : "Emoji, GIFs and stickers"}
-					aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+					title={editing ? t("chat_picker_emoji") : t("chat_picker_all")}
+					aria-label={editing ? t("chat_picker_emoji") : t("chat_picker_all")}
 				>
 					<SmilePlusIcon size={18} />
 				</Popover.Trigger>
@@ -1461,11 +1480,11 @@
 							collisionPadding={10}
 							class="outline-none"
 							role="dialog"
-							aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+							aria-label={editing ? t("chat_picker_emoji") : t("chat_picker_all")}
 						>
 							<div class="flex flex-col gap-2">
 								{#if pickerTabs.length > 1}
-									<Segmented options={pickerTabs} bind:value={pickerTab} label="What to pick" size="sm" />
+									<Segmented options={pickerTabs} bind:value={pickerTab} label={t("chat_picker_tabs")} size="sm" />
 								{/if}
 								{#if pickerTab === "gif" && !editing}
 									<GifPicker onSelect={handleGifPick} />
@@ -1485,8 +1504,8 @@
 				<button
 					type="button"
 					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-transform active:scale-[0.94] motion-reduce:transition-none"
-					title="Save"
-					aria-label="Save"
+					title={t("chat_edit_save")}
+					aria-label={t("chat_edit_save")}
 					onclick={sendMessage}
 				>
 					<SaveIcon size={18} />
@@ -1495,8 +1514,8 @@
 				<button
 					type="button"
 					class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
-					title="Record voice note"
-					aria-label="Record voice note"
+					title={t("chat_recording_start")}
+					aria-label={t("chat_recording_start")}
 					onclick={startRecording}
 				>
 					<Mic size={18} />
@@ -1508,8 +1527,8 @@
 					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-[background-color,color,transform] motion-reduce:transition-none {ready
 						? 'bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press active:scale-[0.94]'
 						: 'text-duvet-ink2'}"
-					title="Send"
-					aria-label="Send"
+					title={t("chat_send")}
+					aria-label={t("chat_send")}
 					disabled={!ready}
 					onmousedown={(e) => e.preventDefault()}
 					onclick={sendMessage}
@@ -1520,3 +1539,6 @@
 		{/if}
 	</div>
 </div>
+
+<!-- What's typed after /, @, # or :, in the head of the suggestions it brings. -->
+{#snippet typed(text: string)}<strong>{text}</strong>{/snippet}

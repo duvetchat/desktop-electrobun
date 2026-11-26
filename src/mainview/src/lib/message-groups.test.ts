@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { clockTime, dayLabel, groupShapes, headTime, joinsPrevious, sameDay, shortClockTime } from "./message-groups";
 import { MessageFlag, MessageType, type Message } from "$lib/types";
 
+// The system's languages: the first says how its clock writes a message's time, whatever the app's language. None
+// until a test sets them, and then the runtime's own.
+const system = (...languages: string[]) =>
+	Object.defineProperty(globalThis.navigator, "languages", { value: languages, configurable: true });
+
 // Local times, so the days are this machine's whatever its zone.
 const at = (day: number, hour: number, minute: number, second = 0) =>
 	new Date(2026, 10, day, hour, minute, second).toISOString();
@@ -159,30 +164,49 @@ describe("a day's separator", () => {
 
 describe("a message's time", () => {
 	test("is the clock's, in the system's format", () => {
-		expect(clockTime(at(10, 9, 14), "en-US")).toBe("9:14 AM");
-		expect(clockTime(at(10, 21, 14), "en-GB")).toBe("21:14");
+		system("en-US");
+		expect(clockTime(at(10, 9, 14))).toBe("9:14 AM");
+		system("en-GB");
+		expect(clockTime(at(10, 21, 14))).toBe("21:14");
+		system();
 	});
 
-	test("is the same asked again, and each locale keeps its own format", () => {
+	test("is the same asked again, and each system's language keeps its own format", () => {
 		for (let i = 0; i < 3; i++) {
-			expect(clockTime(at(10, 9, 14), "en-US")).toBe("9:14 AM");
-			expect(clockTime(at(10, 21, 14), "en-GB")).toBe("21:14");
-			expect(shortClockTime(at(10, 9, 14), "en-US")).toBe("9:14");
+			system("en-US");
+			expect(clockTime(at(10, 9, 14))).toBe("9:14 AM");
+			expect(shortClockTime(at(10, 9, 14))).toBe("9:14");
+			system("en-GB");
+			expect(clockTime(at(10, 21, 14))).toBe("21:14");
 		}
+		system();
 		// The system's format is what the browser's own gives.
 		const iso = at(10, 21, 14);
 		expect(clockTime(iso)).toBe(new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
 	});
 
+	test("keeps the system's format on a system in another language than the app's", () => {
+		system("de-DE");
+		expect(clockTime(at(10, 21, 14))).toBe("21:14");
+		expect(shortClockTime(at(10, 21, 14))).toBe("21:14");
+		expect(headTime(at(18, 21, 14), new Date(2026, 10, 18, 22, 0))).toBe("Today at 21:14");
+		system();
+	});
+
 	test("has no AM or PM in a flat row's gutter", () => {
-		expect(shortClockTime(at(10, 9, 14), "en-US")).toBe("9:14");
-		expect(shortClockTime(at(10, 21, 14), "en-US")).toBe("9:14");
-		expect(shortClockTime(at(10, 21, 14), "en-GB")).toBe("21:14");
+		system("en-US");
+		expect(shortClockTime(at(10, 9, 14))).toBe("9:14");
+		expect(shortClockTime(at(10, 21, 14))).toBe("9:14");
+		system("en-GB");
+		expect(shortClockTime(at(10, 21, 14))).toBe("21:14");
+		system();
 	});
 
 	test("a flat row's head says Today for a message of today, the time alone otherwise", () => {
 		const now = new Date(2026, 10, 18, 12, 41);
-		expect(headTime(at(18, 9, 14), now, "en-US")).toBe("Today at 9:14 AM");
-		expect(headTime(at(17, 9, 14), now, "en-US")).toBe("9:14 AM");
+		system("en-US");
+		expect(headTime(at(18, 9, 14), now)).toBe("Today at 9:14 AM");
+		expect(headTime(at(17, 9, 14), now)).toBe("9:14 AM");
+		system();
 	});
 });

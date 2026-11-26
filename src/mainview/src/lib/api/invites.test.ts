@@ -27,8 +27,8 @@ describe("an invite's code", () => {
 	test("that can't be a segment is no invite: nothing is sent, and it reads as the API's answer", async () => {
 		sent.length = 0;
 		for (const code of [".", "..", ""]) {
-			await expect(getInvite(code)).rejects.toThrow("invite link not found or has expired");
-			await expect(joinInvite(code)).rejects.toThrow("invite link not found or has expired");
+			await expect(getInvite(code)).rejects.toThrow("This invite link doesn't exist or has expired");
+			await expect(joinInvite(code)).rejects.toThrow("This invite link doesn't exist or has expired");
 		}
 		expect(sent).toEqual([]);
 	});

@@ -113,7 +113,8 @@ describe("a mention's notice", () => {
 		expect(noticeOf(message(1))).toMatchObject({
 			link: { spaceId: SPACE, roomId: ROOM, messageId: message(1) },
 			authorName: "Ana",
-			where: "in #general · Alpha",
+			place: "named",
+			placeName: "#general · Alpha",
 			text: `Hey <@${ME}>, look`,
 			mentionMap: { [ME]: "me" },
 		});
@@ -124,7 +125,7 @@ describe("a mention's notice", () => {
 		mention(2, OTHER_ROOM);
 		await settle();
 		expect(fetches).toEqual([`https://api.test/api/rooms/${OTHER_ROOM}/messages/${message(2)}`]);
-		expect(noticeOf(message(2))).toMatchObject({ where: "in #random · Alpha", text: `Fetched <@${ME}>` });
+		expect(noticeOf(message(2))).toMatchObject({ placeName: "#random · Alpha", text: `Fetched <@${ME}>` });
 	});
 
 	test("shows once per message", async () => {
@@ -195,9 +196,10 @@ describe("a mention's notice", () => {
 		expect(noticeOf(message(20))).toMatchObject({
 			link: { conversationId: GROUP, messageId: message(20) },
 			authorName: "Ana",
-			where: "in Weekend",
+			place: "named",
+			placeName: "Weekend",
 		});
-		expect(noticeOf(message(30))).toMatchObject({ where: "in a direct message", text: "Fetched in the DM" });
+		expect(noticeOf(message(30))).toMatchObject({ place: "dm", placeName: "", text: "Fetched in the DM" });
 	});
 
 	test("shows nothing for the conversation on screen", async () => {
@@ -291,7 +293,7 @@ describe("ordinary messages", () => {
 		const before = FakeAudio.plays;
 		roomMessage(80, ROOM, "Plain words");
 		await settle();
-		expect(noticeOf(message(80))).toMatchObject({ where: "in #general · Alpha", text: "Plain words" });
+		expect(noticeOf(message(80))).toMatchObject({ placeName: "#general · Alpha", text: "Plain words" });
 		expect(FakeAudio.plays - before).toBe(1);
 	});
 

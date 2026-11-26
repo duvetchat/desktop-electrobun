@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { groupActions, newConversation } from "$lib/groups";
+import { groupActions, newConversation, type NewConversation } from "$lib/groups";
+import { t } from "$lib/i18n";
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const THEM = "01920000-0000-7000-8000-00000000a11c";
@@ -38,14 +39,14 @@ describe("newConversation", () => {
 		});
 	});
 
+	// A refusal's words, as the dialog draws them from its key.
+	const refusal = (plan: NewConversation) => (plan.kind === "refused" ? t(plan.why) : plan.kind);
+
 	test("a group needs its name", () => {
-		expect(newConversation([THEM, OTHER], "   ")).toEqual({ kind: "refused", why: "Enter a group name" });
+		expect(refusal(newConversation([THEM, OTHER], "   "))).toBe("Enter a group name");
 	});
 
 	test("nobody picked is nothing to open, whatever name was typed", () => {
-		expect(newConversation([], "Best friends")).toEqual({
-			kind: "refused",
-			why: "Add at least one friend to the group",
-		});
+		expect(refusal(newConversation([], "Best friends"))).toBe("Add at least one friend to the group");
 	});
 });

@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	CallAnswers,
 	callDuration,
+	callNotice,
 	callNoticeCase,
-	callNoticeLine,
 	callNoticeSeen,
-	callNoticeText,
+	callNoticeSentence,
 	newestBesidesNotice,
 	readAfterCallNotice,
 } from "$lib/call-notices";
@@ -39,8 +39,8 @@ const notice = (caller: string, c: CallNotice, id = AFTER_JOINING): Notice => ({
 	call: c,
 });
 const says = (n: Notice, me: string | undefined, joined?: string) => {
-	const line = callNoticeLine(n, me, joined);
-	return line && callNoticeText(line);
+	const words = callNotice(n, me, joined);
+	return words && callNoticeSentence(words);
 };
 
 describe("callNoticeCase", () => {
@@ -79,7 +79,7 @@ describe("callNoticeCase", () => {
 	});
 });
 
-describe("callNoticeLine", () => {
+describe("a call notice's sentence", () => {
 	test("a call the reader was in: who called, and how long it lasted", () => {
 		expect(says(notice(ALICE, call([ALICE, ME])), ME)).toBe("Alice started a call that lasted 5 minutes.");
 		expect(says(notice(ME, call([ME, ALICE])), ME)).toBe("You started a call that lasted 5 minutes.");
@@ -97,66 +97,93 @@ describe("callNoticeLine", () => {
 	});
 
 	test("its phone is red only for the reader who missed it", () => {
-		expect(callNoticeLine(notice(ALICE, call([ALICE, ME])), ME)?.missed).toBe(false);
-		expect(callNoticeLine(notice(ME, call([ME, ALICE])), ME)?.missed).toBe(false);
-		expect(callNoticeLine(notice(ME, call([ME])), ME)?.missed).toBe(false);
-		expect(callNoticeLine(notice(ALICE, call([ALICE, CAROL])), ME)?.missed).toBe(true);
-		expect(callNoticeLine(notice(ALICE, call([ALICE])), ME)?.missed).toBe(true);
-	});
-
-	test("the caller's name stands apart, and the reader's own call says You", () => {
-		expect(callNoticeLine(notice(ALICE, call([ALICE, ME])), ME)).toEqual({
-			missed: false,
-			before: "",
-			name: "Alice",
-			after: " started a call that lasted 5 minutes.",
-		});
-		expect(callNoticeLine(notice(ALICE, call([ALICE])), ME)).toEqual({
-			missed: true,
-			before: "You missed a call from ",
-			name: "Alice",
-			after: ".",
-		});
-		expect(callNoticeLine(notice(ME, call([ME, ALICE])), ME)?.name).toBe("");
+		expect(callNotice(notice(ALICE, call([ALICE, ME])), ME)?.missed).toBe(false);
+		expect(callNotice(notice(ME, call([ME, ALICE])), ME)?.missed).toBe(false);
+		expect(callNotice(notice(ME, call([ME])), ME)?.missed).toBe(false);
+		expect(callNotice(notice(ALICE, call([ALICE, CAROL])), ME)?.missed).toBe(true);
+		expect(callNotice(notice(ALICE, call([ALICE])), ME)?.missed).toBe(true);
 	});
 
 	test("any other message says nothing of the kind", () => {
-		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.PinNotice }, ME)).toBeNull();
-		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
-		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), call: undefined }, ME)).toBeNull();
+		expect(callNotice({ ...notice(ALICE, call([ALICE])), type: MessageType.PinNotice }, ME)).toBeNull();
+		expect(callNotice({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
+		expect(callNotice({ ...notice(ALICE, call([ALICE])), call: undefined }, ME)).toBeNull();
+	});
+});
+
+// Each case is one whole sentence of en.json (#464), whose <b> is the caller's name: the list draws it with Rich, and
+// the previews, the quotes and the call history take its words (callNoticeSentence).
+describe("callNotice", () => {
+	test("says each case as one message, filled with the caller's name and how long the call lasted", () => {
+		expect(callNotice(notice(ALICE, call([ALICE, ME])), ME)).toEqual({
+			missed: false,
+			key: "chat_call_notice_started",
+			values: { name: "Alice", duration: "5 minutes" },
+		});
+		expect(callNotice(notice(ME, call([ME, ALICE])), ME)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_you_started",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE, CAROL])), ME)).toMatchObject({
+			missed: true,
+			key: "chat_call_notice_missed",
+		});
+		expect(callNotice(notice(ME, call([ME])), ME)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_you_unanswered",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE])), ME)).toMatchObject({
+			missed: true,
+			key: "chat_call_notice_missed_unanswered",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE]), BEFORE_JOINING), ME, JOINED)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_unanswered",
+		});
+		expect(callNotice({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
+	});
+
+	test("its words are the whole sentence, the name in its place", () => {
+		const missed = callNotice(notice(ALICE, call([ALICE, CAROL], 12 * 60_000)), ME)!;
+		expect(callNoticeSentence(missed)).toBe("You missed a call from Alice that lasted 12 minutes.");
+		expect(callNoticeSentence(callNotice(notice(ME, call([ME])), ME)!)).toBe("You started a call. No one answered.");
+	});
+
+	test("a name that looks like markup stays a name", () => {
+		const named = { ...notice(ALICE, call([ALICE])), author_name: "<b>Eve</b>" };
+		expect(callNoticeSentence(callNotice(named, ME)!)).toBe("You missed a call from <b>Eve</b>.");
+		expect(callNotice(named, ME)?.values.name).toBe("<b>Eve</b>");
 	});
 });
 
 // A group's call that ended before the reader was added to the group (#261): it never rang them.
-describe("callNoticeLine, by when the reader joined the conversation", () => {
+describe("a call notice, by when the reader joined the conversation", () => {
 	test("a call from before they joined says who started it, and how long it lasted when others got in", () => {
 		const before = notice(ALICE, call([ALICE, CAROL], 20 * 60_000), BEFORE_JOINING);
 		expect(says(before, ME, JOINED)).toBe("Alice started a call that lasted 20 minutes.");
-		expect(callNoticeLine(before, ME, JOINED)).toEqual({
+		expect(callNotice(before, ME, JOINED)).toEqual({
 			missed: false,
-			before: "",
-			name: "Alice",
-			after: " started a call that lasted 20 minutes.",
+			key: "chat_call_notice_started",
+			values: { name: "Alice", duration: "20 minutes" },
 		});
 	});
 
 	test("a call from before they joined that nobody answered says so, not that they missed it", () => {
 		const before = notice(ALICE, call([ALICE]), BEFORE_JOINING);
 		expect(says(before, ME, JOINED)).toBe("Alice started a call. No one answered.");
-		expect(callNoticeLine(before, ME, JOINED)).toEqual({
+		expect(callNotice(before, ME, JOINED)).toEqual({
 			missed: false,
-			before: "",
-			name: "Alice",
-			after: " started a call. No one answered.",
+			key: "chat_call_notice_unanswered",
+			values: { name: "Alice", duration: "5 minutes" },
 		});
 	});
 
 	test("a call from after they joined that they weren't in, they missed", () => {
-		const missed = callNoticeLine(notice(ALICE, call([ALICE, CAROL]), AFTER_JOINING), ME, JOINED);
-		expect(missed && callNoticeText(missed)).toBe("You missed a call from Alice that lasted 5 minutes.");
+		const missed = callNotice(notice(ALICE, call([ALICE, CAROL]), AFTER_JOINING), ME, JOINED);
+		expect(missed && callNoticeSentence(missed)).toBe("You missed a call from Alice that lasted 5 minutes.");
 		expect(missed?.missed).toBe(true);
-		const unanswered = callNoticeLine(notice(ALICE, call([ALICE]), AFTER_JOINING), ME, JOINED);
-		expect(unanswered && callNoticeText(unanswered)).toBe("You missed a call from Alice.");
+		const unanswered = callNotice(notice(ALICE, call([ALICE]), AFTER_JOINING), ME, JOINED);
+		expect(unanswered && callNoticeSentence(unanswered)).toBe("You missed a call from Alice.");
 		expect(unanswered?.missed).toBe(true);
 	});
 
@@ -173,7 +200,7 @@ describe("callNoticeLine, by when the reader joined the conversation", () => {
 	test("without their membership, which this client may not know, a call reads as one from after", () => {
 		const before = notice(ALICE, call([ALICE, CAROL]), BEFORE_JOINING);
 		expect(says(before, ME, undefined)).toBe("You missed a call from Alice that lasted 5 minutes.");
-		expect(callNoticeLine(before, ME, undefined)?.missed).toBe(true);
+		expect(callNotice(before, ME, undefined)?.missed).toBe(true);
 		expect(says(notice(ALICE, call([ALICE]), BEFORE_JOINING), ME, undefined)).toBe("You missed a call from Alice.");
 	});
 });

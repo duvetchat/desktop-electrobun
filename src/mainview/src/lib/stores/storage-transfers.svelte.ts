@@ -19,6 +19,7 @@ import {
 	getSpaceTransferFiles,
 	getSpaceTransfers,
 } from "$lib/api/space-buckets";
+import { t } from "$lib/i18n";
 import { toast } from "$lib/stores/toast.svelte";
 import {
 	isLaterTransfer,
@@ -82,9 +83,11 @@ export function bucketFilesCount(err: unknown): number | null {
 
 /** Why a transfer didn't start; for one that doesn't fit (413), how much room it lacks. */
 export function transferStartError(err: unknown): string {
-	const message = getApiError(err, "Failed to start moving the files");
+	const message = getApiError(err, t("storage_move_start_failed"));
 	const missing = err instanceof FetchError && err.response?.status === 413 ? err.response.data?.missing_bytes : null;
-	return typeof missing === "number" ? `${message}: ${formatFileSize(missing)} more needed` : message;
+	return typeof missing === "number"
+		? t("storage_move_start_failed_more_needed", { reason: message, size: formatFileSize(missing) })
+		: message;
 }
 
 // A view showing an active transfer checks it this often, and re-reads it when no state of it arrived for
@@ -100,29 +103,31 @@ class StorageTransferStore {
 	// When a state of each transfer last arrived: the polls skip the transfers events keep fresh.
 	private seenAt = new Map<string, number>();
 	private bucketNames = new Map<string, string>();
-	private endListeners = new Set<(t: StorageTransfer) => void>();
+	private endListeners = new Set<(transfer: StorageTransfer) => void>();
 	/** Whether this page tells a transfer's end: every one, unless the app's windows share them, where one window
 	 * tells each (lib/storage-transfers.ts: tellsTransferEnd; the settings links set it). */
-	tellsEnd: (t: StorageTransfer) => boolean = () => true;
+	tellsEnd: (transfer: StorageTransfer) => boolean = () => true;
 
 	/** The queued or moving transfer of an owner (a user or a space), if any: there's one at most. */
 	active(ownerId: string | null | undefined): StorageTransfer | null {
 		if (!ownerId) return null;
-		return Object.values(this.byId).find((t) => t.owner_id === ownerId && isTransferActive(t)) ?? null;
+		return (
+			Object.values(this.byId).find((transfer) => transfer.owner_id === ownerId && isTransferActive(transfer)) ?? null
+		);
 	}
 
 	/** Records a state of a transfer, unless the one known is later. `live` is for STORAGE_TRANSFER_UPDATE:
 	 * an end first heard of there is told too, while a list's ended transfers are old news. */
-	set(t: StorageTransfer, live = false) {
-		const prev = this.byId[t.id];
-		if (prev && !isLaterTransfer(t, prev)) return;
-		this.byId[t.id] = t;
-		this.seenAt.set(t.id, Date.now());
-		if (!isTransferActive(t) && (prev ? isTransferActive(prev) : live)) this.ended(t);
+	set(transfer: StorageTransfer, live = false) {
+		const prev = this.byId[transfer.id];
+		if (prev && !isLaterTransfer(transfer, prev)) return;
+		this.byId[transfer.id] = transfer;
+		this.seenAt.set(transfer.id, Date.now());
+		if (!isTransferActive(transfer) && (prev ? isTransferActive(prev) : live)) this.ended(transfer);
 	}
 
 	/** Calls `listener` with each transfer that ends; returns what stops that. */
-	onEnd(listener: (t: StorageTransfer) => void): () => void {
+	onEnd(listener: (transfer: StorageTransfer) => void): () => void {
 		this.endListeners.add(listener);
 		return () => {
 			this.endListeners.delete(listener);
@@ -134,25 +139,26 @@ class StorageTransferStore {
 		for (const b of buckets) this.bucketNames.set(b.id, b.name);
 	}
 
-	/** A transfer's source or target by name (null is the default storage), when it's known. */
+	/** A transfer's source or target bucket by name, when it's known; null for one that isn't, and for the default
+	 * storage (null), which a transfer's sentences say in words of their own (storageCase in lib/storage-transfers.ts). */
 	storageName(bucketId: string | null): string | null {
-		return bucketId === null ? "Default storage" : (this.bucketNames.get(bucketId) ?? null);
+		return bucketId === null ? null : (this.bucketNames.get(bucketId) ?? null);
 	}
 
 	/** Loads the latest transfers of a space, or of the user (null). A failure (an API without transfers
 	 * answers 404) leaves what's known. */
 	async load(spaceId: string | null) {
 		try {
-			for (const t of await transferRoutes(spaceId).list()) this.set(t);
+			for (const transfer of await transferRoutes(spaceId).list()) this.set(transfer);
 		} catch (err) {
 			console.warn("[transfers] Failed to load the transfers:", getApiError(err, "unknown error"));
 		}
 	}
 
 	/** Re-reads a transfer. */
-	async refresh(t: StorageTransfer) {
+	async refresh(transfer: StorageTransfer) {
 		try {
-			this.set(await transferRoutes(transferSpaceId(t)).get(t.id));
+			this.set(await transferRoutes(transferSpaceId(transfer)).get(transfer.id));
 		} catch (err) {
 			console.warn("[transfers] Failed to re-read a transfer:", getApiError(err, "unknown error"));
 		}
@@ -164,44 +170,44 @@ class StorageTransferStore {
 	watch(spaceId: string | null): () => void {
 		void this.load(spaceId);
 		const timer = setInterval(() => {
-			for (const t of Object.values(this.byId)) {
-				if (transferSpaceId(t) !== spaceId || !isTransferActive(t)) continue;
-				if (Date.now() - (this.seenAt.get(t.id) ?? 0) >= STALE_MS) void this.refresh(t);
+			for (const transfer of Object.values(this.byId)) {
+				if (transferSpaceId(transfer) !== spaceId || !isTransferActive(transfer)) continue;
+				if (Date.now() - (this.seenAt.get(transfer.id) ?? 0) >= STALE_MS) void this.refresh(transfer);
 			}
 		}, POLL_MS);
 		return () => clearInterval(timer);
 	}
 
 	/** Stops a transfer after the file it's on. One that ended meanwhile (409) just gets re-read. */
-	async cancel(t: StorageTransfer) {
+	async cancel(transfer: StorageTransfer) {
 		try {
-			await transferRoutes(transferSpaceId(t)).cancel(t.id);
+			await transferRoutes(transferSpaceId(transfer)).cancel(transfer.id);
 		} catch (err) {
 			if (!(err instanceof FetchError && err.response?.status === 409)) throw err;
 		}
-		await this.refresh(t);
+		await this.refresh(transfer);
 	}
 
 	/** A page of a transfer's files. */
-	files(t: StorageTransfer, query: TransferFilesQuery): Promise<StorageTransferFile[]> {
-		return transferRoutes(transferSpaceId(t)).files(t.id, query);
+	files(transfer: StorageTransfer, query: TransferFilesQuery): Promise<StorageTransferFile[]> {
+		return transferRoutes(transferSpaceId(transfer)).files(transfer.id, query);
 	}
 
-	private ended(t: StorageTransfer) {
-		const notice = transferEndNotice(t, this.storageName(t.target_bucket_id));
+	private ended(transfer: StorageTransfer) {
+		const notice = transferEndNotice(transfer, this.storageName(transfer.target_bucket_id));
 		const show =
-			t.failed_files > 0
+			transfer.failed_files > 0
 				? {
-						label: "Show",
+						label: t("storage_transfer_failures_show"),
 						run: () => {
-							this.failures = t;
+							this.failures = transfer;
 						},
 					}
 				: undefined;
 		// A notice with failures stays longer, for its Show button. Another window tells it when this one doesn't;
 		// whoever listens here still hears of the end.
-		if (this.tellsEnd(t)) toast(notice.text, notice.type, show ? 12000 : 6000, show);
-		for (const listener of this.endListeners) listener(t);
+		if (this.tellsEnd(transfer)) toast(notice.text, notice.type, show ? 12000 : 6000, show);
+		for (const listener of this.endListeners) listener(transfer);
 	}
 }
 

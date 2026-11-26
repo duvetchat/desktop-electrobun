@@ -6,6 +6,8 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import { FIELD_ERROR, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
+	import Rich from "$lib/components/Rich.svelte";
+	import { t } from "$lib/i18n";
 
 	/** Creating a space, or joining one with an invite code or link, which shows the invite's preview first. */
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -67,48 +69,54 @@
 			await createSpace(serverName.trim(), serverDescription.trim() || undefined);
 			open = false;
 		} catch (e) {
-			createError = getApiError(e, "Unknown error");
+			createError = getApiError(e, t("dialog_unknown_error"));
 		} finally {
 			creating = false;
 		}
 	}
 </script>
 
+{#snippet optional(text: string)}<span class="font-normal">{text}</span>{/snippet}
+
 <Sheet
 	bind:open
-	title="Add a Space"
-	description="Create your own or join one with an invite code."
-	closeLabel="Cancel"
+	title={t("people_add_space_title")}
+	description={t("people_add_space_description")}
+	closeLabel={t("dialog_cancel")}
 	class="max-w-[440px]"
 >
 	<Segmented
 		bind:value={modalTab}
-		label="Create a Space or join one"
+		label={t("people_add_space_mode")}
 		options={[
-			{ value: "create", label: "Create" },
-			{ value: "join", label: "Join" },
+			{ value: "create", label: t("people_add_space_tab_create") },
+			{ value: "join", label: t("people_add_space_tab_join") },
 		]}
 	/>
 
 	{#if modalTab === "create"}
 		<div class="flex flex-col gap-1.5">
-			<label for="server-name" class={FIELD_LABEL}>Space name <span class="text-duvet-danger">*</span></label>
+			<label for="server-name" class={FIELD_LABEL}
+				>{t("people_add_space_name_label")} <span class="text-duvet-danger">*</span></label
+			>
 			<input
 				id="server-name"
 				type="text"
 				bind:value={serverName}
-				placeholder="My awesome Space"
+				placeholder={t("people_add_space_name_placeholder")}
 				class={fieldClass()}
 				maxlength={64}
 			/>
 		</div>
 		<div class="flex flex-col gap-1.5">
-			<label for="server-desc" class={FIELD_LABEL}>Description <span class="font-normal">(optional)</span></label>
+			<label for="server-desc" class={FIELD_LABEL}
+				><Rich key="people_add_space_description_label" tags={{ optional }} /></label
+			>
 			<input
 				id="server-desc"
 				type="text"
 				bind:value={serverDescription}
-				placeholder="What's this Space about?"
+				placeholder={t("people_add_space_description_placeholder")}
 				class={fieldClass()}
 				maxlength={256}
 			/>
@@ -118,12 +126,12 @@
 		{/if}
 	{:else}
 		<div class="flex flex-col gap-1.5">
-			<label for="join-code" class={FIELD_LABEL}>Invite code or link</label>
+			<label for="join-code" class={FIELD_LABEL}>{t("people_add_space_code_label")}</label>
 			<input
 				id="join-code"
 				type="text"
 				bind:value={joinInputValue}
-				placeholder="abc123 or invite?code=abc123"
+				placeholder={t("people_add_space_code_placeholder")}
 				class="{fieldClass()} font-mono text-[13px]"
 			/>
 		</div>
@@ -131,13 +139,13 @@
 
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" onclick={() => (open = false)}>Cancel</Button>
+		<Button variant="quiet" onclick={() => (open = false)}>{t("dialog_cancel")}</Button>
 		{#if modalTab === "create"}
 			<Button onclick={handleCreate} disabled={creating || !serverName.trim()}>
-				{creating ? "Creating…" : "Create"}
+				{creating ? t("people_add_space_creating") : t("people_add_space_create")}
 			</Button>
 		{:else}
-			<Button onclick={handleJoinSubmit} disabled={!joinInputValue.trim()}>Preview</Button>
+			<Button onclick={handleJoinSubmit} disabled={!joinInputValue.trim()}>{t("people_add_space_preview")}</Button>
 		{/if}
 	{/snippet}
 </Sheet>

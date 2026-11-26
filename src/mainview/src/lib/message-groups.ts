@@ -1,3 +1,5 @@
+import { t } from "$lib/i18n";
+import { clockFormat, formatClock, formatDate } from "$lib/i18n/format";
 import { isEphemeral, isNotice, type Message } from "$lib/types";
 
 /** How long after a message its author's next one still joins its group. */
@@ -64,51 +66,34 @@ export function groupShapes(newestFirst: readonly Grouped[], unreadFrom: number 
 	}));
 }
 
-const weekday = new Intl.DateTimeFormat("en", { weekday: "long" });
-const dayOfYear = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" });
-const dayOfAnotherYear = new Intl.DateTimeFormat("en", {
-	weekday: "long",
-	month: "long",
-	day: "numeric",
-	year: "numeric",
-});
+const WEEKDAY: Intl.DateTimeFormatOptions = { weekday: "long" };
+const DAY_OF_YEAR: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric" };
+const DAY_OF_ANOTHER_YEAR: Intl.DateTimeFormatOptions = { ...DAY_OF_YEAR, year: "numeric" };
 
 /**
  * What a day's separator says: "Today", "Yesterday", the weekday for the five days before, then "Monday, November 10",
- * with the year when it isn't this one. The words are English, as the rest of the UI.
+ * with the year when it isn't this one, in the app's language (lib/i18n/format.ts).
  */
 export function dayLabel(iso: string, now: number | Date = Date.now()): string {
 	const day = new Date(iso);
 	const today = new Date(now);
 	const start = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 	const daysAgo = Math.round((start(today) - start(day)) / 86_400_000);
-	if (daysAgo === 0) return "Today";
-	if (daysAgo === 1) return "Yesterday";
-	if (daysAgo > 1 && daysAgo < 7) return weekday.format(day);
-	return (day.getFullYear() === today.getFullYear() ? dayOfYear : dayOfAnotherYear).format(day);
+	if (daysAgo === 0) return t("chat_day_today");
+	if (daysAgo === 1) return t("chat_day_yesterday");
+	if (daysAgo > 1 && daysAgo < 7) return formatDate(day, WEEKDAY);
+	return formatDate(day, day.getFullYear() === today.getFullYear() ? DAY_OF_YEAR : DAY_OF_ANOTHER_YEAR);
 }
 
-/** A message's time of day in the system's clock format: "9:14 AM", or "09:14". */
-export function clockTime(iso: string, locale?: string): string {
-	return clock(locale).format(new Date(iso));
-}
-
-// One formatter for each locale asked for (the system's is ""): building one costs about 70 times a format, and
-// every row and every group's head asks.
-const clocks = new Map<string, Intl.DateTimeFormat>();
-function clock(locale?: string): Intl.DateTimeFormat {
-	const key = locale ?? "";
-	let format = clocks.get(key);
-	if (!format) {
-		format = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" });
-		clocks.set(key, format);
-	}
-	return format;
+/** A message's time of day in the system's clock format, whatever the app's language: "9:14 AM", or "21:14" (an
+ * English app on a German system writes 21:14, as it always has: lib/i18n/format.ts, formatClock). */
+export function clockTime(iso: string): string {
+	return formatClock(new Date(iso));
 }
 
 /** The same without AM or PM, for a narrow gutter: "9:14". */
-export function shortClockTime(iso: string, locale?: string): string {
-	const parts = clock(locale).formatToParts(new Date(iso));
+export function shortClockTime(iso: string): string {
+	const parts = clockFormat().formatToParts(new Date(iso));
 	return parts
 		.filter((p) => p.type === "hour" || p.type === "minute" || (p.type === "literal" && p.value.trim() !== ""))
 		.map((p) => p.value.trim())
@@ -116,7 +101,7 @@ export function shortClockTime(iso: string, locale?: string): string {
 }
 
 /** A flat row's head time: "Today at 9:14 AM" for a message of today, the time alone under an older day's separator. */
-export function headTime(iso: string, now: number | Date = Date.now(), locale?: string): string {
-	const time = clockTime(iso, locale);
-	return sameDay(iso, now) ? `Today at ${time}` : time;
+export function headTime(iso: string, now: number | Date = Date.now()): string {
+	const time = clockTime(iso);
+	return sameDay(iso, now) ? t("chat_day_today_at", { time }) : time;
 }

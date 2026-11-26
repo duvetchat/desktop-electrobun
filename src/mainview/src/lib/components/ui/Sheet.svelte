@@ -3,6 +3,7 @@
 	import type { Snippet } from "svelte";
 	import { Dialog } from "bits-ui";
 	import { X } from "@lucide/svelte";
+	import { t } from "$lib/i18n";
 	import { GLASS_STRONG, SCRIM, iconButtonClass } from "./recipes";
 
 	// A sheet: a glass panel in the middle of the window, over a scrim, for a task with a few fields (a new chat, an
@@ -15,7 +16,7 @@
 		onOpenChange = undefined,
 		title,
 		description = undefined,
-		closeLabel = "Close",
+		closeLabel = undefined,
 		class: className = "",
 		interactOutsideBehavior = "close",
 		escapeKeydownBehavior = "close",
@@ -64,7 +65,7 @@
 				<Dialog.Title class="font-serif-lg min-w-0 flex-1 text-[21px] leading-[1.2] font-normal tracking-[-0.01em]">
 					{title}
 				</Dialog.Title>
-				<Dialog.Close aria-label={closeLabel} class={iconButtonClass()}>
+				<Dialog.Close aria-label={closeLabel ?? t("shell_close")} class={iconButtonClass()}>
 					<X size={16} />
 				</Dialog.Close>
 			</div>

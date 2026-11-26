@@ -78,6 +78,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { typingNow } from "$lib/stores.svelte";
 	import { typingSentence } from "$lib/typing";
+	import { t } from "$lib/i18n";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -193,7 +194,7 @@
 	// so tabs from different servers always show the correct data.
 	const activeTab = $derived(
 		node.kind === "leaf" && node.activeChannelId
-			? (node.tabs.find((t) => t.channelId === node.activeChannelId) ?? null)
+			? (node.tabs.find((each) => each.channelId === node.activeChannelId) ?? null)
 			: null,
 	);
 	const activeTabSpace = $derived(
@@ -803,7 +804,7 @@
 		// A conversation's: the page opens its tab, and its ConversationView jumps.
 		if (req.conversationId) return;
 
-		const hasRoom = node.tabs.some((t) => t.channelId === req.roomId);
+		const hasRoom = node.tabs.some((each) => each.channelId === req.roomId);
 		const thisPaneIsFocused = focusedPaneId === node.id;
 		if (!hasRoom && !thisPaneIsFocused) return;
 
@@ -838,7 +839,7 @@
 		if (node.kind !== "leaf") {
 			return;
 		}
-		const tabs = node.tabs.some((t) => t.channelId === tab.channelId) ? node.tabs : [...node.tabs, tab];
+		const tabs = node.tabs.some((each) => each.channelId === tab.channelId) ? node.tabs : [...node.tabs, tab];
 		onUpdate({ ...node, tabs, activeChannelId: tab.channelId });
 	}
 
@@ -1041,7 +1042,7 @@
 		}
 
 		if (dragType === "tab" && sourceLeafId === node.id) {
-			const fromIndex = node.tabs.findIndex((t) => t.channelId === tab.channelId);
+			const fromIndex = node.tabs.findIndex((each) => each.channelId === tab.channelId);
 			if (fromIndex === -1) {
 				return;
 			}
@@ -1049,7 +1050,7 @@
 				handleTabSelect(tab.channelId);
 				return;
 			}
-			const remainingTabs = node.tabs.filter((t) => t.channelId !== tab.channelId);
+			const remainingTabs = node.tabs.filter((each) => each.channelId !== tab.channelId);
 			const remainingActive =
 				node.activeChannelId === tab.channelId
 					? ((remainingTabs[fromIndex] ?? remainingTabs[fromIndex - 1])?.channelId ?? null)
@@ -1138,9 +1139,8 @@
 		const typing = typingSentence($typingNow[activeTab.channelId]);
 		if (typing) return typing;
 		if (activeConversation) {
-			if (activeConversation.type !== 2) return "Direct message";
-			const count = activeConversation.members.length;
-			return count === 1 ? "1 member" : `${count} members`;
+			if (activeConversation.type !== 2) return t("shell_chat_kind_dm");
+			return t("shell_group_members", { count: activeConversation.members.length });
 		}
 		return [activeTabSpace?.name, activeRoomDescription].filter(Boolean).join(" · ") || null;
 	});
@@ -1178,7 +1178,7 @@
 				: '-my-1 h-[9px] cursor-row-resize'}"
 			onmousedown={startResize}
 			ondblclick={() => node.kind === "split" && onUpdate({ ...node, ratio: 0.5 })}
-			aria-label="Resize split"
+			aria-label={t("shell_pane_resize")}
 		>
 			<span
 				class="absolute transition-[background-color,inset] duration-150 motion-reduce:transition-none {node.direction ===
@@ -1219,7 +1219,7 @@
 			? 'ring-duvet-accent/40 ring-1 ring-inset'
 			: ''}"
 		role="region"
-		aria-label="Chat pane"
+		aria-label={t("shell_pane")}
 		data-pane-focused={isFocused ? "true" : undefined}
 		onclick={() => onFocus(node.id)}
 	>
@@ -1269,7 +1269,7 @@
 					{/key}
 				{:else if activeChannel?.type === "voice" && $activeVoiceRoomId === node.activeChannelId}
 					<span class="bg-duvet-accent-tint text-duvet-accent-text rounded-full px-2 py-0.5 text-xs font-medium"
-						>Connected</span
+						>{t("shell_voice_connected")}</span
 					>
 				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
 					{@render conversationActions.actions()}
@@ -1287,15 +1287,15 @@
 
 				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. After them, in a section
 				     of their own, its chat's: a group's Rename and Leave, the last as the most drastic (#368). -->
-				<Menu align="end" label="More">
+				<Menu align="end" label={t("shell_more")}>
 					{#snippet trigger(props)}
-						<IconButton {...props} label="More"><EllipsisIcon size={16} /></IconButton>
+						<IconButton {...props} label={t("shell_more")}><EllipsisIcon size={16} /></IconButton>
 					{/snippet}
-					<MenuItem icon={ColumnsIcon} onSelect={splitH}>Split horizontally</MenuItem>
-					<MenuItem icon={RowsIcon} onSelect={splitV}>Split vertically</MenuItem>
+					<MenuItem icon={ColumnsIcon} onSelect={splitH}>{t("shell_split_horizontally")}</MenuItem>
+					<MenuItem icon={RowsIcon} onSelect={splitV}>{t("shell_split_vertically")}</MenuItem>
 					{#if onClose}
 						<MenuSeparator />
-						<MenuItem icon={XIcon} onSelect={() => onClose?.()}>Close pane</MenuItem>
+						<MenuItem icon={XIcon} onSelect={() => onClose?.()}>{t("shell_pane_close")}</MenuItem>
 					{/if}
 					{#if conversationMenu}
 						<MenuSeparator />
@@ -1308,8 +1308,8 @@
 					<button
 						type="button"
 						class={iconButtonClass()}
-						title="Close pane"
-						aria-label="Close pane"
+						title={t("shell_pane_close")}
+						aria-label={t("shell_pane_close")}
 						onclick={(e) => {
 							e.stopPropagation();
 							onClose?.();
@@ -1328,7 +1328,7 @@
 			ondragleave={handleContentDragLeave}
 			ondrop={handleContentDrop}
 			role="group"
-			aria-label="Pane content area"
+			aria-label={t("shell_pane_content")}
 		>
 			<!-- Drag-to-split overlay: the zone under the pointer, and what a drop there does. The middle opens the chat
 			     in this pane; an edge puts it in a new pane on that side. -->
@@ -1356,15 +1356,7 @@
 							{:else}
 								<AppWindowIcon size={16} />
 							{/if}
-							{splitZone === "left"
-								? "Split left"
-								: splitZone === "right"
-									? "Split right"
-									: splitZone === "top"
-										? "Split up"
-										: splitZone === "bottom"
-											? "Split down"
-											: "Open here"}
+							{t("shell_split_drop", { zone: splitZone ?? "middle" })}
 						</span>
 					</div>
 				</div>
@@ -1382,7 +1374,9 @@
 							</div>
 						{/snippet}
 						<p>
-							The start of #{activeChannel.name}{activeTabSpace ? ` in ${activeTabSpace.name}` : ""}.
+							{activeTabSpace
+								? t("shell_room_start_in_space", { room: activeChannel.name, space: activeTabSpace.name })
+								: t("shell_room_start", { room: activeChannel.name })}
 						</p>
 						{#if activeTabSpace && introRoom && hasPermission(activeTabSpace, introRoom, Permission.CreateInvites)}
 							<div class="mt-3 flex flex-wrap gap-2">
@@ -1392,7 +1386,7 @@
 									onclick={() => (inviteOpen = true)}
 								>
 									<UserPlus class="size-4" />
-									Invite people
+									{t("shell_invite_people")}
 								</button>
 							</div>
 						{/if}

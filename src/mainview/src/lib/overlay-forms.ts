@@ -1,4 +1,5 @@
 import { fieldClass } from "$lib/components/ui/recipes";
+import { t } from "$lib/i18n";
 
 // What the fields of a sheet or a dialog share (#357, docs/redesign/DESIGN-MAP.md S-44 to S-46): the app's text field
 // (lib/components/ui/recipes.ts); its label over it; the line under it that says what's wrong; and the spinner of a
@@ -22,7 +23,7 @@ export function spinnerClass(size: "sm" | "lg" = "sm"): string {
 }
 
 /** The label of a button whose action is on its way: the action's name and an ellipsis, as the app writes work in
- *  progress ("Delete…"). */
+ *  progress ("Delete…"), in the app's language. */
 export function busyLabel(label: string): string {
-	return `${label.replace(/(\.{3}|…)$/, "")}…`;
+	return t("dialog_busy_label", { action: label.replace(/(\.{3}|…)$/, "") });
 }

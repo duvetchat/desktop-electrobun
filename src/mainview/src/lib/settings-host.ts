@@ -2,6 +2,7 @@
 // of the app's own page, and in the desktop app, where each fills a window of its own that has none of the app's
 // stores: there the host sends these on to the main window (lib/stores/settings-guest-link.svelte.ts).
 import { logout } from "$lib/api/auth";
+import { t } from "$lib/i18n";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
 import { MESSAGE_LAYOUT_KEY, parseMessageLayout as parseLayout, type MessageLayout } from "$lib/message-layout";
 import type { StagedImage, StagedSlot } from "$lib/staged-images";
@@ -33,7 +34,7 @@ export interface SettingsHost {
 	profileSaved(saved: SavedProfile): void;
 	/** A Space's overview was saved: its new name, icon and the rest show at once. */
 	spaceSaved(spaceId: string, saved: SavedSpace): void;
-	/** A Space was deleted: it goes from the app at once, and the app says so. */
+	/** A Space was deleted: it goes from the app at once, and the app says so, by its name (empty when it isn't known). */
 	spaceDeleted(spaceId: string, name: string): void;
 	/** Bubbles or flat rows. */
 	messageLayout(): MessageLayout;
@@ -95,7 +96,7 @@ export const pageSettingsHost: SettingsHost = {
 	spaceDeleted: (spaceId, name) => {
 		// SPACE_DELETE follows; the Space goes at once, and with it its panes and its voice room.
 		gatewaySpaces.update((spaces) => spaces.filter((space) => space.id !== spaceId));
-		toast(`${name} was deleted`, "success");
+		toast(name ? t("settings_space_deleted", { name }) : t("settings_space_deleted_unnamed"), "success");
 	},
 	messageLayout: readMessageLayout,
 	setMessageLayout: writeMessageLayout,

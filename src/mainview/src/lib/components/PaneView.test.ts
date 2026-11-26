@@ -9,7 +9,7 @@ const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8
 test("Close pane's click stops at the button, before the pane it closed would take it", () => {
 	const pane = source("PaneView.svelte");
 	expect(pane).toMatch(
-		/aria-label="Close pane"\s*onclick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onClose\?\.\(\);\s*\}\}/,
+		/aria-label=\{t\("shell_pane_close"\)\}\s*onclick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onClose\?\.\(\);\s*\}\}/,
 	);
 	// The pane's own click, which the button's no longer reaches.
 	expect(pane).toContain("onclick={() => onFocus(node.id)}");
@@ -20,10 +20,12 @@ test("Close pane's click stops at the button, before the pane it closed would ta
 test("the pane's bar has one More, which holds its chat's own actions in a section of their own", () => {
 	const pane = source("PaneView.svelte");
 	expect(pane).toContain("function showConversationActions(conversationId: string, actions: Snippet | null, menu");
-	const start = pane.indexOf('<Menu align="end" label="More">');
+	const start = pane.indexOf('<Menu align="end" label={t("shell_more")}>');
 	const more = pane.slice(start, pane.indexOf("</Menu>", start));
-	expect(more).toContain('<IconButton {...props} label="More"><EllipsisIcon size={16} /></IconButton>');
-	expect(more).toMatch(/<MenuItem icon=\{ColumnsIcon\} onSelect=\{splitH\}>Split horizontally<\/MenuItem>/);
+	expect(more).toContain('<IconButton {...props} label={t("shell_more")}><EllipsisIcon size={16} /></IconButton>');
+	expect(more).toMatch(
+		/<MenuItem icon=\{ColumnsIcon\} onSelect=\{splitH\}>\{t\("shell_split_horizontally"\)\}<\/MenuItem>/,
+	);
 	expect(more).toMatch(
 		/\{#if conversationMenu\}\s*<MenuSeparator \/>\s*\{@render conversationMenu\(\)\}\s*\{\/if\}\s*$/,
 	);

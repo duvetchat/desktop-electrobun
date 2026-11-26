@@ -17,6 +17,7 @@
 	import { untrack } from "svelte";
 	import { Permission, canSetPermission, computeRoomPermissions, hasSpacePermission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
+	import { t, type MessageKey } from "$lib/i18n";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
 	import Webhooks from "$lib/components/Webhooks.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
@@ -70,7 +71,7 @@
 				await updateRoom(space.id, room.id, payload);
 			}
 		} catch (e) {
-			overviewError = getApiError(e, "Failed to save");
+			overviewError = getApiError(e, t("room_save_failed"));
 		} finally {
 			overviewSaving = false;
 		}
@@ -78,58 +79,52 @@
 
 	// ── permissions state ─────────────────────────────────────────
 	// The bits a room's overwrites can change something with. ManageRoles in a room changes nothing, so it has no row;
-	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles.
-	const PERMISSION_GROUPS = [
+	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles. Their words are keys, which the
+	// template reads in the language of the moment.
+	type RoomPermission = { flag: number; name: MessageKey; description: MessageKey };
+	const PERMISSION_GROUPS: { label: MessageKey; perms: RoomPermission[] }[] = [
 		{
-			label: "General room permissions",
+			label: "room_permissions_general",
 			perms: [
-				{ flag: Permission.ViewChannels, name: "View Room", description: "Allows members to view this room." },
-				{
-					flag: Permission.ManageChannels,
-					name: "Manage Room",
-					description: "Allows members to change this room's name and description.",
-				},
+				{ flag: Permission.ViewChannels, name: "perm_room_view", description: "perm_room_view_description" },
+				{ flag: Permission.ManageChannels, name: "perm_room_manage", description: "perm_room_manage_description" },
 				{
 					flag: Permission.CreateInvites,
-					name: "Create Invite",
-					description: "Allows members to create invite links to this room.",
+					name: "perm_room_create_invite",
+					description: "perm_room_create_invite_description",
 				},
 			],
 		},
 		{
-			label: "Text room permissions",
+			label: "room_permissions_text",
 			perms: [
 				{
 					flag: Permission.SendMessages,
-					name: "Send Messages",
-					description: "Allows members to send messages in this room.",
+					name: "perm_send_messages",
+					description: "perm_room_send_messages_description",
 				},
 				{
 					flag: Permission.ManageMessages,
-					name: "Manage Messages",
-					description: "Allows members to delete or edit any message in this room.",
+					name: "perm_manage_messages",
+					description: "perm_room_manage_messages_description",
 				},
 				{
 					flag: Permission.PinMessages,
-					name: "Pin Messages",
-					description: "Allows members to pin and unpin messages in this room.",
+					name: "perm_pin_messages",
+					description: "perm_room_pin_messages_description",
 				},
 			],
 		},
 		{
-			label: "Voice room permissions",
+			label: "room_permissions_voice",
 			perms: [
-				{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
+				{ flag: Permission.JoinVoice, name: "perm_join_voice", description: "perm_join_voice_description" },
 				{
 					flag: Permission.SpeakInVoice,
-					name: "Speak in Voice",
-					description: "Allows members to speak in voice rooms.",
+					name: "perm_speak_in_voice",
+					description: "perm_speak_in_voice_description",
 				},
-				{
-					flag: Permission.Video,
-					name: "Video",
-					description: "Allows members to turn on their camera and share their screen in voice rooms.",
-				},
+				{ flag: Permission.Video, name: "perm_video", description: "perm_video_description" },
 			],
 		},
 	];
@@ -283,7 +278,7 @@
 				),
 			]);
 		} catch (e) {
-			saveError = getApiError(e, "Failed to save");
+			saveError = getApiError(e, t("room_save_failed"));
 			console.error("Failed to save overwrites:", e);
 		} finally {
 			isSaving = false;
@@ -329,12 +324,19 @@
 	const sectionGroups = $derived<SettingsNavGroup<Section>[]>([
 		{
 			items: [
-				{ id: "overview", label: "Overview", icon: GearSixIcon, tile: "#5e6380" },
+				{ id: "overview", label: t("room_section_overview"), icon: GearSixIcon, tile: "#5e6380" },
 				...(room.type !== 3
-					? [{ id: "permissions" as const, label: "Permissions", icon: ShieldIcon, tile: "#7c5cff" }]
+					? [
+							{
+								id: "permissions" as const,
+								label: t("room_section_permissions"),
+								icon: ShieldIcon,
+								tile: "#7c5cff",
+							},
+						]
 					: []),
 				...(room.type === 1 && canManageWebhooks
-					? [{ id: "webhooks" as const, label: "Webhooks", icon: WebhookIcon, tile: "#e44fcb" }]
+					? [{ id: "webhooks" as const, label: t("room_section_webhooks"), icon: WebhookIcon, tile: "#e44fcb" }]
 					: []),
 			],
 		},
@@ -370,7 +372,7 @@
 <SettingsFrame
 	mode="sheet"
 	bind:open
-	name="{room.type === 3 ? '' : '#'}{room.name} · {room.type === 3 ? 'Category' : 'Room'} settings"
+	name={t("room_settings_name", { kind, name: room.name })}
 	groups={sectionGroups}
 	bind:active={activeSection}
 	wide={activeSection === "permissions"}
@@ -391,7 +393,7 @@
 			<span class="min-w-0 flex-1">
 				<span class="font-serif-sm block truncate text-[15px] font-medium">{room.name}</span>
 				<span class="text-duvet-ink2 block truncate text-[11.5px]">
-					{room.type === 3 ? "Category settings" : "Room settings"}
+					{t("room_settings_title", { kind })}
 				</span>
 			</span>
 		</div>
@@ -405,11 +407,11 @@
 				onclick={() => (confirmDelete = true)}
 			>
 				<span class="grid size-[22px] shrink-0 place-items-center"><TrashIcon class="size-[15px]" /></span>
-				Delete {kind}
+				{t("room_delete", { kind })}
 			</button>
 		{:else}
 			<div class="px-2 py-1 text-xs">
-				<p class="text-duvet-danger mb-2 font-medium">Delete this {kind}?</p>
+				<p class="text-duvet-danger mb-2 font-medium">{t("room_delete_confirm", { kind })}</p>
 				<div class="flex gap-2">
 					<Button
 						variant="danger"
@@ -420,9 +422,11 @@
 							handleClose();
 						}}
 					>
-						Delete
+						{t("room_delete_confirm_button")}
 					</Button>
-					<Button variant="secondary" size="sm" class="flex-1" onclick={() => (confirmDelete = false)}>Cancel</Button>
+					<Button variant="secondary" size="sm" class="flex-1" onclick={() => (confirmDelete = false)}
+						>{t("room_delete_cancel")}</Button
+					>
 				</div>
 			</div>
 		{/if}
@@ -436,39 +440,39 @@
 				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
 			>
 				<span class={saveError ? "text-duvet-danger" : "text-duvet-ink2"} role={saveError ? "alert" : undefined}>
-					{saveError || "You have unsaved changes"}
+					{saveError || t("room_unsaved_changes")}
 				</span>
 				<div class="flex items-center gap-2">
-					<Button variant="quiet" onclick={resetPending} disabled={isSaving}>Reset</Button>
-					<Button onclick={saveAll} disabled={isSaving}>{isSaving ? "Saving…" : "Save changes"}</Button>
+					<Button variant="quiet" onclick={resetPending} disabled={isSaving}>{t("room_reset")}</Button>
+					<Button onclick={saveAll} disabled={isSaving}>{isSaving ? t("room_saving") : t("room_save")}</Button>
 				</div>
 			</div>
 		{/if}
 	{/snippet}
 
 	{#if activeSection === "overview"}
-		<SettingsGroup title="About" plain class="flex flex-col gap-4">
+		<SettingsGroup title={t("room_about_title")} plain class="flex flex-col gap-4">
 			<div>
-				<label for="ch-name" class={LABEL}>{room.type === 3 ? "Category name" : "Room name"}</label>
+				<label for="ch-name" class={LABEL}>{t("room_name_label", { kind })}</label>
 				<input
 					id="ch-name"
 					type="text"
 					bind:value={editName}
 					class={FIELD}
-					placeholder={room.type === 3 ? "category-name" : "room-name"}
+					placeholder={t("room_name_placeholder", { kind })}
 					maxlength="64"
 				/>
 			</div>
 
 			{#if room.type !== 3}
 				<div>
-					<label for="ch-desc" class={LABEL}>Description</label>
+					<label for="ch-desc" class={LABEL}>{t("room_description_label")}</label>
 					<textarea
 						id="ch-desc"
 						bind:value={editDescription}
 						rows="3"
 						class={FIELD_AREA}
-						placeholder="Optional description…"
+						placeholder={t("room_description_placeholder")}
 						maxlength="256"
 					></textarea>
 				</div>
@@ -480,7 +484,7 @@
 
 			<div class="flex gap-2 pt-1">
 				<Button disabled={overviewSaving || !editName.trim()} onclick={saveOverview}>
-					{overviewSaving ? "Saving…" : "Save changes"}
+					{overviewSaving ? t("room_saving") : t("room_save")}
 				</Button>
 				<Button
 					variant="secondary"
@@ -490,7 +494,7 @@
 						overviewError = "";
 					}}
 				>
-					Reset
+					{t("room_reset")}
 				</Button>
 			</div>
 		</SettingsGroup>
@@ -499,11 +503,11 @@
 			<!-- Roles/Members list -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between">
-					<span class={GROUP_TITLE}>Roles / Members</span>
+					<span class={GROUP_TITLE}>{t("room_overwrites_title")}</span>
 					<div class="relative">
 						<IconButton
-							label="Add overwrite"
-							title="Add overwrite"
+							label={t("room_overwrite_add")}
+							title={t("room_overwrite_add")}
 							size="sm"
 							aria-expanded={showAddMenu}
 							onclick={() => (showAddMenu = !showAddMenu)}
@@ -515,7 +519,7 @@
 								class="bg-duvet-glass shadow-duvet-glass animate-float-in rounded-panel absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto p-1.5 backdrop-blur-[32px]"
 							>
 								{#if availableRoles.length === 0}
-									<p class="text-duvet-ink2 px-2 py-1.5 text-xs">All roles added</p>
+									<p class="text-duvet-ink2 px-2 py-1.5 text-xs">{t("room_overwrite_all_added")}</p>
 								{:else}
 									{#each availableRoles as role (role.id)}
 										<button
@@ -546,7 +550,7 @@
 					{/each}
 
 					{#if pendingOverwrites.length === 0}
-						<p class="text-duvet-ink2 px-1.5 py-2 text-xs">No overwrites yet. Add a role with the + button.</p>
+						<p class="text-duvet-ink2 px-1.5 py-2 text-xs">{t("room_overwrites_empty")}</p>
 					{/if}
 				</div>
 			</div>
@@ -554,7 +558,7 @@
 			<!-- Permission toggles -->
 			<div class="flex min-w-0 flex-col gap-4">
 				{#if !selectedTargetId || !selectedPending}
-					<p class="text-duvet-ink2 mt-8 text-center text-sm">Select a role or member to edit permissions.</p>
+					<p class="text-duvet-ink2 mt-8 text-center text-sm">{t("room_overwrite_pick")}</p>
 				{:else}
 					<div class="flex items-center justify-between gap-3">
 						<h3 class="min-w-0 truncate font-serif text-lg font-medium">{getTargetLabel(selectedPending)}</h3>
@@ -564,13 +568,13 @@
 							class="text-duvet-danger! hover:bg-duvet-danger/15!"
 							onclick={removeOverwrite}
 						>
-							Remove
+							{t("room_overwrite_remove")}
 						</Button>
 					</div>
 
 					{#each PERMISSION_GROUPS as group (group.label)}
 						<section class="flex flex-col gap-2">
-							<h4 class={GROUP_TITLE}>{group.label}</h4>
+							<h4 class={GROUP_TITLE}>{t(group.label)}</h4>
 							<div class="{CARD} divide-duvet-line divide-y">
 								{#each group.perms as perm (perm.flag)}
 									{@const state = getPermState(perm.flag)}
@@ -580,14 +584,14 @@
 										state === 1 || canSetPermission(roomGranted, selectedSaved?.allow_flags ?? 0, perm.flag)}
 									<div class="flex min-h-[50px] items-center justify-between gap-4 px-3.5 py-2">
 										<div class="min-w-0 flex-1">
-											<p class="text-[13.5px] leading-[1.3] font-medium">{perm.name}</p>
-											<p class="text-duvet-ink2 mt-0.5 text-xs">{perm.description}</p>
+											<p class="text-[13.5px] leading-[1.3] font-medium">{t(perm.name)}</p>
+											<p class="text-duvet-ink2 mt-0.5 text-xs">{t(perm.description)}</p>
 										</div>
 										<div class="bg-duvet-seg-track rounded-control flex shrink-0 items-center p-[3px]" role="group">
 											{@render stateButton(
 												state === -1,
 												"text-duvet-danger",
-												canDeny ? "Deny" : "You can only deny permissions you have in this room",
+												canDeny ? t("room_permission_deny") : t("room_permission_deny_not_held"),
 												!canDeny,
 												() => setPermState(perm.flag, state === -1 ? 0 : -1),
 												XIcon,
@@ -595,7 +599,7 @@
 											{@render stateButton(
 												state === 0,
 												"text-duvet-ink",
-												"Inherit",
+												t("room_permission_inherit"),
 												false,
 												() => setPermState(perm.flag, 0),
 												MinusIcon,
@@ -603,7 +607,7 @@
 											{@render stateButton(
 												state === 1,
 												"text-duvet-alive-text",
-												canAllow ? "Allow" : "You can only allow permissions you have in this room",
+												canAllow ? t("room_permission_allow") : t("room_permission_allow_not_held"),
 												!canAllow,
 												() => setPermState(perm.flag, state === 1 ? 0 : 1),
 												CheckIcon,

@@ -1,6 +1,7 @@
 import { derived, get, type Readable } from "svelte/store";
 import type { Conversation } from "$lib/api/conversations";
 import { getAvatarURL } from "$lib/common/common";
+import { appLocale, t } from "$lib/i18n";
 import { listSession } from "$lib/jumps";
 import { callName } from "$lib/now";
 import {
@@ -40,10 +41,11 @@ export interface VoicePlace {
 	/** The room's Space; null for a call. */
 	spaceId: string | null;
 	name: string;
-	/** Where it is: the Space's name, "Group call" or "Call". */
+	/** Where it is: the Space's name, "Group call" or "Call" (in the app's language). */
 	place: string;
 	states: PlaceVoiceState[];
-	/** Someone's name and avatar there; "Unknown", or the start of their ID in a call, when it doesn't know them. */
+	/** Someone's name and avatar there; "Unknown" (in the app's language), or the start of their ID in a call, when it
+	 * doesn't know them. */
 	person: (userId: string) => VoicePerson;
 }
 
@@ -79,7 +81,7 @@ export function voicePlace(
 				const user = space.users.find((u) => u.id === userId);
 				return {
 					id: userId,
-					name: user?.alias ?? user?.username ?? "Unknown",
+					name: user?.alias ?? user?.username ?? t("call_unknown_person"),
 					src: user ? getAvatarURL(user.id, user.avatar) : null,
 				};
 			},
@@ -92,7 +94,7 @@ export function voicePlace(
 		id,
 		spaceId: null,
 		name: callName(conv, meId),
-		place: conv?.type === 2 ? "Group call" : "Call",
+		place: conv?.type === 2 ? t("call_place_group_call") : t("call_place_call"),
 		states: callStates
 			.filter((vs) => vs.room_id === id)
 			.map((vs) => ({
@@ -113,9 +115,9 @@ export function voicePlace(
 	};
 }
 
-/** The voice the user is in, as the stores have it now. */
+/** The voice the user is in, as the stores have it now, its words in the app's language (appLocale). */
 export const currentVoicePlace: Readable<VoicePlace | null> = derived(
-	[activeVoiceRoomId, gatewaySpaces, activeCall, conversations, callVoiceStates, currentUser],
+	[activeVoiceRoomId, gatewaySpaces, activeCall, conversations, callVoiceStates, currentUser, appLocale],
 	([$id, $spaces, $call, $conversations, $callStates, $me]) =>
 		voicePlace($id, $spaces, $call, $conversations, $callStates, $me?.id),
 );

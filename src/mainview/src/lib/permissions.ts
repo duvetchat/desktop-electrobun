@@ -1,3 +1,4 @@
+import { t, type MessageKey } from "$lib/i18n";
 import type { GatewaySpace, GatewayRoom } from "$lib/types";
 
 // Permission flags — mirror the Go constants (1 << iota starting at 0)
@@ -27,86 +28,55 @@ export const Permission = {
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
 
-/** Every permission a role can hold, as the role editor lists them: its name, and a line on what it allows. */
-export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string; description: string }> = [
-	{
-		flag: Permission.Administrator,
-		name: "Administrator",
-		description: "Gives members every permission, in every room, whatever its overwrites say.",
-	},
-	{ flag: Permission.ViewChannels, name: "View Rooms", description: "Allows members to see rooms and read them." },
-	{ flag: Permission.SendMessages, name: "Send Messages", description: "Allows members to send messages in rooms." },
-	{
-		flag: Permission.ManageMessages,
-		name: "Manage Messages",
-		description: "Allows members to delete anyone's messages.",
-	},
-	{
-		flag: Permission.ManageChannels,
-		name: "Manage Rooms",
-		description: "Allows members to create, edit, move and delete rooms.",
-	},
-	{
-		flag: Permission.ChangeNickname,
-		name: "Change Nickname",
-		description: "Allows members to change their nickname in this Space.",
-	},
-	{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
-	{ flag: Permission.SpeakInVoice, name: "Speak in Voice", description: "Allows members to speak in voice rooms." },
-	{
-		flag: Permission.ManageRoles,
-		name: "Manage Roles",
-		description: "Allows members to edit, give and take the roles below their highest one.",
-	},
-	{
-		flag: Permission.ManageInvites,
-		name: "Manage Invites",
-		description: "Allows members to see the Space's invites and revoke them.",
-	},
-	{ flag: Permission.CreateInvites, name: "Create Invites", description: "Allows members to create invite links." },
-	{
-		flag: Permission.ManageSpaceEmojis,
-		name: "Manage Emojis",
-		description: "Allows members to upload, rename and delete the Space's emojis.",
-	},
-	{
-		flag: Permission.ManageSpaceBuckets,
-		name: "Manage Buckets",
-		description: "Allows members to manage the storage buckets the Space's files go to.",
-	},
-	{
-		flag: Permission.ManageSpaceStickers,
-		name: "Manage Stickers",
-		description: "Allows members to upload, rename and delete the Space's stickers.",
-	},
-	{ flag: Permission.ManageBots, name: "Manage Bots", description: "Allows members to add bots and remove them." },
-	{
-		flag: Permission.ManageSpaceAttachments,
-		name: "Manage Attachments",
-		description: "Allows members to manage and delete the Space's files.",
-	},
-	{
-		flag: Permission.ManageSpaceWebhooks,
-		name: "Manage Webhooks",
-		description: "Allows members to create, edit and delete webhooks.",
-	},
-	{ flag: Permission.PinMessages, name: "Pin Messages", description: "Allows members to pin and unpin messages." },
-	{
-		flag: Permission.Video,
-		name: "Video",
-		description: "Allows members to turn on their camera and share their screen in voice rooms.",
-	},
-	{
-		flag: Permission.KickMembers,
-		name: "Kick Members",
-		description: "Allows members to remove members whose highest role is below theirs. They can join again.",
-	},
-	{
-		flag: Permission.BanMembers,
-		name: "Ban Members",
-		description:
-			"Allows members to ban members whose highest role is below theirs, keeping them out, and to lift bans.",
-	},
+/**
+ * A permission a role can hold, as the role editor lists it: its name, and a line on what it allows. The keys are the
+ * app's words (messages/en.json); `name` and `description` give them in the language of the moment, read when drawn.
+ */
+export interface PermissionInfo {
+	flag: PermissionFlag;
+	nameKey: MessageKey;
+	descriptionKey: MessageKey;
+	readonly name: string;
+	readonly description: string;
+}
+
+function permissionInfo(flag: PermissionFlag, nameKey: MessageKey, descriptionKey: MessageKey): PermissionInfo {
+	return {
+		flag,
+		nameKey,
+		descriptionKey,
+		get name() {
+			return t(nameKey);
+		},
+		get description() {
+			return t(descriptionKey);
+		},
+	};
+}
+
+/** Every permission a role can hold, as the role editor lists them, in the flags' order. */
+export const ALL_PERMISSIONS: readonly PermissionInfo[] = [
+	permissionInfo(Permission.Administrator, "perm_administrator", "perm_administrator_description"),
+	permissionInfo(Permission.ViewChannels, "perm_view_rooms", "perm_view_rooms_description"),
+	permissionInfo(Permission.SendMessages, "perm_send_messages", "perm_send_messages_description"),
+	permissionInfo(Permission.ManageMessages, "perm_manage_messages", "perm_manage_messages_description"),
+	permissionInfo(Permission.ManageChannels, "perm_manage_rooms", "perm_manage_rooms_description"),
+	permissionInfo(Permission.ChangeNickname, "perm_change_nickname", "perm_change_nickname_description"),
+	permissionInfo(Permission.JoinVoice, "perm_join_voice", "perm_join_voice_description"),
+	permissionInfo(Permission.SpeakInVoice, "perm_speak_in_voice", "perm_speak_in_voice_description"),
+	permissionInfo(Permission.ManageRoles, "perm_manage_roles", "perm_manage_roles_description"),
+	permissionInfo(Permission.ManageInvites, "perm_manage_invites", "perm_manage_invites_description"),
+	permissionInfo(Permission.CreateInvites, "perm_create_invites", "perm_create_invites_description"),
+	permissionInfo(Permission.ManageSpaceEmojis, "perm_manage_emojis", "perm_manage_emojis_description"),
+	permissionInfo(Permission.ManageSpaceBuckets, "perm_manage_buckets", "perm_manage_buckets_description"),
+	permissionInfo(Permission.ManageSpaceStickers, "perm_manage_stickers", "perm_manage_stickers_description"),
+	permissionInfo(Permission.ManageBots, "perm_manage_bots", "perm_manage_bots_description"),
+	permissionInfo(Permission.ManageSpaceAttachments, "perm_manage_attachments", "perm_manage_attachments_description"),
+	permissionInfo(Permission.ManageSpaceWebhooks, "perm_manage_webhooks", "perm_manage_webhooks_description"),
+	permissionInfo(Permission.PinMessages, "perm_pin_messages", "perm_pin_messages_description"),
+	permissionInfo(Permission.Video, "perm_video", "perm_video_description"),
+	permissionInfo(Permission.KickMembers, "perm_kick_members", "perm_kick_members_description"),
+	permissionInfo(Permission.BanMembers, "perm_ban_members", "perm_ban_members_description"),
 ];
 
 // target_type values for RoomOverwrite

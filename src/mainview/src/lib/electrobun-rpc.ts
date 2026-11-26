@@ -56,6 +56,9 @@ export type AppRPCSchema = {
 			pendingUpdate: { params: void; response: UpdateOffer | null };
 			// Where the YouTube relay listens (src/bun/player-relay.ts), or null.
 			playerRelay: { params: void; response: string | null };
+			// The system's preferred languages, most preferred first (src/bun/system-languages.ts, #464): the whole list,
+			// where the web view's navigator.languages may have only the first (lib/i18n/bun-link.ts). Any window's.
+			systemLanguages: { params: void; response: string[] };
 		};
 		messages: {
 			closeWindow: void;
@@ -79,6 +82,9 @@ export type AppRPCSchema = {
 			windowTheme: { theme: "light" | "dark" };
 			// "Restart to update": Bun applies the version it verified, and the app opens again on it (#456).
 			applyUpdate: void;
+			// From the main window: the language its page is in, at its start and at each change, which the menu bar and
+			// the windows' titles take (src/bun/i18n.ts, lib/i18n/bun-link.ts; #464).
+			appLanguage: { locale: string };
 		};
 	};
 	webview: {
@@ -114,6 +120,7 @@ export type AppRPCClient = {
 		openAppWindow: (request: OpenAppWindow) => void;
 		windowTheme: (params: { theme: "light" | "dark" }) => void;
 		applyUpdate: () => void;
+		appLanguage: (params: { locale: string }) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
@@ -123,6 +130,7 @@ export type AppRPCClient = {
 		pictureForCopy: (params: { url: string }) => Promise<string | null>;
 		pendingUpdate: () => Promise<UpdateOffer | null>;
 		playerRelay: () => Promise<string | null>;
+		systemLanguages: () => Promise<string[]>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -200,6 +208,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			pictureForCopy: (params) => rpc.request.pictureForCopy(params),
 			pendingUpdate: () => rpc.request.pendingUpdate(),
 			playerRelay: () => rpc.request.playerRelay(),
+			systemLanguages: () => rpc.request.systemLanguages(),
 		},
 		on: {
 			activityUpdate: (handler) => {

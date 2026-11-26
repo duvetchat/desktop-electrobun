@@ -194,7 +194,7 @@ describe("a group's call notices", () => {
 	// notices as the list does.
 	test("a thread reads them as the list does", () => {
 		for (const file of ["MessageList.svelte", "MessagePreview.svelte"]) {
-			const calls = source(file).match(/callNoticeLine\([^)]*\)/g) ?? [];
+			const calls = source(file).match(/callNotice\([^)]*\)/g) ?? [];
 			expect(calls.length).toBeGreaterThan(0);
 			for (const call of calls) expect(call).toEndWith(", joined)");
 		}
@@ -423,13 +423,13 @@ describe("editing a message", () => {
 		expect(list).toContain("<InlineMessageEditor");
 		expect(list).toContain("onSave={(text) => onSaveEdit?.(message.id, text)}");
 		expect(list).toContain("onCancel={() => (editingMessageId = null)}");
-		expect(list).toMatch(/editable\(message, mine\)[\s\S]*?<IconButton label="Edit message"/);
+		expect(list).toMatch(/editable\(message, mine\)[\s\S]*?<IconButton\s+label=\{t\("chat_edit_message"\)\}/);
 	});
 
 	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
 		expect(editor).toContain("<textarea");
-		expect(editor).toContain("Save");
-		expect(editor).toContain("Discard edit");
+		expect(editor).toContain('{t("chat_edit_save")}');
+		expect(editor).toContain('label={t("chat_edit_cancel")}');
 		expect(editor).toContain('event.key === "Escape"');
 		expect(editor).toContain("event.metaKey || event.ctrlKey");
 	});
@@ -444,8 +444,8 @@ describe("editing a message", () => {
 
 test("a message's More menu copies its text above its link", () => {
 	const list = source("MessageList.svelte");
-	const text = list.indexOf(">Copy text<");
-	const link = list.indexOf(">Copy message link<");
+	const text = list.indexOf('>{t("chat_copy_text")}<');
+	const link = list.indexOf('>{t("chat_copy_link")}<');
 	expect(text).toBeGreaterThan(-1);
 	expect(text).toBeLessThan(link);
 	expect(list).toMatch(
