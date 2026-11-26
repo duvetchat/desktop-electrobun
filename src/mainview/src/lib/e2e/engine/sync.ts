@@ -579,6 +579,17 @@ export class Conversations {
 		return this.#known.get(conversationId)?.members.map((member) => member.user_id) ?? [];
 	}
 
+	/**
+	 * The API changed a conversation this device knows (CONVERSATION_UPDATE: its owner, when they left): listed again, and
+	 * its turn, so what it says goes by its owner now, a group's making and a blocked group's restart both (#550). One the
+	 * user is no longer in is let go.
+	 */
+	async changed(conversationId: string): Promise<void> {
+		if (!this.#known.has(conversationId)) return;
+		if (!(await this.#fresh(conversationId))) return this.#drop(conversationId);
+		await this.sync(conversationId);
+	}
+
 	/** A user's identity changed (IDENTITY_UPDATE): their conversations' members without a device are asked again. */
 	async identityChanged(user: string): Promise<void> {
 		for (const conv of [...this.#known.values()]) {

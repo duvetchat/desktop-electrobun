@@ -850,6 +850,30 @@ describe("end-to-end encryption's events", () => {
 		}
 	});
 
+	// #550 (step 5's engines review, Minor 6): a group's owner handed on as they leave goes by CONVERSATION_UPDATE, which
+	// the engine hears once the app took it, so what the conversation says and its restart go by the new owner at once.
+	test("a conversation's change reaches it once the app took it", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const group = conversation(96);
+		stores.conversations.set([
+			{
+				...{ id: group, type: 2, name: null, owner_id: ALICE, members: [] },
+				...{ created_at: "2026-11-25T00:00:00Z", updated_at: "2026-11-25T00:00:00Z", deleted_at: null },
+			},
+		]);
+		const heard: { type: string; took: boolean }[] = [];
+		const stopListening = engineEvents.listen((event) => {
+			const took = get(stores.conversations).find((c) => c.id === group)?.owner_id === ME;
+			heard.push({ type: event.type, took });
+		});
+		try {
+			deliver("CONVERSATION_UPDATE", { id: group, name: null, owner_id: ME });
+			expect(heard).toEqual([{ type: "CONVERSATION_UPDATE", took: true }]);
+		} finally {
+			stopListening();
+		}
+	});
+
 	// An encrypted message's edit carries its entry, not its text (PLAN-E2E-API.md, G): its row keeps what it showed, and
 	// says when it was edited, until the engine has the new text from its entry.
 	test("an edit's event keeps its message's row, and says when it was edited", () => {
