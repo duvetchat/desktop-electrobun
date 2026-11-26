@@ -143,7 +143,8 @@ test("a group has its column beside its chat; a DM's members open in the popover
 	expect(actions).toMatch(
 		/<MembersButton\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+\{column\}\s+onRemoveMember=\{removeMember\}\s+onMention=\{mentionHere\}\s*\/>/,
 	);
+	// The column stays beside the chat, or beside what a conversation this app can't open says in its place (Task 34).
 	expect(view).toMatch(
-		/<Chat\b[^]*?\{paneFocused\}\s*\/>\s*(?:<!--[^]*?-->\s*)?\{#if column && layoutPrefs\.membersColumn\[column\]\}\s*<MembersColumn\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+onRemoveMember=\{removeMember\}\s+onMention=\{mentionHere\}\s*\/>\s*\{\/if\}/,
+		/<Chat\b[^]*?\{paneFocused\}\s*\/>\s*\{\/if\}\s*(?:<!--[^]*?-->\s*)?\{#if column && layoutPrefs\.membersColumn\[column\]\}\s*<MembersColumn\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+onRemoveMember=\{removeMember\}\s+onMention=\{mentionHere\}\s*\/>\s*\{\/if\}/,
 	);
 });

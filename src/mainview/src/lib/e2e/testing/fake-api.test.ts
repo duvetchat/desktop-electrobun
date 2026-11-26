@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
@@ -6,6 +6,10 @@ import { drawnAs, messageEnvelope } from "../conventions";
 import { uuidv7 } from "../uuid";
 import { FAKE_API_URL, FakeApi, type GatewayEvent } from "./fake-api";
 import { BunCoreHost, coreLibrary } from "./host-bun";
+
+// Its cases run real cores, which a runner busy with other repositories' runs takes past Bun's 5 s (#541), as the
+// engine's own real-core tests' SLOW allows for.
+setDefaultTimeout(60_000);
 
 // Real cores (host-bun.ts: the core's own library) talking through the fake API by hand, with the commands and routes
 // the engine will use: what each device sends is what its core made, and what it applies is what the fake handed out.
