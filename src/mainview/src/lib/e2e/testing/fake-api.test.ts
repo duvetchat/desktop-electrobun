@@ -52,7 +52,7 @@ async function download(fake: FakeApi, token: string, path: string): Promise<Uin
 	const { status, body } = await call(fake, token, "GET", path);
 	// The API's signed URL is a path of its own (storage.SignedAttachmentURL), which the client takes on the API's host.
 	expect({ status, url: /^\/attachments\/[0-9a-f-]{36}\?sig=/.test(body.url) }).toEqual({ status: 200, url: true });
-	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}`)).arrayBuffer());
+	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}&stream=1`)).arrayBuffer());
 }
 
 interface Device {
@@ -278,6 +278,27 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 		const page = await call(fake, a.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=1&limit=2`);
 		expect(page.body.entries.map((entry: { seq: number }) => entry.seq)).toEqual([2, 3]);
 	});
+
+	// As the API's checkSend: a message sent again is found by its nonce before its group's epochs are checked, so the fake
+	// never has a message made again that the API wouldn't.
+	test("a message sent again is answered by its nonce, even once its bytes went stale", async () => {
+		const { fake, a, conversation } = await dmWithGroup();
+		const { nonce, ciphertext, message } = await send(fake, a, conversation, "once");
+		const path = `${CONVERSATIONS}/${conversation}/mls/commits`;
+		for (let epoch = 1; epoch <= 6; epoch++) {
+			const commit = await a.host.handle<object>({ cmd: "refresh", conversation_id: conversation });
+			const won = await call(fake, a.token, "POST", path, { generation: 0, epoch, ...commit });
+			expect(won.status).toBe(201);
+			await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: won.body.seq });
+		}
+		const again = await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/messages`, { ciphertext, nonce });
+		expect(again).toMatchObject({ status: 201, body: { id: message.id } });
+		// Another message of those bytes' epoch is stale.
+		const other = await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/messages`, {
+			...{ ciphertext, nonce: crypto.randomUUID() },
+		});
+		expect(other).toMatchObject({ status: 409, body: { error: "stale message" } });
+	}, 30_000);
 
 	test("one commit takes an epoch, and the same commit again gets the answer it got", async () => {
 		const { fake, a, b, conversation } = await dmWithGroup();

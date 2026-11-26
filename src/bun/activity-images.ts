@@ -5,7 +5,7 @@
 // as when that app loads it, then made small by the webview (Bun has no image decoder; a canvas has) and sent as a
 // data URI. One that can't be is left out of the activity, never sent as its URL.
 import { MAX_IMAGE_BYTES, type ActivityPayload } from "./activities";
-import { decodable } from "./image-size";
+import { decodable } from "../mainview/src/lib/image-size";
 
 /** The most bytes an image may have to be made inline: counted as it's read, before anything decodes it. */
 export const MAX_SOURCE_BYTES = 4 << 20;

@@ -24,12 +24,15 @@
 
 	let {
 		src,
+		blob = null,
 		attachmentId = "",
 		authorName = "",
 		channelName = "",
 		compact = false,
 	}: {
 		src: string;
+		/** A conversation's voice note, decrypted in memory: read as it is, its URL `src` only played. */
+		blob?: Blob | null;
 		attachmentId?: string;
 		authorName?: string;
 		channelName?: string;
@@ -70,7 +73,7 @@
 	// (#316).
 	async function loadAndAnalyze(url: string) {
 		try {
-			const streamUrl = streamOf(url);
+			const streamUrl = blob ?? streamOf(url);
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
 			if (destroyed) return;
 			bars = result.bars;
@@ -88,7 +91,7 @@
 	let wavMaking: Promise<string | null> | null = null;
 	function wav(): Promise<string | null> {
 		if (wavSrc) return Promise.resolve(wavSrc);
-		wavMaking ??= makeWav(streamOf(src))
+		wavMaking ??= makeWav(blob ?? streamOf(src))
 			.then((url) => {
 				if (destroyed) {
 					releaseWav(url);

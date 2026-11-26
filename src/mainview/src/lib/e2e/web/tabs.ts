@@ -3,7 +3,8 @@
 // others wait for the lock, so the next inherits it as the leader's tab closes, and meanwhile ask the leader over the
 // BroadcastChannel of the same name, by the engine's public methods, never by the core's commands:
 //   - a request `{id, from, method, params}`, which the leader answers `{id, to, ok}` or `{id, to, error}`;
-//   - `{event: "leader", tab}` from a tab that starts to lead, and `{event: "changed", conversation_id}` from the leader.
+//   - `{event: "leader", tab}` from a tab that starts to lead, and `{event: "changed", conversation_id, deleted?}` from
+//     the leader, `deleted` the messages its queue deleted.
 // A request left unanswered goes again when a new leader says so, and the new leader runs its own: so every method
 // must bear being run twice (a send carries its nonce). The methods are the caller's: the engine's (Task 12).
 import { CoreError, errorFields } from "../errors";
@@ -31,8 +32,8 @@ export interface BrowserTabsOptions {
 	methods: Methods;
 	/** Runs once this tab holds the lock, before it serves anyone: opens the core and starts the engine. */
 	lead: () => Promise<void>;
-	/** A conversation the leader says changed. */
-	onChanged?: (conversationId: string) => void;
+	/** A conversation the leader says changed, with the messages its queue deleted. */
+	onChanged?: (conversationId: string, deleted: string[]) => void;
 	/** A tab that says it leads, another or this one. */
 	onLeader?: (tab: string) => void;
 	channel?: ChannelLike;
@@ -112,9 +113,9 @@ export class BrowserTabs {
 		});
 	}
 
-	/** The leader tells the other tabs a conversation changed. */
-	changed(conversationId: string) {
-		if (this.#leader) this.#post({ event: "changed", conversation_id: conversationId });
+	/** The leader tells the other tabs a conversation changed, and which of its messages its queue deleted. */
+	changed(conversationId: string, deleted: string[] = []) {
+		if (this.#leader) this.#post({ event: "changed", conversation_id: conversationId, deleted });
 	}
 
 	/**
@@ -180,7 +181,10 @@ export class BrowserTabs {
 			}
 			this.#options.onLeader?.(data.tab);
 		} else if (data.event === "changed" && typeof data.conversation_id === "string") {
-			if (!this.#leader) this.#options.onChanged?.(data.conversation_id);
+			const deleted = Array.isArray(data.deleted)
+				? data.deleted.filter((id): id is string => typeof id === "string")
+				: [];
+			if (!this.#leader) this.#options.onChanged?.(data.conversation_id, deleted);
 		} else if (typeof data.id === "string" && typeof data.from === "string" && typeof data.method === "string") {
 			if (this.#leader) this.#answer(data.id, data.from, data.method, data.params);
 		} else if (typeof data.id === "string" && data.to === this.tab) {

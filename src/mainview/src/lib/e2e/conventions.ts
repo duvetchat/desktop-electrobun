@@ -5,6 +5,7 @@
 // too. Bun's half of the desktop's boundary reads this module as well (src/bun/e2e/rpc.ts), hence relative imports:
 // its type check knows no $lib.
 import { base64Bytes } from "../activity-thumbnail";
+import { imageSize } from "../image-size";
 import { bytesBase64 } from "../staged-images";
 
 /** A file a message carries, as the core's encrypt takes it and its messages show it: its binaries in base64. */
@@ -88,6 +89,20 @@ export function cleanName(name: string): string {
 
 /** How much of a file both apps read to tell its type: its first 64 KiB. */
 export const SNIFF_PREFIX = 64 << 10;
+
+/** A thumbnail's longer side, at most: as an app makes one, and as both draw one. */
+export const THUMBNAIL_SIDE = 320;
+
+/**
+ * Whether a thumbnail's bytes are drawn: a JPEG or a PNG whose header says it's THUMBNAIL_SIDE a side at most, read
+ * before anything decodes it. What its sender writes is theirs, and an 8 KiB JPEG whose header says 12000 × 12000 would
+ * take a bitmap of 576 MB on every visit (task 18's re-review; the mobile app's review, I3).
+ */
+export function thumbnailDrawn(bytes: Uint8Array): boolean {
+	const type = sniffType(bytes.subarray(0, SNIFF_PREFIX));
+	const size = type === "image/jpeg" || type === "image/png" ? imageSize(bytes) : null;
+	return !!size && size.width > 0 && size.height > 0 && Math.max(size.width, size.height) <= THUMBNAIL_SIDE;
+}
 const OCTET_STREAM = "application/octet-stream";
 // The brands of an ISO media file (its `ftyp`) the clients draw; any other is a file to download.
 const BRANDS: Record<string, string> = {

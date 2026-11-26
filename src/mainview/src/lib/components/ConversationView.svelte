@@ -1,6 +1,8 @@
 <script lang="ts" module>
 	import { dmMessages } from "$lib/stores.svelte";
 	import { forgetUnlisted } from "$lib/uploads";
+	import { myFileLimit } from "$lib/api/user";
+	import type { OutgoingFile } from "$lib/e2e/engine/files";
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 
 	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
@@ -13,6 +15,8 @@
 		{
 			ref?: MessageReference;
 			files?: File[];
+			/** Its files as they go (lib/e2e/thumbnails.ts), worked out at its first send, which a Retry sends again. */
+			outgoing?: OutgoingFile[];
 			stickerAttachmentId?: string;
 			allowedMentions?: AllowedMentions;
 			/** The draft it came from: the conversation's, or one of its threads'. */
@@ -21,6 +25,16 @@
 	>();
 	// A send's retry data goes once its message is in no list any more: nothing could retry or dismiss it (#323).
 	dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));
+
+	// The cap of where the person's files go (their active bucket's, else their storage's), which the message box holds
+	// each sealed file to; read again a minute on, for a bucket made active meanwhile. Unknown, the API's 413 says it.
+	let fileLimitRead: { at: number; limit: Promise<number | null> } | null = null;
+	function fileLimitNow(): Promise<number | null> {
+		if (!fileLimitRead || Date.now() - fileLimitRead.at > 60_000) {
+			fileLimitRead = { at: Date.now(), limit: myFileLimit().catch(() => null) };
+		}
+		return fileLimitRead.limit;
+	}
 </script>
 
 <script lang="ts">
@@ -70,13 +84,19 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { directMessageToMessage, userStatusToString, type Message } from "$lib/types";
+	import { directMessageToMessage, MessageType, userStatusToString, type Message } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
 	import { drawnRows } from "$lib/e2e/engine/content";
+	import { FilesGone, gifFile, sealedSize, shownFile } from "$lib/e2e/engine/files";
+	import { gifBytes, outgoingFiles } from "$lib/e2e/thumbnails";
+	import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
+	import { voiceNoteFacts } from "$lib/audio/waveform";
+	import { putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
+	import { CANCELLED, SENT_BEFORE_CANCEL, sendFollowed, withoutSending } from "$lib/uploads";
 	import { contentOf, dropTyped, keepTyped, letGo, moveTyped, want } from "$lib/e2e/conversation-content.svelte";
 	import { t } from "$lib/i18n";
 	import { groupActions } from "$lib/groups";
@@ -157,6 +177,8 @@
 	let loadFailed = $state(false);
 	let isLoadingMore = $state(false);
 	let hasMore = $state(true);
+	// The cap of where the person's files go, once read (fileLimitNow).
+	let fileLimit = $state<number | null>(null);
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
@@ -654,43 +676,105 @@
 	) {
 		if (!get(currentUser)) return;
 		const convId = conversation.id;
-		dmMessages.update((all) => ({
-			...all,
-			[convId]: [...(all[convId] ?? []), pendingRow(convId, nonce, content, ref, stickerAttachmentId)],
-		}));
+		const row = { ...pendingRow(convId, nonce, content, ref, stickerAttachmentId), attachments: pendingFiles(files) };
+		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), row] }));
 		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions, draft });
-		await sendHere(convId, nonce, content);
+		await sendHere(convId, nonce, content, sentDraft(content, files, ref, allowedMentions));
+	}
+
+	// A send's files as its row shows them while they go up: its bars measure what goes, their sealed bytes.
+	function pendingFiles(files: File[] | undefined, at = new Date().toISOString()): DirectMessage["attachments"] {
+		if (!files?.length) return null;
+		return files.map((f) => ({
+			...{ id: "", message_id: "", filename: f.name, content_type: f.type || "application/octet-stream" },
+			...{ size_bytes: sealedSize(f.size), created_at: at, pending: true },
+		}));
+	}
+
+	// What a send took from the conversation's draft, for its Cancel: the reply's message is found in the list by its
+	// reference, as a Retry's saved data has nothing else.
+	function sentDraft(
+		text: string,
+		files: File[] | undefined,
+		ref: MessageReference | undefined,
+		allowedMentions: AllowedMentions | undefined,
+	): SentDraft {
+		return {
+			text,
+			files: files ?? [],
+			replyTo: messages.find((m) => m.id === ref?.message_id) ?? null,
+			replyMention: allowedMentions?.replied_user ?? true,
+		};
 	}
 
 	// What the person reads of a message that didn't send: the pause's and the size's own words, else the API's.
 	function unsentNote(err: unknown): string {
 		if (err instanceof PausedError) return t("e2e_paused");
+		if (err instanceof FilesGone) return t("e2e_files_gone");
+		if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");
+		if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");
 		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
 		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
 	}
 
 	// A message of the person's, through the encryption engine (PLAN-E2E-CLIENTES.md, «Enviar»): encrypted, sent after
 	// what waits here, and the API's copy in its pending row's place; one that went already leaves it. One that didn't
-	// go stays on the device and in the list, with Retry and Dismiss (what this rejects with says why).
-	async function sendHere(convId: string, nonce: string, text: string) {
+	// go stays on the device and in the list, with Retry and Dismiss (what this rejects with says why). Its files go
+	// sealed («Adjuntos»), their upload followed (lib/uploads), and a Cancel of it is the message's Dismiss.
+	async function sendHere(convId: string, nonce: string, text: string, fromDraft?: SentDraft) {
 		const saved = dmRetryData.get(nonce);
-		// shortcut: a conversation's files go with encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18); until then a
-		// message with files isn't sent, and waits for its Dismiss.
-		if (saved?.files?.length) throw new Error("Failed to send message");
-		let real: DirectMessage | null;
+		let real: DirectMessage | null | typeof CANCELLED;
 		try {
-			real = await sendEncrypted({
-				...{ conversation_id: convId, nonce },
-				...(text ? { text } : {}),
-				...(saved?.ref ? { message_reference: saved.ref } : {}),
-				...(saved?.allowedMentions ? { allowed_mentions: saved.allowedMentions } : {}),
-				...(saved?.stickerAttachmentId ? { sticker_attachment_id: saved.stickerAttachmentId } : {}),
+			real = await sendFollowed(nonce, saved?.files, async (upload) => {
+				// Followed from the start, so its Cancel is there while its thumbnails are made (a video's frame takes time).
+				if (saved && !saved.outgoing && saved.files?.length) saved.outgoing = await outgoingFiles(saved.files);
+				upload?.signal?.throwIfAborted();
+				const files = saved?.outgoing;
+				return sendEncrypted(
+					{
+						...{ conversation_id: convId, nonce },
+						...(text ? { text } : {}),
+						...(saved?.ref ? { message_reference: saved.ref } : {}),
+						...(saved?.allowedMentions ? { allowed_mentions: saved.allowedMentions } : {}),
+						...(saved?.stickerAttachmentId ? { sticker_attachment_id: saved.stickerAttachmentId } : {}),
+						...(files?.length ? { files } : {}),
+					},
+					upload,
+				);
 			});
 		} catch (err) {
 			throw new Error(unsentNote(err), { cause: err });
 		}
+		if (real === CANCELLED) return dmCancelled(convId, nonce, fromDraft, saved?.draft);
 		if (real) showSent(convId, nonce, real);
 		else dropPending(convId, nonce);
+	}
+
+	// A Cancel of a send's upload: the message lets go of this device too (its Dismiss), it leaves the list, and what it
+	// took from its draft (into: the conversation's, or one of its threads') goes back. One the conversation's queue says
+	// went after all, its whole body up before the Cancel, shows as the API's copy, and the person is told.
+	async function dmCancelled(convId: string, nonce: string, fromDraft: SentDraft | undefined, into = convId) {
+		dmRetryData.delete(nonce);
+		const went = await discardEncrypted(convId, nonce).catch((error: unknown) => {
+			console.error("[e2e] A cancelled message wasn't dropped from this device:", error);
+			return null;
+		});
+		if (went) {
+			toast(SENT_BEFORE_CANCEL, "info");
+			const real = await getDirectMessageById(convId, went).catch(() => null);
+			if (real) showSent(convId, nonce, real);
+			return;
+		}
+		let sending: DirectMessage | undefined;
+		dmMessages.update((all) => {
+			const list = all[convId] ?? [];
+			const kept = withoutSending(list, nonce);
+			if (!kept) return all;
+			sending = list.find((m) => m.id === nonce);
+			return { ...all, [convId]: kept };
+		});
+		dropTyped(convId, nonce);
+		if (sending && fromDraft) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending), into);
 	}
 
 	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
@@ -731,7 +815,22 @@
 			if (gone || !nonce || listed.has(nonce)) continue;
 			const { message_reference: ref, sticker_attachment_id: sticker, allowed_mentions: allowedMentions } = row;
 			dmRetryData.set(nonce, { ref, stickerAttachmentId: sticker, allowedMentions, draft: convId });
-			rows.push(pendingRow(convId, nonce, row.text ?? "", ref, sticker, new Date(row.sent_at).toISOString()));
+			const at = new Date(row.sent_at).toISOString();
+			// Its files by the names and sizes its message gives them, as they wait to go up.
+			const files = row.attachments.flatMap((raw) => {
+				const file = shownFile(raw);
+				if (!file) return [];
+				return [
+					{
+						...{ id: "", message_id: "", filename: file.name, content_type: file.said },
+						...{ size_bytes: sealedSize(file.size), created_at: at, pending: true },
+					},
+				];
+			});
+			const waitingRow = pendingRow(convId, nonce, row.text ?? "", ref, sticker, at);
+			// Its files went with the app: it can only be dismissed, which it says at once (task 18's review, M5).
+			if (row.files_gone) rows.push({ ...waitingRow, attachments: null, unsent_note: t("e2e_files_gone") });
+			else rows.push({ ...waitingRow, attachments: files.length ? files : null });
 		}
 		if (rows.length === 0) return;
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), ...rows] }));
@@ -750,6 +849,8 @@
 		const row = (get(dmMessages)[convId] ?? []).find((m) => m.id === messageId);
 		if (row && row.seq === undefined) await deleteDirectMessage(convId, messageId);
 		else await deleteEncrypted(convId, messageId);
+		// What this device decrypted of its files goes with it.
+		decryptedFiles.forgetMessage(messageId);
 		dmMessages.update((all) => ({
 			...all,
 			[convId]: (all[convId] ?? []).filter((m) => m.id !== messageId),
@@ -761,8 +862,10 @@
 	function dmRetry(message: Message) {
 		const convId = conversation.id;
 		const nonce = message.nonce ?? message.id;
+		const saved = dmRetryData.get(nonce);
+		const fromDraft = sentDraft(message.content ?? "", saved?.files, saved?.ref, saved?.allowedMentions);
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
-		sendHere(convId, nonce, message.content ?? "").catch((err) => {
+		sendHere(convId, nonce, message.content ?? "", fromDraft).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
 			toast(getApiError(err, "Failed to send message"), "error");
 		});
@@ -794,10 +897,30 @@
 		}
 	}
 
-	// shortcut: a conversation's voice notes go with encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18); until then
-	// one isn't sent.
-	function dmVoiceNote() {
-		toast("Failed to send voice note", "error");
+	// A voice note, as its convention has it (PLAN-E2E-CLIENTES.md, its conventions between clients): a message without
+	// text, its one audio file sealed with its duration and its waveform. Without them (its audio didn't decode here) it
+	// goes as an audio file.
+	async function dmVoiceNote(blob: Blob) {
+		const convId = conversation.id;
+		if (!get(currentUser)) return;
+		const nonce = crypto.randomUUID();
+		const note = { ...pendingRow(convId, nonce, "", undefined, undefined), type: MessageType.Voice };
+		const attachments = pendingFiles([new File([blob], "voice-note.webm", { type: blob.type || "audio/webm" })]);
+		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), { ...note, attachments }] }));
+		const facts = await voiceNoteFacts(blob).catch(() => null);
+		dmRetryData.set(nonce, { outgoing: [{ file: blob, name: "voice-note.webm", ...facts }], draft: convId });
+		sendHere(convId, nonce, "").catch((err) => {
+			failedNonces = new Set(failedNonces).add(nonce);
+			toast(getApiError(err, "Failed to send voice note"), "error");
+		});
+	}
+
+	// A GIF of the picker's goes as a file of its own, sealed, never as a link (Ruling 12): the chat sends it as one,
+	// with the draft's reply. One whose bytes can't be had, or aren't a GIF's, isn't sent.
+	async function dmGif(url: string): Promise<File | null> {
+		const picked = await gifFile(url, gifBytes);
+		if (!picked) toast(t("e2e_gif_failed"), "error");
+		return picked;
 	}
 
 	async function handleRemoveMember(userId: string) {
@@ -945,6 +1068,7 @@
 
 	onMount(() => {
 		const convId = conversation.id;
+		void fileLimitNow().then((limit) => (fileLimit = limit));
 		// The gateway session this view comes in, which the list it leaves is of.
 		const session = listSession();
 		activeDMConvId.set(convId);
@@ -1287,6 +1411,8 @@
 			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
 			sendRecording={() => sendConversationRecording(conversation.id).catch(() => {})}
 			onVoiceNoteOverride={dmVoiceNote}
+			gifFile={dmGif}
+			{fileLimit}
 			members={convMembers}
 			unreadAfterMessageId={convUnreadAfter}
 			onUnreadMark={(msgId) => {

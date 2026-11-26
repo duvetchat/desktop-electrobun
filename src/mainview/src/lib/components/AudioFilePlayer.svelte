@@ -13,6 +13,7 @@
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import VolumeControl from "$lib/components/VolumeControl.svelte";
+	import { saveFile } from "$lib/e2e/decrypted-files.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
 		waveformCache,
@@ -26,6 +27,7 @@
 
 	let {
 		src,
+		blob = null,
 		attachmentId = "",
 		filename = "",
 		sizeBytes = 0,
@@ -33,6 +35,8 @@
 		channelName = "",
 	}: {
 		src: string;
+		/** A conversation's file, decrypted in memory: read as it is, its URL `src` only played. */
+		blob?: Blob | null;
 		attachmentId?: string;
 		filename?: string;
 		sizeBytes?: number;
@@ -112,7 +116,7 @@
 	// Its bars, its duration and whether it needed the repair, kept for the next player of it (#316).
 	async function loadAndAnalyze(url: string) {
 		try {
-			const streamUrl = streamOf(url);
+			const streamUrl = blob ?? streamOf(url);
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
 			if (destroyed) return;
 			bars = result.bars;
@@ -129,7 +133,7 @@
 	let wavMaking: Promise<string | null> | null = null;
 	function wav(): Promise<string | null> {
 		if (wavSrc) return Promise.resolve(wavSrc);
-		wavMaking ??= makeWav(streamOf(src))
+		wavMaking ??= makeWav(blob ?? streamOf(src))
 			.then((url) => {
 				if (destroyed) {
 					releaseWav(url);
@@ -186,13 +190,22 @@
 			<Music size={16} />
 		</span>
 		<div class="flex min-w-0 flex-col gap-px">
-			<a
-				href={src}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="text-duvet-ink truncate text-[13.5px] leading-[1.25] font-semibold hover:underline"
-				download={filename}>{filename}</a
-			>
+			{#if blob}
+				<!-- A decrypted file: nothing to follow to its blob: URL; its name saves it, as bytes (Review Focus 6) -->
+				<button
+					type="button"
+					class="text-duvet-ink truncate text-left text-[13.5px] leading-[1.25] font-semibold hover:underline"
+					onclick={() => blob && saveFile(blob, filename)}>{filename}</button
+				>
+			{:else}
+				<a
+					href={src}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-duvet-ink truncate text-[13.5px] leading-[1.25] font-semibold hover:underline"
+					download={filename}>{filename}</a
+				>
+			{/if}
 			<span class="text-duvet-ink2 text-[11.5px] leading-[1.25]">{formatFileSize(sizeBytes)}</span>
 		</div>
 	</div>

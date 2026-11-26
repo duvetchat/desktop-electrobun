@@ -183,9 +183,13 @@ export async function rejection(promise: Promise<unknown>): Promise<unknown> {
 
 /**
  * Waits for the work the device's engine took on until now, as what an event asks for runs in the engine's turn: a tap
- * that does nothing on a device whose key's sheet is closed, which waits its turn after them.
+ * that does nothing on a device whose key's sheet is closed, which waits its turn after them; then for the sends that
+ * work started, whose requests run outside the turn.
  */
-export const turnEnded = (device: TestDevice) => device.engine.uploadLater();
+export async function turnEnded(device: TestDevice) {
+	await device.engine.uploadLater();
+	await device.engine.sendsSettled();
+}
 
 /** Waits until `holds` is true, as an engine's work after an event ends in its own time: past `ms`, it fails. */
 export async function until(holds: () => boolean | Promise<boolean>, ms = 60_000): Promise<void> {

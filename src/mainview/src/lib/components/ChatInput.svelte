@@ -75,6 +75,9 @@
 		onArrowUpWhenEmpty,
 		editing = false,
 		autofocus = false,
+		sealed = false,
+		fileLimit = null,
+		onGif = undefined,
 		members = [],
 		rooms = [],
 		emojiGroups = [],
@@ -101,6 +104,12 @@
 		 * its send button saves. */
 		editing?: boolean;
 		autofocus?: boolean;
+		/** A conversation's: its files go up sealed (PLAN-E2E-CLIENTES.md, «Adjuntos»), which is the size their cap counts. */
+		sealed?: boolean;
+		/** The cap of where a sealed file goes, which each is held to before it's sent; null when none is known. */
+		fileLimit?: number | null;
+		/** A conversation's GIF pick, which goes as a file of its own, never as a link (Ruling 12). */
+		onGif?: (url: string) => void;
 		members?: MemberOnSidebar[];
 		/** The rooms "#" suggests: those of the space the user can view. */
 		rooms?: GatewayRoom[];
@@ -942,7 +951,7 @@
 	function sendMessage() {
 		const raw = getRaw(inputEl).trim();
 		if (!raw && pendingFiles.length === 0) return;
-		const tooLarge = messageTooLarge(raw, pendingFiles);
+		const tooLarge = messageTooLarge(raw, pendingFiles, sealed, fileLimit);
 		if (tooLarge) {
 			toast(tooLarge, "error");
 			return;
@@ -1068,6 +1077,7 @@
 
 	function handleGifPick(url: string) {
 		showPicker = false;
+		if (onGif) return onGif(url);
 		onSubmit(url);
 	}
 

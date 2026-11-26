@@ -36,8 +36,25 @@
 		"device_added": "A new device was added to your account: {name}.",
 		"delete_device": "Remove this device and delete its data",
 		"too_long": "Message too long",
+		"edit_refused": "Your edit couldn't be saved for everyone.",
+		"delete_refused": "Your message couldn't be deleted for everyone.",
+		"loading_message": "Loading message",
+		"files_wait": "Files and voice messages can't be sent in encrypted conversations yet",
 		"not_ready": "Encrypted conversations aren't ready on this device",
-		"search_split": "In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound."
+		"too_many_waiting": "Too many messages wait to be sent here: send or dismiss them first",
+		"search_split": "In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
+		"file_encrypted": "Encrypted file",
+		"file_progress": "Downloading · {percent}%",
+		"file_altered": "This file isn't the one its sender sent, so it isn't shown.",
+		"file_unavailable": "This file can't be shown.",
+		"file_download_failed": "Couldn't download this file. Try again.",
+		"files_gone": "This message's files aren't on this device any more. Dismiss it, then send them again.",
+		"gif_failed": "The GIF couldn't be sent.",
+		"file_save": "Save",
+		"file_save_named": "Save {name}",
+		"file_play": "Play video",
+		"file_show": "Show picture",
+		"file_named": "{name}: {status}"
 	},
 	"filled_notices": [
 		{
@@ -379,43 +396,43 @@
 		},
 		{
 			"case": "a bidirectional control goes: it disguises an extension",
-			"name": "invoice\u202ecod.exe",
+			"name": "invoice‮cod.exe",
 			"clean": "invoicecod.exe"
 		},
 		{
 			"case": "every bidirectional control goes",
-			"name": "a\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069b.txt",
+			"name": "a؜‎‏‪‫‬‭‮⁦⁧⁨⁩b.txt",
 			"clean": "ab.txt"
 		},
 		{
 			"case": "control characters go",
-			"name": "bell\u0007\u0000\n\u0085\u007f.txt",
+			"name": "bell\u0007\u0000\n.txt",
 			"clean": "bell.txt"
 		},
 		{
 			"case": "format characters go: a zero-width space, a word joiner, a byte order mark and a soft hyphen",
-			"name": "in\u200bvi\u2060si\ufeffble\u00ad.txt",
+			"name": "in​vi⁠si﻿ble­.txt",
 			"clean": "invisible.txt"
 		},
 		{
 			"case": "tag characters go",
-			"name": "flag\udb40\udc67\udb40\udc62\udb40\udc7f.png",
+			"name": "flag󠁧󠁢󠁿.png",
 			"clean": "flag.png"
 		},
 		{
 			"case": "a line separator goes, so the name stays on one line",
-			"name": "photo.jpg\u2028.exe",
+			"name": "photo.jpg .exe",
 			"clean": "photo.jpg.exe"
 		},
 		{
 			"case": "a paragraph separator goes",
-			"name": "photo.jpg\u2029.exe",
+			"name": "photo.jpg .exe",
 			"clean": "photo.jpg.exe"
 		},
 		{
 			"case": "a zero-width joiner stays: it holds an emoji sequence together",
-			"name": "👨\u200d👩\u200d👧.png",
-			"clean": "👨\u200d👩\u200d👧.png"
+			"name": "👨‍👩‍👧.png",
+			"clean": "👨‍👩‍👧.png"
 		},
 		{
 			"case": "the spaces around it go",
@@ -434,7 +451,7 @@
 		},
 		{
 			"case": "a name of hidden characters alone is file",
-			"name": "\u200b\u202e\ufeff",
+			"name": "​‮﻿",
 			"clean": "file"
 		},
 		{
@@ -685,6 +702,36 @@
 			"type": "application/octet-stream"
 		}
 	],
+	"thumbnails": {
+		"most_side": 320,
+		"cases": [
+			{
+				"case": "a JPEG of 320 × 240 is drawn",
+				"bytes": "/9j/wAARCADwAUADASIAAhEBAxEB",
+				"drawn": true
+			},
+			{
+				"case": "a PNG of 180 × 320 is drawn",
+				"bytes": "iVBORw0KGgoAAAANSUhEUgAAALQAAAFACAYAAAAAAAAA",
+				"drawn": true
+			},
+			{
+				"case": "a JPEG whose header says 12000 × 12000 isn't drawn",
+				"bytes": "/9j/wAARCC7gLuADASIAAhEBAxEB",
+				"drawn": false
+			},
+			{
+				"case": "a PNG a pixel past the side isn't drawn",
+				"bytes": "iVBORw0KGgoAAAANSUhEUgAAAUEAAAAKCAYAAAAAAAAA",
+				"drawn": false
+			},
+			{
+				"case": "a GIF isn't drawn, whatever its size",
+				"bytes": "R0lGODlhAQABAA==",
+				"drawn": false
+			}
+		]
+	},
 	"approval_frames": [
 		{
 			"case": "a commitment with the new device's name",

@@ -6,7 +6,7 @@
 // which the page makes a PNG. A frame that has Electrobun's preload (macOS, Linux) can ask for one too: a picture at a
 // URL Bun reaches, fetched without cookies.
 
-import { decodable } from "./image-size";
+import { decodable } from "../mainview/src/lib/image-size";
 
 /** The most bytes a picture may have to be copied: Duvet's own storage takes files of 20 MiB at most. */
 export const MAX_COPIED_BYTES = 32 << 20;

@@ -137,7 +137,12 @@ export class Conversations {
 	 * A conversation's messages changed on this device (an apply opened, kept or took these), or how far its queue is
 	 * applied moved: the views read them again, and draw a row past that number as loading.
 	 */
-	readonly #messagesChanged: (conversationId: string, ids: string[], through: number | null) => void;
+	readonly #messagesChanged: (
+		conversationId: string,
+		ids: string[],
+		through: number | null,
+		deleted?: string[],
+	) => void;
 	/** How far each conversation's queue is applied on this device, as its last apply said (null: out of its group). */
 	readonly #through = new Map<string, number | null>();
 	/** The API's external sender, as this device pinned it (Ruling 32). */
@@ -174,7 +179,7 @@ export class Conversations {
 		soon: (work: () => Promise<void>) => void,
 		failures: Failures,
 		changed: (conversationId: string, state: ConversationState | null) => void,
-		messagesChanged: (conversationId: string, ids: string[], through: number | null) => void,
+		messagesChanged: (conversationId: string, ids: string[], through: number | null, deleted?: string[]) => void,
 	) {
 		this.#parts = parts;
 		this.#soon = soon;
@@ -491,9 +496,15 @@ export class Conversations {
 		const message = ({ kind, result }: EntryResult) => MESSAGE_KINDS.has(kind) && CHANGES.has(result);
 		const ids = new Map(entries.map((entry) => [entry.seq, entry.message_id]));
 		const touched = applied.results.filter(message).flatMap(({ seq }) => ids.get(seq) ?? []);
+		// A tombstone applied, or a message the queue serves as deleted: its files go too (task 18's review, M4).
+		const gone = applied.results
+			.filter(({ kind, result, seq }) => (kind === "delete" && CHANGES.has(result)) || deleted.has(seq))
+			.flatMap(({ seq }) => ids.get(seq) ?? []);
 		const moved = this.#through.get(conv.id) !== applied.applied_through;
 		this.#through.set(conv.id, applied.applied_through);
-		if (touched.length || moved) this.#messagesChanged(conv.id, touched, applied.applied_through);
+		if (touched.length || moved || gone.length) {
+			this.#messagesChanged(conv.id, touched, applied.applied_through, gone);
+		}
 		for (const { kind, result, rule } of applied.results) {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);

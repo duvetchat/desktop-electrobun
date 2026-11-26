@@ -63,6 +63,9 @@ export interface DirectMessage {
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
+	/** A message that didn't send whose only way on is its Dismiss: why, which shows under it (its files went with the
+	 * app). Client-only. */
+	unsent_note?: string;
 	/** A message being sent: the newest message of its conversation the client knew of when it sent it (withPresent). */
 	known_newest?: string;
 	referenced_message?: import("$lib/types").ReferencedMessage | null;

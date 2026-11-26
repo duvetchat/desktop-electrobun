@@ -62,6 +62,31 @@ describe("a message too large for the API", () => {
 		);
 	});
 
+	// A conversation's files go up sealed, each part of 64 KiB with its tag, beside a ciphertext of 32 KiB at most
+	// (PLAN-E2E-CLIENTES.md, «Adjuntos»): the cap is the sealed size's.
+	test("is a conversation's by its files' sealed size, beside its ciphertext", () => {
+		const near = 32 * MiB - 20 * 1024;
+		expect(messageTooLarge("hi", [file(near)])).toBeNull();
+		expect(messageTooLarge("hi", [file(near)], true)).toStartWith("Message too large:");
+		expect(messageTooLarge("hi", [file(31 * MiB)], true)).toBeNull();
+		expect(messageTooLarge("x".repeat(4000), [], true)).toBeNull();
+	});
+
+	// Each file is held to the cap of where it goes, sealed: 20 MiB in Duvet's storage, or the bucket's own (task 18's
+	// review, Missing 1). The API's 413 stays the last word.
+	test("is a conversation's file past the cap of where it goes, by its sealed size", () => {
+		const cap = 20 * MiB;
+		const over = messageTooLarge("hi", [file(1000), file(cap, "video.mp4")], true, cap);
+		expect(over).toStartWith("File too large: 20.00 MB,");
+		expect(over).toEndWith("over the 20 MB limit");
+		// Its bytes fit, but not once sealed.
+		expect(messageTooLarge("hi", [file(cap - 4096)], true, cap)).toStartWith("File too large:");
+		expect(messageTooLarge("hi", [file(cap - 6 * 1024)], true, cap)).toBeNull();
+		// A room's file is the API's to check, and so is one where no cap is known (a bucket without one).
+		expect(messageTooLarge("hi", [file(cap)], false, cap)).toBeNull();
+		expect(messageTooLarge("hi", [file(cap)], true, null)).toBeNull();
+	});
+
 	test("isn't one that fits, nor one without files", () => {
 		expect(messageTooLarge("hi", [file(31 * MiB)])).toBeNull();
 		expect(messageTooLarge("x".repeat(4000), [])).toBeNull();

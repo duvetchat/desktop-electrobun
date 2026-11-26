@@ -19,6 +19,7 @@ function held<T = void>() {
 /** A tab of `user` on the test's hub and locks, serving `methods` while it leads. */
 function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = {}, lead = async () => {}) {
 	const changed: string[] = [];
+	const deleted: string[][] = [];
 	const leaders: string[] = [];
 	let led = 0;
 	const tabs = new BrowserTabs({
@@ -31,10 +32,13 @@ function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = 
 			led++;
 			await lead();
 		},
-		onChanged: (conversation) => changed.push(conversation),
+		onChanged: (conversation, gone) => {
+			changed.push(conversation);
+			deleted.push(gone);
+		},
 		onLeader: (tab) => leaders.push(tab),
 	});
-	return { tabs, changed, leaders, led: () => led };
+	return { tabs, changed, deleted, leaders, led: () => led };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -188,6 +192,10 @@ describe("the tabs of one user", () => {
 		await settle();
 		expect(b.changed).toEqual(["0193a4b2-0000-7000-8000-0000000000c1"]);
 		expect(a.changed).toEqual([]);
+		// The messages its queue deleted go with it, for the other tabs to let their files go (task 18's review, M4).
+		a.tabs.changed("0193a4b2-0000-7000-8000-0000000000c1", ["0193a4b2-0000-7000-8000-0000000000d1"]);
+		await settle();
+		expect(b.deleted).toEqual([[], ["0193a4b2-0000-7000-8000-0000000000d1"]]);
 	});
 
 	test("a tab that closes stops answering, and its own calls fail", async () => {

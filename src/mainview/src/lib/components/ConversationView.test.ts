@@ -140,3 +140,51 @@ test("a Dismiss whose message went shows the API's copy", () => {
 	expect(view).toContain("const went = await discardEncrypted(convId, nonce);");
 	expect(view).toContain("const real = await getDirectMessageById(convId, went);");
 });
+
+// A conversation's files (PLAN-E2E-CLIENTES.md, «Adjuntos»): a message's files, a voice note and a GIF go through the
+// encryption engine, sealed; a Cancel of their upload lets the message go from the device too.
+test("a conversation's files, voice notes and GIFs are sent sealed, through the engine", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).not.toContain("if (saved?.files?.length) throw");
+	expect(view).toMatch(/saved\.outgoing = await outgoingFiles\(saved\.files\)/);
+	expect(view).toMatch(/const facts = await voiceNoteFacts\(blob\)/);
+	expect(view).toMatch(/const picked = await gifFile\(url, gifBytes\)/);
+	expect(view).toContain("gifFile={dmGif}");
+});
+
+test("a cancelled upload discards its message", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(/if \(real === CANCELLED\) return dmCancelled\(convId, nonce, fromDraft, saved\?\.draft\);/);
+	expect(view).toMatch(/async function dmCancelled[\s\S]*?const went = await discardEncrypted\(convId, nonce\)/);
+});
+
+// Task 18's review, M5 and M8.
+test("a waiting message whose files went with the app says so at once, with Dismiss alone", () => {
+	const view = source("ConversationView.svelte");
+	const list = source("MessageList.svelte");
+	expect(view).toMatch(
+		/if \(row\.files_gone\) rows\.push\(\{ \.\.\.waitingRow, attachments: null, unsent_note: t\("e2e_files_gone"\) \}\);/,
+	);
+	// Under the message, why; and its bar offers no Retry, which could only say it again.
+	expect(list).toMatch(/\{#if isFailed && message\.unsent_note\}\s*\{@render unsentLine\(message\)\}/);
+	expect(list).toMatch(
+		/\{#if !message\.unsent_note\}\s*<button[^>]*onclick=\{\(\) => onRetry\(message\)\}>Retry<\/button>\s*\{\/if\}/,
+	);
+});
+
+test("a send with files offers its Cancel from the start, while its thumbnails are made", () => {
+	const view = source("ConversationView.svelte");
+	// The upload is followed first, and the thumbnails made inside it: a Cancel meanwhile stops it before it goes.
+	expect(view).toMatch(
+		/sendFollowed\(nonce, saved\?\.files, async \(upload\) => \{[\s\S]*?outgoingFiles\(saved\.files\);\s*upload\?\.signal\?\.throwIfAborted\(\);/,
+	);
+	expect(view.indexOf("outgoingFiles(saved.files)")).toBeGreaterThan(view.indexOf("real = await sendFollowed("));
+});
+
+test("a send refused as not ready, or past the cap, says so in the table's words (#508)", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain('if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");');
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");',
+	);
+});

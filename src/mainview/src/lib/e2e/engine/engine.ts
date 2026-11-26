@@ -5,7 +5,7 @@
 // Its work goes one flow at a time, in the order it came: the start («Arranque», steps 1 to 7), the person's taps, and
 // what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts and inbox.ts hold the steps, sync.ts
 // each conversation's queue and group; this class keeps the state the views read, and what's due later.
-import { FetchError, UpdateRequiredError } from "$lib/api/api";
+import { FetchError, UpdateRequiredError, type UploadOptions } from "$lib/api/api";
 import type { DirectMessage } from "$lib/api/conversations";
 import type { E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
@@ -14,6 +14,7 @@ import type { CoreHost, HostOpened } from "../host";
 import { bindSession, coreStatus, ownDevice } from "./bootstrap";
 import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import { Failures } from "./failures";
+import { fileNames } from "./files";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
@@ -24,13 +25,20 @@ import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
 export type { Outgoing, Pending } from "./send";
+export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
 
 /**
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
  * `through`, how far its queue is applied now, when that moved.
  */
-export type MessagesListener = (conversationId: string, ids?: string[], through?: number | null) => void;
+export type MessagesListener = (
+	conversationId: string,
+	ids?: string[],
+	through?: number | null,
+	/** The messages the queue deleted, whose files go (task 18's review, M4). */
+	deleted?: string[],
+) => void;
 
 /** What the engine waits with: the system's timers in the app, a test's clock in its tests. */
 export interface Clock {
@@ -153,8 +161,8 @@ export class E2EEngine {
 		this.#parts = parts;
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
-		const messagesChanged = (id: string, ids?: string[], through?: number | null) => {
-			for (const listener of this.#messageListeners) listener(id, ids, through);
+		const messagesChanged = (id: string, ids?: string[], through?: number | null, deleted?: string[]) => {
+			for (const listener of this.#messageListeners) listener(id, ids, through, deleted);
 		};
 		this.#groups = new Conversations(
 			parts,
@@ -165,15 +173,22 @@ export class E2EEngine {
 			},
 			messagesChanged,
 		);
-		this.#sends = new Sends(parts, this.#groups, soon, {
-			changed: messagesChanged,
-			sent: (id, nonce, message) => {
-				for (const listener of this.#sentListeners) listener(id, nonce, message);
+		this.#sends = new Sends(
+			parts,
+			this.#groups,
+			soon,
+			(work) => this.#act(work),
+			(work) => this.#queue(work),
+			{
+				changed: messagesChanged,
+				sent: (id, nonce, message) => {
+					for (const listener of this.#sentListeners) listener(id, nonce, message);
+				},
+				refused: (id, message, kind) => {
+					for (const listener of this.#refusedListeners) listener(id, message, kind);
+				},
 			},
-			refused: (id, message, kind) => {
-				for (const listener of this.#refusedListeners) listener(id, message, kind);
-			},
-		});
+		);
 	}
 
 	/** Each state the engine goes to, as it goes. */
@@ -224,10 +239,20 @@ export class E2EEngine {
 
 	/**
 	 * The person's message, sent after what waits in its conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message,
-	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss.
+	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss. Its
+	 * files go sealed («Adjuntos»), `upload` following their upload and stopping it: a Cancel is then its Dismiss. Only
+	 * the core's calls take the engine's turn: its request waits in its conversation's lane.
 	 */
-	sendMessage(message: Outgoing): Promise<DirectMessage | null> {
-		return this.#act(() => this.#sends.send(message));
+	async sendMessage(message: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
+		try {
+			return await this.#sends.send(message, upload);
+		} catch (error) {
+			// Its request's 426, which came outside the turn: the device waits for its update.
+			if (error instanceof UpdateRequiredError && this.state.name !== "update") {
+				this.#set({ name: "update", minimum: error.minimum });
+			}
+			throw error;
+		}
 	}
 
 	/**
@@ -249,7 +274,36 @@ export class E2EEngine {
 	 * after all, whose copy the views show in its place; else null.
 	 */
 	async discardMessage(conversationId: string, nonce: string): Promise<string | null> {
-		return (await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"))) ?? null;
+		// Its request out stops first, outside the turn, which its `sent` takes: a message the API took is bound (N1).
+		const took = await this.#sends.stopDelivery(nonce);
+		const went = await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"));
+		return took ?? went ?? null;
+	}
+
+	/**
+	 * A file of a message, its sealed bytes opened by this device's core with the key its message gives it, part by part
+	 * («Adjuntos»): files.ts' openSealed checks what it opens to. Outside the engine's turn, as it changes nothing.
+	 */
+	openFile(key: string, attachmentId: string, sealed: Blob, progress?: (done: number) => void): Promise<Blob> {
+		return this.#parts.host.openFile(key, attachmentId, sealed, progress);
+	}
+
+	/**
+	 * What the conversations' sends do now, settled: their requests run outside the engine's turn, so what the turn took
+	 * on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
+	 */
+	sendsSettled(): Promise<void> {
+		return this.#sends.settled();
+	}
+
+	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
+	fileFailed(): void {
+		this.#failures.note("attachment");
+	}
+
+	/** The names of the files whose messages this device holds, by their IDs (Ruling 31): Settings → Attachments'. */
+	fileNames(): Promise<Map<string, string>> {
+		return fileNames(this.#parts.host);
 	}
 
 	/** What the device's database shows of these messages of the conversation: a row for each it holds. */
@@ -414,7 +468,9 @@ export class E2EEngine {
 	 */
 	async #act<T>(work: () => Promise<T>): Promise<T> {
 		const done = await this.#queue(async () => {
-			if (this.state.name !== "ready") throw new Error("encrypted conversations aren't ready on this device");
+			// A code of its own, which crosses to another tab, for the view to say it (#508).
+			if (this.state.name !== "ready")
+				throw new CoreError("not_ready", "encrypted conversations aren't ready on this device");
 			try {
 				return { value: await work() };
 			} catch (error) {

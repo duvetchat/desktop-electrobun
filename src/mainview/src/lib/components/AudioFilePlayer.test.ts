@@ -68,3 +68,16 @@ test("an audio file's duration probe lets go of the file once it has its duratio
 	expect(player).toMatch(/releaseProbe = release;/);
 	expect(player).toContain("onDestroy(() => releaseProbe?.());");
 });
+
+// A conversation's audio and voice notes, decrypted in memory (lib/e2e/decrypted-files): a player takes the file's
+// Blob, which its analysis and its WAV read as it is (no fetch of a blob: URL, which the app's connect-src doesn't take);
+// it plays from the Blob's URL.
+test("a player takes a decrypted file's Blob, and reads it as it is", () => {
+	for (const file of players) {
+		const player = source(file);
+		expect(player).toMatch(/blob = null,/);
+		expect(player).toMatch(/blob\?: Blob \| null;/);
+		expect(player).toContain("const streamUrl = blob ?? streamOf(url);");
+		expect(player).toContain("wavMaking ??= makeWav(blob ?? streamOf(src))");
+	}
+});

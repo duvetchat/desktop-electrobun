@@ -42,3 +42,15 @@ test("every file has a checkbox for deletion, and the selected ones get a button
 	expect(all).toBeGreaterThan(-1);
 	expect(selected).toBeLessThan(all);
 });
+
+// A conversation's file (PLAN-E2E-CLIENTES.md, «Adjuntos», Ruling 31): the API keeps it sealed, as "file", and only this
+// device's own messages say what it is. Its name comes from one search of them, else it's an encrypted file; its
+// sealed bytes are never offered as the file, to preview or to download.
+test("Settings names an encrypted file from this device's own messages", () => {
+	expect(settings).toContain("encryptedNames = await encryptedFileNames()");
+	expect(settings).toMatch(
+		/att\.kind === 1 \? \(encryptedNames\?\.get\(att\.id\) \?\? t\("e2e_file_encrypted"\)\) : att\.filename/,
+	);
+	expect(settings).toMatch(/const isImage = att\.kind !== 1 && isImageAttachment\(att\.content_type\)/);
+	expect(settings).toMatch(/\{#if att\.kind !== 1\}\s*<a\s*href=\{src\}\s*download=/);
+});
