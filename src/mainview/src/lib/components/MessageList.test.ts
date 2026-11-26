@@ -305,6 +305,61 @@ describe("a row's action toolbar", () => {
 	});
 });
 
+// A conversation's history shared with a member (PLAN-E2E-CLIENTES.md, Task 30): the notice the API posts (type 4) says
+// who shared how far back with whom, "you" to whom it went. It's a notice: nobody edits or pins it, and a reply to it
+// mentions nobody (isNotice).
+describe("a shared history's notice", () => {
+	const ME = "0190a3b2-0000-7000-8000-000000000001";
+	const BEA = "0190a3b2-0000-7000-8000-000000000003";
+	const member = (id: string, username: string): MemberOnSidebar => ({
+		...{ id, member_id: id, username, raw_username: username, avatar_url: null, banner_url: null, status: "online" },
+		...{ mobile_only: false, badges: 0, is_bot: false, is_owner: false, roles: [], bio: "" },
+	});
+	const members = [member(message.author_id, "Ana"), member(BEA, "Bea"), member(ME, "me")];
+	const shared = (to: string, range: string): Message => ({
+		...message,
+		id: "0190a3c1-0000-7000-8000-00000000ab01",
+		content: null,
+		type: MessageType.HistoryShare,
+		history_share: { to_user_id: to, range },
+	});
+	const drawn = (notice: Message) =>
+		render(MessageList, { props: { ...props({ messages: [notice] }), members } }).body.replaceAll("&#39;", "'");
+	beforeEach(() =>
+		currentUser.set({
+			...{ id: ME, username: "me", email_verified: true, alias: null, avatar: null, banner: null, custom: "" },
+			...{ flags: 0, badges: 0, is_bot: false, created_at: "", updated_at: "" },
+		}),
+	);
+	afterEach(() => currentUser.set(null));
+
+	test("says who shared how far back with whom, and «you» to the person it went to", async () => {
+		const { notice, NOTICES } = await import("$lib/e2e/notices");
+		expect(drawn(shared(BEA, "week"))).toContain(notice("shared", { a: "Ana", range: NOTICES.range_week, b: "Bea" }));
+		expect(drawn(shared(ME, "all"))).toContain(notice("shared_with_you", { a: "Ana", range: NOTICES.range_all }));
+	});
+
+	// A row's hover bar and its menu mount only under the pointer or on a right click, which a server render never has:
+	// what holds is the menu's branch for a notice, Delete alone, and the bar's edit, which takes a text a notice lacks.
+	test("is a notice, whose menu has Delete alone, and whose row has no text to edit", async () => {
+		const { isNotice } = await import("$lib/types");
+		const notice = shared(BEA, "day");
+		expect(isNotice(notice)).toBe(true);
+		expect(notice.content).toBeNull();
+		const list = source("MessageList.svelte").replaceAll("\r\n", "\n");
+		const start = list.indexOf("{#snippet messageItems(message: Message)}");
+		const menu = list.slice(start, list.indexOf("{/snippet}", start));
+		const [forNotice, forOthers] = menu.split("{:else}");
+		expect(forNotice).toContain("{#if isNotice(message)}");
+		expect(forNotice).toContain("Delete message");
+		expect(forNotice).not.toContain("Edit message");
+		expect(forNotice).not.toContain("Pin message");
+		expect(forOthers).toContain("Edit message");
+		expect(forOthers).toContain("Pin message");
+		expect(list).toContain('mine &&\n\t\t\t(message.content ?? "").trim() !== "" &&');
+	});
+});
+
 // #357: bubbles on Apple's systems, flat rows elsewhere, each a setting; groups show their author once and their time
 // once.
 describe("the two layouts", () => {

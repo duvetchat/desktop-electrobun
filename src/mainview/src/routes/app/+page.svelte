@@ -79,6 +79,7 @@
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
 	import BanDialog from "$lib/components/BanDialog.svelte";
+	import ShareHistoryDialog from "$lib/components/e2e/ShareHistoryDialog.svelte";
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
 	import { startSystemNotifications } from "$lib/system-notifications";
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
@@ -1121,6 +1122,7 @@
 <SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />
 <ReactionsDialog />
 <BanDialog />
+<ShareHistoryDialog />
 <UserFlagsSheet />
 <SafetyNumberDialog />
 {#if $currentUser && $friendsReady}

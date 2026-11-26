@@ -275,6 +275,7 @@
 			onProfile={() => (activePopoverMemberId = member.id)}
 			{onMention}
 			onRemoveFromGroup={onRemoveMember}
+			conversationId={space ? null : channelId}
 		/>
 	{/if}
 </ContextMenu>

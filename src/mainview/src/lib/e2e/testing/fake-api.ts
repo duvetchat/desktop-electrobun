@@ -531,6 +531,18 @@ interface Segment {
 	file: string;
 }
 
+/** A package as the API shows it (its HistoryShare). */
+interface ShareView {
+	id: string;
+	conversation_id: string;
+	from_user_id: string;
+	kind: "share" | "catch_up";
+	range: string | null;
+	starts_at: string;
+	size: number;
+	parts: number;
+}
+
 interface Share {
 	id: string;
 	conversation_id: string;
@@ -599,6 +611,11 @@ export class FakeApi {
 	 * request from a client below it, or of a platform it doesn't name, gets a 426. Day one's platforms, any version.
 	 */
 	minClients: Record<string, string> = { "desktop-windows": "0.0.0", web: "0.0.0", android: "0.0.0" };
+	/**
+	 * What the API's clock is off by as it stamps a message or another entry of a conversation's queue (sent_at): a test's
+	 * way to a message, an edit or a deletion of days ago, and to a day of the backup that ended.
+	 */
+	sentAtOffset = 0;
 
 	#users = new Set<string>();
 	/** A new password's links, by their token: whose they are. */
@@ -619,19 +636,21 @@ export class FakeApi {
 	 * retired out of the backup.
 	 */
 	#backupKeys = new Map<string, { retired: Map<string, number | null>; resetAt: number }>();
-	/**
-	 * What the fake adds to the time it dates a conversation's entries and messages by (`sent_at`): a test's messages of
-	 * a day that ended, as the API's clock would have dated them then.
-	 */
-	timeShift = 0;
 	#shares = new Map<string, Share>();
 	/** Who sent a catch-up to whom in which conversation (sender:conversation:recipient): the API takes one a day. */
 	#catchUpsSent = new Set<string>();
+	/** When each user's shares (not catch-ups) went up this past hour: the API takes ten an hour (HistoryShareLimit). */
+	#sharesSent = new Map<string, number[]>();
 	#files = new Map<string, Uint8Array<ArrayBuffer>>();
 	/** Messages' files, by the ID their client gave them: whose they are, and what they're on (none yet). */
 	#fileRows = new Map<string, { owner: string; row: FileRow }>();
 	/** The most bytes one file takes, as Duvet's storage does: what goes up encrypted counts. */
 	fileLimit = 20 << 20;
+	/**
+	 * How the API shows a package to its recipient (their list, and HISTORY_SHARE_CREATE): as it is, unless a test has
+	 * it lie, as a server could, of its conversation, sharer, kind or parts.
+	 */
+	listedAs = (view: ShareView): ShareView => view;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -1176,10 +1195,12 @@ export class FakeApi {
 				this.#completeShare(ctx),
 			),
 			route("GET", `${me}/history-shares`, "device", ({ session, device }) => {
-				const waiting = [...this.#shares.values()].filter(
-					(share) => share.completed && share.to_user_id === session.user && !share.acked.has(device!.id),
-				);
-				return ok(waiting.map((share) => this.#shareView(share)));
+				// As the API's: the oldest 100 by ID, the device acknowledging them to see the next.
+				const waiting = [...this.#shares.values()]
+					.filter((share) => share.completed && share.to_user_id === session.user && !share.acked.has(device!.id))
+					.sort((a, b) => a.id.localeCompare(b.id))
+					.slice(0, 100);
+				return ok(waiting.map((share) => this.listedAs(this.#shareView(share))));
 			}),
 			route("GET", `/api/history-shares/(?<share>${UUID_PATH})/parts/(?<n>\\d+)`, "session", ({ session, params }) => {
 				const share = this.#shares.get(params.share!);
@@ -1651,7 +1672,7 @@ export class FakeApi {
 
 	/** An entry of the conversation's queue, under its next number. */
 	#addEntry(conv: Conversation, entry: Omit<Entry, "seq" | "sent_at">): Entry {
-		const added = { seq: ++conv.seq, sent_at: Date.now() + this.timeShift, ...entry };
+		const added = { seq: ++conv.seq, sent_at: Date.now() + this.sentAtOffset, ...entry };
 		conv.entries.push(added);
 		return added;
 	}
@@ -2061,14 +2082,14 @@ export class FakeApi {
 		// allowed_mentions say not to, or that's a notice), each once, of the members, never its own author.
 		const members = conv.members.map((m) => m.user_id);
 		const mentionReplied = body?.allowed_mentions == null || body.allowed_mentions.replied_user === true;
-		const notice = replied?.type === 2 || replied?.type === 3;
+		const notice = replied?.type === 2 || replied?.type === 3 || replied?.type === 4;
 		const named: string[] = [...listed, ...(replied && mentionReplied && !notice ? [replied.author_id] : [])];
 		const mentions = [...new Set(named)].filter((user) => user !== session.user && members.includes(user));
 		const at = now();
 		const message: Message = {
 			...{ id: this.#id(), conversation_id: conv.id, author_id: session.user, content: null, type: 0 },
 			...{ created_at: at, updated_at: at, nonce, ciphertext: body.ciphertext, seq: ++conv.seq },
-			sent_at: Date.now() + this.timeShift,
+			sent_at: Date.now() + this.sentAtOffset,
 			...{ generation: framed.generation!, epoch: framed.epoch!, sender_device_id: device!.id, edited_at: null },
 			...{ mentions, message_reference: body.message_reference ?? null },
 			sticker_attachment_id: body.sticker_attachment_id ?? null,
@@ -2229,8 +2250,9 @@ export class FakeApi {
 		return segment ? this.#files.get(segment.file) : undefined;
 	}
 
-	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share) {
-		return { id, conversation_id, from_user_id, kind, range, starts_at, size, parts };
+	/** A package as clients get it: a catch-up has no range (null, as the API's *string gives it). */
+	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share): ShareView {
+		return { id, conversation_id, from_user_id, kind, range: range || null, starts_at, size, parts };
 	}
 
 	#putShare(ctx: Context): Answer {
@@ -2268,6 +2290,19 @@ export class FakeApi {
 			throw new Refusal({ status: 429, body: { error: "too many requests" }, headers: { "Retry-After": "86400" } });
 		}
 		if (share.kind === "catch_up") this.#catchUpsSent.add(sent);
+		// A new share counts toward its sender's ten an hour: the eleventh is a 429 until the oldest of them is an hour old.
+		if (share.kind === "share") {
+			const at = Date.now();
+			const hour = (this.#sharesSent.get(session.user) ?? []).filter((sentAt) => sentAt > at - 3600_000);
+			if (hour.length >= 10) {
+				const wait = Math.max(1, Math.ceil((hour[0]! + 3600_000 - at) / 1000));
+				throw new Refusal({
+					...{ status: 429, body: { error: "too many requests, try again later" } },
+					headers: { "Retry-After": String(wait) },
+				});
+			}
+			this.#sharesSent.set(session.user, [...hour, at]);
+		}
 		this.#shares.set(share.id, share);
 		return ok(this.#shareView(share), 201);
 	}
@@ -2286,7 +2321,7 @@ export class FakeApi {
 		if (share.uploaded.size < share.parts) throw fail(409, "the share is missing parts");
 		if (share.completed) return NO_CONTENT;
 		share.completed = true;
-		this.#emit(share.to_user_id, "HISTORY_SHARE_CREATE", this.#shareView(share));
+		this.#emit(share.to_user_id, "HISTORY_SHARE_CREATE", this.listedAs(this.#shareView(share)));
 		if (share.kind === "share") {
 			const conv = this.#conversations.get(share.conversation_id)!;
 			const at = now();

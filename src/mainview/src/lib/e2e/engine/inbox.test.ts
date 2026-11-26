@@ -136,16 +136,17 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			fake.addConversation({ type: "dm", members: [ana, bob] });
 			useFake(fake);
 			const received: Record<string, unknown>[] = [];
+			const [first, second] = [btoa("not the core's"), btoa("a history key")];
+			// The core can't take the second yet, whenever it's asked: each round asks again (Task 30).
 			const host = watchedHost(testHost(), [], (cmd, command) => {
 				if (cmd !== "receive_direct") return null;
 				received.push(command);
-				return received.length === 2
+				return command.message === second
 					? new CoreError("bad_command", "a field is missing", { field: "group_info" })
 					: null;
 			});
 			const a = await firstDevice(fake, ana, { host });
 			const b = await firstDevice(fake, bob);
-			const [first, second] = [btoa("not the core's"), btoa("a history key")];
 			for (const message of [first, second]) await b.api.sendToDevice(a.registered[0]!, message);
 			await until(async () => (await a.api.inbox()).length === 0);
 
@@ -153,7 +154,9 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 				(one) => certificateDevice(one) === b.registered[0],
 			);
 			expect(certificate).toBeString();
-			expect(received.map((command) => command.from_certificate)).toEqual([certificate, certificate]);
+			expect(received.length).toBeGreaterThanOrEqual(2);
+			expect(received.every((command) => command.from_certificate === certificate)).toBe(true);
+			expect(received.filter((command) => command.message === first)).toHaveLength(1);
 			expect((a.store.read<{ message: string }[]>("later") ?? []).map(({ message }) => message)).toEqual([second]);
 			await Promise.all([a.engine.stop(), b.engine.stop()]);
 		},

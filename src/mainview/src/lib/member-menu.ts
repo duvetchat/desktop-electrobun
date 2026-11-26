@@ -44,8 +44,8 @@ export interface MemberMenuInput {
 	/** The user is in a call, places one, or one rings them: no other one starts (startConversationCall). */
 	busy: boolean;
 	/** What the list does with a member: opens their profile beside them, mentions them in its chat's box, takes them out
-	 * of its group (for the group's owner). */
-	can: { profile: boolean; mention: boolean; removeFromGroup: boolean };
+	 * of its group (for the group's owner), shares its encrypted conversation's history with them (Task 30). */
+	can: { profile: boolean; mention: boolean; removeFromGroup: boolean; shareHistory?: boolean };
 	/** This device's encrypted conversations are ready: a contact's security number can be shown (Task 28). */
 	encrypted: boolean;
 }
@@ -65,6 +65,8 @@ export interface MemberMenuItems {
 	/** Kick and Ban, as today (moderationOf). */
 	moderation: ReturnType<typeof moderationOf>;
 	removeFromGroup: boolean;
+	/** The list's conversation's history, shared with them (Task 30). */
+	shareHistory: boolean;
 	/** Duvet staff's flags and badges editor. */
 	staff: boolean;
 	/** Their security number, to compare and verify (Task 28). */
@@ -106,6 +108,7 @@ export function canVerify(
  * - in a Space, the roles the user may give or take (Manage Roles, a role below their highest, any for the owner: the
  *   API's checkRoleHierarchy), for a member whose member ID the list knows, and Kick and Ban, as the API allows them;
  * - Remove from group, for the group's owner, on anyone else;
+ * - Share history, in an encrypted conversation's list, on anyone else who is a person;
  * - the user's display name, on their own row;
  * - Duvet staff's editor, for someone whose flags the list has;
  * - Verify security number, for whom canVerify says, while this device's encrypted conversations are ready.
@@ -135,6 +138,7 @@ export function memberMenuItems({ me, person, space, ties, busy, can, encrypted 
 			? moderationOf(space, { id: person.id, member_id: person.memberId, username: person.name })
 			: null,
 		removeFromGroup: can.removeFromGroup && other,
+		shareHistory: !!can.shareHistory && human,
 		staff: !!me?.staff && person.flags !== null,
 		verify: encrypted && canVerify(me?.id, person, ties),
 	};

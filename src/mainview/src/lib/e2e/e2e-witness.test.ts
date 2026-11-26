@@ -170,12 +170,12 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			expect(drawn.status).toBe("ready");
 			// The encrypted backup (Task 32): a day of it that ended goes up from Bo's device once its app is quiet, as bytes
 			// the API can't open, and its record (Bo's, in localStorage) holds IDs alone.
-			fake.timeShift = -24 * 3600 * 1000;
+			fake.sentAtOffset = -24 * 3600 * 1000;
 			const backedUp = await b.engine.sendMessage({
 				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
 				text: `${witness}, backed up`,
 			});
-			fake.timeShift = 0;
+			fake.sentAtOffset = 0;
 			if (!backedUp) throw new Error("the message wasn't sent");
 			await until(async () => (await b.engine.messages(conversation, [backedUp.id]))[0]?.sent_at === backedUp.sent_at);
 			b.clock.advance(60_000);

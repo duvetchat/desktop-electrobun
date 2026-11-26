@@ -23,7 +23,7 @@ import { useXHR } from "../testing/xhr";
 // API: a day that ended goes up with the app quiet, by the version its build answered, in the place of the copy it
 // names; another device's copy is taken in before the day is built over it; a new device restores the days, newest
 // conversation first; a change of keys moves the old days to the new key; a full quota pauses it all for a day. The
-// fake dates the messages a day or more back (timeShift), as the API dated them then, since the core seals only days
+// fake dates the messages a day or more back (sentAtOffset), as the API dated them then, since the core seals only days
 // that ended by its own clock.
 // A day's segment goes up as the app's Blob uploads do, through the XMLHttpRequest Bun lacks.
 useXHR();
@@ -93,12 +93,12 @@ async function sent(
 	ago: number,
 	all: TestDevice[],
 ): Promise<DirectMessage> {
-	fake.timeShift = -ago;
+	fake.sentAtOffset = -ago;
 	let message: DirectMessage | null;
 	try {
 		message = await from.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
 	} finally {
-		fake.timeShift = 0;
+		fake.sentAtOffset = 0;
 	}
 	if (!message) throw new Error("the message wasn't sent");
 	for (const device of all) {
@@ -246,10 +246,10 @@ describe.skipIf(!coreLibrary)("the encrypted backup", () => {
 			const kept = await sent(fake, a, conversation, "kept", DAY, [a, b]);
 			const gone = await sent(fake, a, conversation, "deleted for everyone", DAY, [a, b]);
 			// Edited the same day: the API dates the edit's entry as it takes it.
-			fake.timeShift = -DAY;
+			fake.sentAtOffset = -DAY;
 			await a.engine.editMessage(conversation, gone.id, "edited, then deleted");
 			await until(async () => (await textOn(b, conversation, gone.id)) === "edited, then deleted");
-			fake.timeShift = 0;
+			fake.sentAtOffset = 0;
 			a.clock.advance(MINUTE);
 			await until(async () => (await a.api.segments()).length === 1);
 			await turnEnded(a);

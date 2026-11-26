@@ -79,6 +79,7 @@ describe("a member's menu", () => {
 			displayName: false,
 			moderation: null,
 			removeFromGroup: false,
+			shareHistory: false,
 			staff: false,
 			verify: false,
 		});
@@ -146,6 +147,16 @@ describe("a member's menu", () => {
 		expect(
 			memberMenuItems(input({ space: null, can: { ...input().can, removeFromGroup: true } })).removeFromGroup,
 		).toBe(true);
+	});
+
+	// Task 30: an encrypted conversation's history, shared with another member who is a person, where the list shares it.
+	test("Share history in a conversation's list, on anyone else who is a person", () => {
+		const sharing = (change: Partial<Input> = {}) =>
+			memberMenuItems(input({ space: null, can: { ...input().can, shareHistory: true }, ...change })).shareHistory;
+		expect(sharing()).toBe(true);
+		expect(sharing({ person: { ...carol, id: ME } })).toBe(false);
+		expect(sharing({ person: { ...carol, isBot: true } })).toBe(false);
+		expect(memberMenuItems(input({ space: null })).shareHistory).toBe(false);
 	});
 });
 

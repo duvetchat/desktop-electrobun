@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { CoreError } from "../errors";
 import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -80,39 +79,18 @@ async function waitingForCy(given: Parameters<typeof firstDevice>[2] = {}) {
 }
 
 /** The message reached Cy's device by its catch-up from Ana. */
-async function reached(c: TestDevice, conversation: string, ana: string, message: string) {
-	expect(await importCatchUp(c, conversation, ana)).toBeGreaterThan(0);
+async function reached(c: TestDevice, conversation: string, message: string) {
+	await caughtUp(c, conversation, message);
 	const [row] = await c.engine.messages(conversation, [message]);
 	expect(row).toMatchObject({ status: "ok", text: "while you were away" });
 }
 
 /**
- * The catch-up waiting for the device's user from `from` in the conversation, as Task 30 will import it: its key taken
- * from the device's inbox, its parts down and opened by its core. What it imported.
+ * The device's engine adds the catch-up waiting for its user by itself (Task 30): its key taken from the inbox, its
+ * parts down and opened by its core. Until the message's row is there, opened.
  */
-async function importCatchUp(device: TestDevice, conversation: string, from: string) {
-	let share: { id: string; parts: number } | undefined;
-	await until(async () => {
-		share = (await device.api.shares()).find(
-			(one) => one.kind === "catch_up" && one.conversation_id === conversation && one.from_user_id === from,
-		);
-		return !!share;
-	});
-	const parts: Uint8Array[] = [];
-	for (let n = 0; n < share!.parts; n++) parts.push(await device.api.sharePart(share!.id, n));
-	// Its key came by the inbox, which the device's engine takes as its DEVICE_MESSAGE comes.
-	let imported = 0;
-	await until(async () => {
-		imported = await device.host
-			.importShare(share!.id, parts)
-			.then((done) => done.imported)
-			.catch((error: unknown) => {
-				if (error instanceof CoreError && error.code === "not_found") return 0;
-				throw error;
-			});
-		return imported > 0;
-	});
-	return imported;
+async function caughtUp(device: TestDevice, conversation: string, message: string) {
+	await until(async () => (await device.engine.messages(conversation, [message]))[0]?.status === "ok", 120_000);
 }
 
 describe.skipIf(!coreLibrary)("members without a device", () => {
@@ -164,7 +142,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await until(() => a.engine.conversationState(conversation) === null);
 			await sameGroup([a, c], conversation);
 			// Ana's device hands him what it noted: a catch-up up for him, its key in his device's inbox, which opens it.
-			expect(await importCatchUp(c, conversation, ana)).toBeGreaterThan(0);
+			await caughtUp(c, conversation, sent!.id);
 			const [row] = await c.engine.messages(conversation, [sent!.id]);
 			expect(row).toMatchObject({ status: "ok", text: "while you were away" });
 			// Delivered, its notes are gone: there's nothing more to catch Cy up on.
@@ -198,7 +176,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			});
 			const d = await firstDevice(fake, dee);
 			await sameGroup([a, b, d], conversation);
-			expect(await importCatchUp(d, conversation, ana)).toBeGreaterThan(0);
+			await caughtUp(d, conversation, sent!.id);
 			const [row] = await d.engine.messages(conversation, [sent!.id]);
 			expect(row).toMatchObject({ status: "ok", text: "welcome, Dee" });
 		},
@@ -211,7 +189,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 		"a member that several applies name meanwhile is caught up once",
 		async () => {
 			const made: string[] = [];
-			const { fake, ana, cy, conversation, a, sent } = await waitingForCy({ host: countingCatchUps(testHost(), made) });
+			const { fake, cy, conversation, a, sent } = await waitingForCy({ host: countingCatchUps(testHost(), made) });
 			// Ana's device hears what comes next at once: Cy's first device joining, and two messages of his.
 			fake.holdEvents();
 			const c = await firstDevice(fake, cy);
@@ -220,7 +198,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 				await c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
 			}
 			fake.releaseEvents();
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 			await turnEnded(a);
 			expect(made).toEqual([cy]);
 		},
@@ -248,7 +226,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 				holdUploads(null);
 				release();
 			}
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 		},
 		SLOW,
 	);
@@ -258,7 +236,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 	test(
 		"a catch-up cut after its package went up resumes it, which the API takes again",
 		async () => {
-			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			const { fake, puts, cy, conversation, a, sent } = await waitingForCy();
 			fake.cutRequest({ method: "PUT", path: PARTS });
 			const c = await firstDevice(fake, cy);
 			await until(() => puts().length === 1);
@@ -266,7 +244,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "hi Ana" });
 			await turnEnded(a);
 			a.clock.advance(60_000);
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 			expect(new Set(puts()).size).toBe(1);
 		},
 		SLOW,
@@ -277,7 +255,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 	test(
 		"a catch-up that fails otherwise goes again after a wait, longer each time",
 		async () => {
-			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			const { fake, puts, cy, conversation, a, sent } = await waitingForCy();
 			fake.refuse({ method: "PUT", path: SHARES }, 500, { error: "internal server error" });
 			fake.refuse({ method: "PUT", path: SHARES }, 500, { error: "internal server error" });
 			const c = await firstDevice(fake, cy);
@@ -292,7 +270,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await turnEnded(a);
 			expect(puts()).toHaveLength(2);
 			a.clock.advance(60_000);
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 			expect(puts()).toHaveLength(3);
 		},
 		SLOW,
@@ -302,7 +280,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 	test(
 		"a catch-up the API refuses for a while waits as long as it says",
 		async () => {
-			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			const { fake, puts, cy, conversation, a, sent } = await waitingForCy();
 			fake.refuse({ method: "PUT", path: SHARES }, 429, { error: "too many requests" }, { "Retry-After": "120" });
 			const c = await firstDevice(fake, cy);
 			await until(() => puts().length === 1);
@@ -311,7 +289,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await turnEnded(a);
 			expect(puts()).toHaveLength(1);
 			a.clock.advance(1_000);
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 		},
 		SLOW,
 	);
@@ -322,7 +300,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 		"a catch-up whose turn came while the engine wasn't ready goes once it is",
 		async () => {
 			let locked = false;
-			const { fake, ana, cy, conversation, a, sent } = await waitingForCy({
+			const { fake, cy, conversation, a, sent } = await waitingForCy({
 				host: lockable(testHost(), () => locked),
 			});
 			fake.holdEvents();
@@ -336,7 +314,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			expect(a.engine.state.name).toBe("locked");
 			locked = false;
 			a.clock.advance(2_000);
-			await reached(c, conversation, ana, sent.id);
+			await reached(c, conversation, sent.id);
 		},
 		SLOW,
 	);
@@ -369,7 +347,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			expect(await c.api.shares()).toEqual([]);
 			// A day on, it goes, with what was noted before the refusal.
 			a.clock.advance(DAY / 2);
-			expect(await importCatchUp(c, conversation, ana)).toBeGreaterThan(0);
+			await caughtUp(c, conversation, sent!.id);
 			const [row] = await c.engine.messages(conversation, [sent!.id]);
 			expect(row).toMatchObject({ status: "ok", text: "kept a day" });
 		},

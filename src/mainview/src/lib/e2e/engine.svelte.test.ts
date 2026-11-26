@@ -11,6 +11,7 @@ import { firstDevice, groupOf, rejection, shownKey, testDevice, testHost, until,
 import { FakeApi } from "./testing/fake-api";
 import { FakeHub, FakeLocks } from "./testing/fake-tabs";
 import { BunCoreHost, coreLibrary } from "./testing/host-bun";
+import { useXHR } from "./testing/xhr";
 import { BrowserTabs, lockName } from "./web/tabs";
 
 // The engine's module and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
@@ -82,6 +83,8 @@ async function reopened(host: BunCoreHost, user: string) {
 }
 
 afterEach(() => page.stopEngine());
+// A shared history's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
+useXHR();
 
 describe.skipIf(!coreLibrary)("the page's engine", () => {
 	test(
@@ -367,6 +370,65 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			await page.stopEngine();
 			await page.startEngine(ana, platform({ desktop: true, desktopHost: async () => host }));
 			await until(() => shown(notice("inactive_warning", { device: name })));
+		},
+		SLOW,
+	);
+
+	// Task 30's review, M1: the person hears their share went once the API took it; one that ends for good after that
+	// is told to them, wherever they are.
+	test(
+		"a share of the history the person heard went, which ended for good, is said in a toast",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const b = await firstDevice(fake, bo);
+			await readyOnDesktop(ana, testHost());
+			await page.openConversation(conversation);
+			await until(async () => (await groupOf(b, conversation)) !== null);
+			fake.refuse({ method: "PUT", path: /\/history-shares\/[0-9a-f-]{36}\/parts\/\d+$/ }, 413, {
+				error: "a part is 1 MiB and its tag at most",
+			});
+			expect(await page.shareHistory(conversation, bo, "week")).toMatchObject({ sent: true });
+			await until(() => toastStore.items.some(({ message }) => message === notice("share_history_failed")));
+			await b.engine.stop();
+		},
+		SLOW,
+	);
+
+	// Task 30's review, M5: another tab's request that doesn't name its member or its range shares nothing: none the
+	// page makes lacks either, and a range the person didn't pick isn't made up for it.
+	test(
+		"on the web, the tab that leads refuses another tab's share without its member or its range",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			const web = platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: async () => testHost() });
+			await page.startEngine(ana, web);
+			await until(() => page.encryption.state.name === "first_device");
+			await page.makeIdentity();
+			await page.keySaved();
+			const other = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: {},
+				lead: async () => {},
+			});
+			try {
+				const [conversationId, userId] = [crypto.randomUUID(), crypto.randomUUID()];
+				for (const params of [
+					{ conversationId, userId },
+					{ conversationId, range: "week" },
+					{ conversationId, userId, range: "year" },
+				]) {
+					expect(await rejection(other.call("shareHistory", params))).toMatchObject({ code: "bad_command" });
+				}
+			} finally {
+				other.close();
+			}
 		},
 		SLOW,
 	);

@@ -68,6 +68,19 @@ export const NOTICES = {
 	restart_refused: "Encryption can't restart here yet.",
 	members_now: "Members now: {names}",
 	change_unanswered: "No answer came yet: Duvet tries again on its own.",
+	// A conversation's history shared with a member, and the offer of what another member shared (task 30).
+	share_history: "Share history",
+	share_history_with: "Share history with {name}",
+	share_history_line: "{name} gets the messages this device holds from the time you pick, marked as shared by you.",
+	share_history_send: "Share",
+	share_history_sharing: "Sharing…",
+	share_history_truncated: "Not all of it fit: {name} gets the messages from {date} on.",
+	share_history_limit: "You can share history 10 times an hour. Try again {when}.",
+	share_history_failed: "Couldn't share the history. Try again.",
+	share_history_no_device: "{name} has no device that can receive it yet.",
+	shared_with_you: "{a} shared {range} with you",
+	shared_add: "Add to this device",
+	shared_add_failed: "Couldn't add the shared messages. Try again.",
 	// The mobile app's push, when a message can't be read in time (its task 21): this app doesn't show it.
 	new_message: "New message",
 	// A new device's setup and its approval (task 26).
