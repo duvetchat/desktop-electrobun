@@ -51,8 +51,8 @@ const button = (all: Tag[], name: string) => buttons(all).find((tag) => tag.attr
 const classes = (tag: Tag | undefined) => (tag?.attributes.class ?? "").split(/\s+/);
 
 describe("out of voice", () => {
-	// The sidebar's row of controls is the profile row's now (ProfileRow, beside Settings): the panel has nothing to say
-	// until there is a voice to show.
+	// The sidebar's row of controls is the user's own bar's now (ProfileControls, under the profile row): the panel has
+	// nothing to say until there is a voice to show.
 	test("draws nothing", async () => {
 		expect(await drawn(IDLE_MEDIA)).toEqual([]);
 	});
@@ -103,6 +103,20 @@ describe("in a voice room", () => {
 		// Deafen and noise suppression need no permission.
 		expect(button(all, "Deafen")?.attributes["aria-disabled"]).toBeUndefined();
 		expect(button(all, "Noise suppression")?.attributes["aria-disabled"]).toBeUndefined();
+	});
+
+	test("mute and deafen turn red when on; the camera and noise suppression keep the ink", async () => {
+		const off = await drawn({ ...inRoom, muted: true, deafened: true });
+		for (const name of ["Unmute", "Undeafen"]) {
+			expect(classes(button(off, name)), name).toEqual(
+				expect.arrayContaining(["bg-duvet-call-red", "text-fixed-white"]),
+			);
+		}
+		const on = await drawn({ ...inRoom, camera: true, noiseSuppression: true });
+		for (const name of ["Turn off camera", "Noise suppression"]) {
+			expect(classes(button(on, name)), name).toEqual(expect.arrayContaining(["bg-duvet-ink"]));
+			expect(classes(button(on, name)), name).not.toContain("bg-duvet-call-red");
+		}
 	});
 
 	test("says how the connection is while it isn't up", () => {

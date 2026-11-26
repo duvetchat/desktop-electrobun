@@ -16,7 +16,7 @@
 	import GroupMark from "$lib/components/GroupMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Kbd from "$lib/components/ui/Kbd.svelte";
-	import { countBadgeClass, GLASS_STRONG } from "$lib/components/ui/recipes";
+	import { countBadgeClass, GLASS_STRONG, SCRIM } from "$lib/components/ui/recipes";
 
 	/** Jumping to a space, a room of any space, a conversation or a friend by typing part of its name. */
 	let {
@@ -200,7 +200,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
-		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Overlay style={layerStyle(layer)} class={SCRIM} />
 		<Dialog.Content
 			style={layerStyle(layer)}
 			class="{GLASS_STRONG} animate-pop text-duvet-ink fixed top-[11vh] left-1/2 z-[900] flex max-h-[66vh] w-[min(640px,calc(100%-48px))] origin-top -translate-x-1/2 flex-col overflow-hidden rounded-[20px] outline-none"
@@ -256,7 +256,7 @@
 							<span class="contents" aria-hidden="true"><SpaceIcon src={item.icon} name={item.name} size={24} /></span>
 						{:else if item.kind === "room"}
 							<span
-								class="bg-duvet-secondary-fill grid size-6 shrink-0 place-items-center rounded-[7px] {item.voice
+								class="bg-duvet-secondary-fill rounded-chip grid size-6 shrink-0 place-items-center {item.voice
 									? 'text-duvet-alive-text'
 									: 'text-duvet-ink2'}"
 							>

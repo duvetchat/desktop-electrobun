@@ -464,7 +464,7 @@
 								<IconButton
 									label={t("room_webhook_delete")}
 									title={t("room_webhook_delete")}
-									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+									danger
 									onclick={() => handleDeleteWebhook(wh)}
 									disabled={isDeletingWebhook[wh.id]}
 								>

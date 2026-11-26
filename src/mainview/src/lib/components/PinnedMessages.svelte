@@ -201,14 +201,14 @@
 									class="absolute top-1.5 right-1.5 hidden items-center gap-1 group-focus-within:flex group-hover:flex"
 								>
 									<button
-										class="bg-duvet-card text-duvet-accent-text shadow-duvet-raised hover:shadow-duvet-lifted h-[22px] rounded-[7px] px-2 text-[11.5px] font-medium"
+										class="bg-duvet-card text-duvet-accent-text shadow-duvet-raised hover:shadow-duvet-lifted rounded-chip h-[22px] px-2 text-[11.5px] font-medium"
 										onclick={() => jump(m)}
 									>
 										{t("chat_pins_jump")}
 									</button>
 									{#if canPin}
 										<button
-											class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger grid size-[22px] place-items-center rounded-[7px]"
+											class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger rounded-chip grid size-[22px] place-items-center"
 											title={t("chat_unpin")}
 											aria-label={t("chat_unpin")}
 											onclick={() => unpin(m)}

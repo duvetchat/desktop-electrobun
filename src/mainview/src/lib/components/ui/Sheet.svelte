@@ -4,7 +4,7 @@
 	import { Dialog } from "bits-ui";
 	import { X } from "@lucide/svelte";
 	import { t } from "$lib/i18n";
-	import { GLASS_STRONG, iconButtonClass } from "./recipes";
+	import { GLASS_STRONG, SCRIM, iconButtonClass } from "./recipes";
 
 	// A sheet: a glass panel in the middle of the window, over a scrim, for a task with a few fields (a new chat, an
 	// invite, a new room). A press on the scrim or Esc closes it. Its title is in Fraunces; `foot` holds its buttons,
@@ -51,7 +51,7 @@
 
 <Dialog.Root bind:open {onOpenChange}>
 	<Dialog.Portal>
-		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Overlay style={layerStyle(layer)} class={SCRIM} />
 		<Dialog.Content
 			style={layerStyle(layer)}
 			{interactOutsideBehavior}

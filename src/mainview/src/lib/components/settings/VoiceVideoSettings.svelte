@@ -252,7 +252,7 @@
 					{testing ? t("settings_mic_test_stop") : t("settings_mic_test")}
 				</Button>
 			</div>
-			{#if testFailed}<p class="text-duvet-danger text-[11px]" role="alert">{t("settings_mic_test_failed")}</p>{/if}
+			{#if testFailed}<p class="text-duvet-danger text-[12px]" role="alert">{t("settings_mic_test_failed")}</p>{/if}
 		</div>
 	</SettingsRow>
 
@@ -271,12 +271,14 @@
 			{#if preview}
 				<video use:srcObject={preview} autoplay muted playsinline class="size-full -scale-x-100 object-cover"></video>
 				<span
-					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-2 left-2 rounded-md px-2 py-1 text-[10px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md"
+					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-2 left-2 rounded-md px-2 py-1 text-[11px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md"
 				>
 					{t("settings_camera_preview")}
 				</span>
 			{:else}
-				<div class="text-duvet-ink2 flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
+				<div
+					class="text-duvet-ink2 flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-[13px]"
+				>
 					{#if opening}
 						<p>{t("settings_camera_opening")}</p>
 					{:else}

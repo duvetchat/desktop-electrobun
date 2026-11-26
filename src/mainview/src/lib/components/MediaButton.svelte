@@ -14,6 +14,7 @@
 		pressed = undefined,
 		stateInName = false,
 		tone = "plain",
+		pressedTone = "ink",
 		shape = "panel",
 		disabled = false,
 		onclick = undefined,
@@ -33,8 +34,11 @@
 		/** The label already says the state, as it changes with it ("Mute" then "Unmute"): the button is then drawn
 		 * pressed but not announced as pressed, which would say the state twice ("Unmute, pressed"). */
 		stateInName?: boolean;
-		/** leave is the destructive fill; the stage tones are for the dark call stage, whatever the theme. */
-		tone?: "plain" | "leave" | "stage" | "stage-leave";
+		/** leave is the destructive fill; the stage tones are for the dark call stage, whatever the theme; quiet is the
+		 * sidebar's own bar: no fill until hovered or pressed. */
+		tone?: "plain" | "quiet" | "leave" | "stage" | "stage-leave";
+		/** The fill a pressed switch takes: the ink one, or the destructive red mute and deafen take. */
+		pressedTone?: "ink" | "danger";
 		/** panel: 30 tall, as wide as its place (the sidebar's block). square: 30 × 30. bar: 44 × 38 (a voice room's
 		 * bar). stage: 42 × 36 (a call's). */
 		shape?: "panel" | "square" | "bar" | "stage";
@@ -57,17 +61,27 @@
 	// Leave is wider than its neighbours in a bar: the one press that ends something.
 	const wide = $derived(tone === "leave" && shape === "bar" ? "w-[54px]" : tone === "stage-leave" ? "w-[52px]" : "");
 
+	// A pressed switch is ink, or the red mute and deafen take; on the call stage, ink is the stage's light fill.
+	const pressedLook = $derived(
+		pressedTone === "danger"
+			? "bg-duvet-call-red text-fixed-white shadow-duvet-press"
+			: tone === "stage"
+				? "bg-duvet-media-ink text-duvet-stage"
+				: "bg-duvet-ink text-duvet-bg shadow-duvet-press",
+	);
+
 	// A filled control darkens evenly on hover, whatever its fill: an inset shadow of the hover ink.
 	const look = $derived.by(() => {
 		if (tone === "leave") return "bg-duvet-danger text-duvet-on-danger hover:brightness-[1.06]";
 		if (tone === "stage-leave") return "bg-duvet-call-red text-fixed-white hover:brightness-[1.08]";
 		if (tone === "stage") {
-			return pressed
-				? "bg-duvet-media-ink text-duvet-stage"
-				: "bg-fixed-white/14 text-duvet-media-ink hover:bg-fixed-white/22";
+			return pressed ? pressedLook : "bg-fixed-white/14 text-duvet-media-ink hover:bg-fixed-white/22";
+		}
+		if (tone === "quiet") {
+			return pressed ? pressedLook : "text-duvet-ink2 hover:bg-duvet-sb-hover hover:text-duvet-ink";
 		}
 		return pressed
-			? "bg-duvet-ink text-duvet-bg shadow-duvet-press"
+			? pressedLook
 			: "bg-duvet-secondary-fill text-duvet-ink hover:shadow-[inset_0_0_0_100px_var(--duvet-hover)]";
 	});
 

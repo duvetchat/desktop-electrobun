@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
-	import { buttonClass, GLASS_STRONG } from "$lib/components/ui/recipes";
+	import { buttonClass, GLASS_STRONG, SCRIM } from "$lib/components/ui/recipes";
 	import { calloutClass } from "$lib/components/settings/recipes";
 	import { AlertDialog } from "bits-ui";
 	import { getApiError } from "$lib/api/api";
@@ -69,7 +69,7 @@
 	}
 >
 	<AlertDialog.Portal>
-		<AlertDialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<AlertDialog.Overlay style={layerStyle(layer)} class={SCRIM} />
 		<AlertDialog.Content style={layerStyle(layer)} class="fixed inset-0 z-[900] flex items-center justify-center p-4">
 			<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex w-full max-w-md flex-col gap-3 rounded-3xl p-4">
 				{#if request}

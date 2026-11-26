@@ -52,10 +52,10 @@ export function settingsMirrors(request: OpenAppWindow): MirroredChannels {
 	};
 }
 
-/** The design's sizes. */
+/** The design's sizes: roomier than the first sheet, for the larger Settings scale. */
 const SIZES: Record<OpenAppWindow["window"], { width: number; height: number }> = {
-	settings: { width: 860, height: 620 },
-	"space-settings": { width: 940, height: 660 },
+	settings: { width: 980, height: 720 },
+	"space-settings": { width: 1060, height: 760 },
 };
 /** What a window leaves free of its display, each way. */
 const MARGIN = 80;

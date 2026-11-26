@@ -7,7 +7,7 @@
 	import { t } from "$lib/i18n";
 	import PickerSearch from "$lib/components/PickerSearch.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
-	import { GLASS } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE } from "$lib/components/ui/recipes";
 	import { customEmojiId, emojiUsed, recentEmoji, recentToShow } from "$lib/recent-emoji";
 	import type { PickerGroup } from "$lib/space-emojis";
 	import { scrollSideways } from "$lib/sideways-scroll";
@@ -143,13 +143,13 @@
 					{t("media_picker_no_results", { query: searchQuery })}
 				</div>
 			{:else}
-				<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+				<div class="{OVERLINE} px-1 pt-3 pb-1.5">
 					{t("media_search_results")}
 				</div>
 				<div class="grid grid-cols-8 gap-0.5">
 					{#each searchResults as entry (entry.emoji + entry.name)}
 						<button
-							class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
+							class="hover:bg-duvet-hover focus-visible:bg-duvet-hover rounded-tile grid h-9 cursor-pointer place-items-center transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 							onclick={() => pick(entry.emoji)}
 							title={entry.name}
 							aria-label={entry.name}
@@ -174,7 +174,7 @@
 				</div>
 			{/if}
 		{:else if showingRecent}
-			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+			<div class="{OVERLINE} px-1 pt-3 pb-1.5">
 				{t("media_emoji_recent")}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
@@ -183,7 +183,7 @@
 					{@const ce = id === null ? undefined : customById.get(id)}
 					{@const label = ce ? `:${ce.name}:` : (unicodeNames.get(code) ?? code)}
 					<button
-						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover rounded-tile grid h-9 cursor-pointer place-items-center transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 						onclick={() => pick(code)}
 						title={label}
 						aria-label={label}
@@ -213,7 +213,7 @@
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownGroup.items as ce (ce.id)}
 					<button
-						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover rounded-tile grid h-9 cursor-pointer place-items-center transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
 						title=":{ce.name}:"
 						aria-label=":{ce.name}:"
@@ -228,13 +228,13 @@
 				{/each}
 			</div>
 		{:else if shownCategory}
-			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+			<div class="{OVERLINE} px-1 pt-3 pb-1.5">
 				{t(shownCategory.label)}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownCategory.emojis as entry (entry.emoji)}
 					<button
-						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover rounded-tile grid h-9 cursor-pointer place-items-center transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 						onclick={() => pick(entry.emoji)}
 						title={entry.name}
 						aria-label={entry.name}

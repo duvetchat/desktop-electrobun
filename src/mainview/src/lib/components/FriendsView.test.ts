@@ -33,3 +33,13 @@ test("a heading of the friends list says how many friends are in it, in the tag 
 		{ tag: tag!, text: "3" },
 	]);
 });
+
+// A friend's Remove friend was a bare icon, shown only on hover; it takes a card of its own beside Message's.
+test("a friend's Remove friend has the same card as Message", () => {
+	expect(friendsView).toMatch(
+		/class=\{cardIconButtonClass\(\)\}[\s\S]*?aria-label=\{t\("people_friends_message_label"/,
+	);
+	expect(friendsView).toMatch(
+		/class=\{cardIconButtonClass\(true\)\}[\s\S]*?aria-label=\{t\("people_friends_remove_label"/,
+	);
+});

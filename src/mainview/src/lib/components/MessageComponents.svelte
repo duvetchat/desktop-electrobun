@@ -9,7 +9,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { t } from "$lib/i18n";
 	import { renderEmoji } from "$lib/emoji";
-	import { messageTextClass } from "$lib/message-styles";
+	import { MESSAGE_CARD, messageTextClass } from "$lib/message-styles";
 	import { CUSTOM_EMOJI_CLASS } from "$lib/emoji-retry";
 	import { emojiImageUrl, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
@@ -133,9 +133,7 @@
 {#snippet node(c: Component)}
 	{#if c.type === ComponentType.Container}
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
-		<div
-			class="bg-duvet-card shadow-duvet-raised relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl px-3.5 py-3"
-		>
+		<div class="{MESSAGE_CARD} relative flex w-full min-w-0 flex-col overflow-hidden px-3.5 py-3">
 			{#if c.accent_color != null}
 				<!-- Its accent colour, as a bar down its left edge, inside its round corners -->
 				<span class="absolute inset-y-0 left-0 w-[3px]" style="background: {hex(c.accent_color)}" aria-hidden="true"
@@ -181,12 +179,12 @@
 		{@render gallery(c.items ?? [])}
 	{:else if c.type === ComponentType.File && c.file}
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
-		<div data-attachments class="relative w-[300px] max-w-full overflow-hidden rounded-2xl">
+		<div data-attachments class="rounded-card relative w-[300px] max-w-full overflow-hidden">
 			<a
 				href={mediaSrc(c.file)}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="group bg-duvet-secondary-fill text-duvet-ink flex items-center gap-2.5 rounded-2xl p-2.5 no-underline {hidden
+				class="group bg-duvet-secondary-fill text-duvet-ink rounded-card flex items-center gap-2.5 p-2.5 no-underline {hidden
 					? 'blur-md'
 					: ''}"
 			>
@@ -225,7 +223,7 @@
 {/snippet}
 
 {#snippet button(c: Component)}
-	{@const cls = `inline-flex h-[34px] max-w-full min-w-15 items-center justify-center gap-1.5 rounded-[11px] px-3.5 text-[13px] font-medium no-underline transition-[filter,background-color] disabled:pointer-events-none disabled:opacity-45 motion-reduce:transition-none ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
+	{@const cls = `inline-flex h-[34px] max-w-full min-w-15 items-center justify-center gap-1.5 rounded-control px-3.5 text-[13px] font-medium no-underline transition-[filter,background-color] disabled:pointer-events-none disabled:opacity-45 motion-reduce:transition-none ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
 	{@const href = webUrl(c.url)}
 	{#if c.style === ButtonStyle.Link && href && !c.disabled}
 		<a {href} target="_blank" rel="noopener noreferrer" class={cls}>
@@ -295,7 +293,7 @@
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
 		<div
 			data-attachments
-			class="relative shrink-0 self-start overflow-hidden rounded-xl {compact ? 'size-16' : 'size-21'}"
+			class="rounded-card relative shrink-0 self-start overflow-hidden {compact ? 'size-16' : 'size-21'}"
 		>
 			<button
 				type="button"
@@ -354,7 +352,7 @@
 	{@const size = alone ? fit(item.media) : null}
 	{@const bounds = alone && !size ? `max-width: min(${maxWidth}px, 100%); max-height: ${maxHeight}px;` : ""}
 	<div
-		class="relative overflow-hidden rounded-xl {alone ? '' : 'size-full'}"
+		class="rounded-card relative overflow-hidden {alone ? '' : 'size-full'}"
 		style={size ? `width: ${size.w}px; aspect-ratio: ${size.w} / ${size.h}; max-width: 100%;` : ""}
 	>
 		{#if isVideo(item.media)}

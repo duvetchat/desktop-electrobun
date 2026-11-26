@@ -3,6 +3,7 @@
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
+		Copy as CopyIcon,
 		Ellipsis as EllipsisIcon,
 		Eye as EyeIcon,
 		Link as LinkIcon,
@@ -19,6 +20,7 @@
 		Users as UsersIcon,
 	} from "@lucide/svelte";
 	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
+	import InlineMessageEditor from "$lib/components/InlineMessageEditor.svelte";
 	import { deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -63,6 +65,17 @@
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
 	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
+	import {
+		MESSAGE_BODY,
+		MESSAGE_CARD,
+		MESSAGE_BUBBLE,
+		MESSAGE_BUBBLE_FAILED,
+		MESSAGE_BUBBLE_HIGHLIGHT,
+		MESSAGE_BUBBLE_OTHER,
+		MESSAGE_BUBBLE_OWN,
+		MESSAGE_EMOJI_ONLY,
+		MESSAGE_FLAT,
+	} from "$lib/message-styles";
 
 	import {
 		gatewayMessageToMessage,
@@ -139,7 +152,7 @@
 		onDeleteMsg = undefined,
 		failedNonces = new Set<string>(),
 		editingMessageId = $bindable<string | null>(null),
-		editContent = $bindable(""),
+		onSaveEdit = undefined,
 		isAtBottom = $bindable(true),
 		onUnreadMark = undefined,
 		emojiGroups = [],
@@ -174,10 +187,10 @@
 		onReply?: (message: Message) => void;
 		onDeleteMsg?: (messageId: string) => Promise<void> | void;
 		failedNonces?: Set<string>;
-		/** The message being edited, which the chat's message box holds (Chat.svelte): its bubble is ringed, and it has no
-		 * hover bar. An edit starts here (the hover bar, the menu, three clicks on one's own text) by setting both. */
+		/** The message being edited in its own row: its text becomes a box, and its hover bar goes. */
 		editingMessageId?: string | null;
-		editContent?: string;
+		/** Saves the edit of a message, in its own row. */
+		onSaveEdit?: (messageId: string, content: string) => void | Promise<void>;
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		/** The custom emojis of every Space the user is in, by Space, as the reaction pickers show them. */
@@ -605,6 +618,12 @@
 		navigator.clipboard.writeText(link).catch(console.error);
 	}
 
+	// The message's whole text, as it is written: its content, or its text displays' when components are all of it.
+	function copyText(message: Message) {
+		const text = messageText(message);
+		if (text) navigator.clipboard.writeText(text).catch(console.error);
+	}
+
 	// A hover bar sits beside its bubble; where there's no room for it there (a wide bubble in a narrow pane), it sits
 	// along the bubble's top edge instead, as on a flat row. Measured once, as the bar mounts.
 	function fitBar(node: HTMLElement) {
@@ -957,10 +976,24 @@
 	}
 
 	// ── Message actions ────────────────────────────────────────────────────────
-	// The chat's message box takes the edit (Chat.svelte): it saves, or cancels, and clears both.
+	// The chat's message editor takes the edit (Chat.svelte): its own row turns its text into a box, which saves, or
+	// cancels, and clears the id.
 	function startEdit(message: Message) {
+		if (!editable(message, message.author_id === $currentUser?.id)) return;
 		editingMessageId = message.id;
-		editContent = message.content ?? "";
+	}
+
+	// Whether a message's text can be edited in its row: its own, a text one, not a voice note, a sticker, a bot's
+	// pending answer or one made of components.
+	function editable(message: Message, mine: boolean): boolean {
+		return (
+			mine &&
+			(message.content ?? "").trim() !== "" &&
+			message.type !== MessageType.Voice &&
+			!message.sticker_attachment_id &&
+			!isLoading(message) &&
+			!isComponentsV2(message)
+		);
 	}
 
 	function handleCopy(e: ClipboardEvent) {
@@ -1473,7 +1506,7 @@
 		<MessageAttachments {message} {channelName} onPreview={openPreview} />
 	{:else if isLoading(message)}
 		<!-- A bot's deferred response: it has 15 minutes to complete it -->
-		<div class={flat ? "" : "bg-duvet-card shadow-duvet-raised rounded-2xl px-3 py-2"}>
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>
 			<DeferredResponse {message} />
 		</div>
 	{:else if isComponentsV2(message)}
@@ -1488,7 +1521,13 @@
 			onInteract={isConversation ? undefined : (use) => interact(message, use)}
 		/>
 	{:else}
-		{#if bubbled(message) || largeEmojis(message.content ?? "")}
+		{#if editingMessageId === message.id}
+			<InlineMessageEditor
+				content={message.content ?? ""}
+				onSave={(text) => onSaveEdit?.(message.id, text)}
+				onCancel={() => (editingMessageId = null)}
+			/>
+		{:else if bubbled(message) || largeEmojis(message.content ?? "")}
 			{@const emojiOnly = largeEmojis(message.content ?? "")}
 			{@const lit = isMention && !flat && !emojiOnly}
 			<div
@@ -1496,32 +1535,18 @@
 				aria-readonly="true"
 				tabindex="-1"
 				use:prism={lit ? ($currentUser?.id ?? null) : null}
-				class="font-content relative max-w-full cursor-text text-left text-[16px] wrap-anywhere select-text {emojiOnly
-					? 'px-0.5 leading-[1.15]'
+				class="{MESSAGE_BODY} {emojiOnly
+					? MESSAGE_EMOJI_ONLY
 					: flat
-						? `max-w-[760px] leading-[1.25] ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
-						: `rounded-2xl px-3 py-2 leading-[1.45] transition-shadow duration-200 motion-reduce:transition-none ${
-								isFailed
-									? 'bg-duvet-danger/15 text-duvet-danger'
-									: lit
-										? PRISM_BUBBLE
-										: own
-											? 'msg-own bg-duvet-azure text-fixed-white'
-											: 'bg-duvet-card text-duvet-ink'
-							} ${
-								editingMessageId === message.id
-									? 'shadow-[0_0_0_2px_var(--duvet-accent)]'
-									: isHighlighted
-										? 'shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]'
-										: lit
-											? ''
-											: 'shadow-duvet-raised'
-							}`}"
+						? `${MESSAGE_FLAT} ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
+						: `${MESSAGE_BUBBLE} ${
+								isFailed ? MESSAGE_BUBBLE_FAILED : lit ? PRISM_BUBBLE : own ? MESSAGE_BUBBLE_OWN : MESSAGE_BUBBLE_OTHER
+							} ${isHighlighted ? MESSAGE_BUBBLE_HIGHLIGHT : lit ? '' : 'shadow-duvet-raised'}`}"
 				onclick={(e) => {
-					if (e.detail === 3 && mine) startEdit(message);
+					if (e.detail === 2 && editable(message, mine)) startEdit(message);
 				}}
 				onkeydown={(e) => {
-					if (e.key === "Enter" && mine) startEdit(message);
+					if (e.key === "Enter" && editable(message, mine)) startEdit(message);
 				}}
 			>
 				{#if lit}
@@ -1665,7 +1690,7 @@
 		<IconButton label={t("chat_reply")} title={t("chat_reply")} size="sm" onclick={() => onReply?.(message)}>
 			<ReplyIcon size={15} />
 		</IconButton>
-		{#if mine}
+		{#if editable(message, mine)}
 			<IconButton
 				label={t("chat_edit_message")}
 				title={t("chat_edit_message")}
@@ -1743,9 +1768,12 @@
 		</div>
 		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>{t("chat_reply")}</MenuItem>
 		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>{t("chat_thread_view")}</MenuItem>
+		{#if messageText(message)}
+			<MenuItem icon={CopyIcon} onSelect={() => copyText(message)}>{t("chat_copy_text")}</MenuItem>
+		{/if}
 		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>{t("chat_copy_link")}</MenuItem>
 		{@render reactionsItem(message)}
-		{#if mine}
+		{#if editable(message, mine)}
 			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>{t("chat_edit_message")}</MenuItem>
 		{/if}
 		{#if canPin}
@@ -1832,7 +1860,7 @@
 					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 					{@const parentCall = parentMsg ? callNotice(parentMsg, $currentUser?.id, joined) : null}
 					{@const root = threadRootMessage}
-					<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
+					<div class="group {MESSAGE_CARD} relative px-3 py-2.5">
 						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
 						     says what the call's row does -->
 						<MessagePreview

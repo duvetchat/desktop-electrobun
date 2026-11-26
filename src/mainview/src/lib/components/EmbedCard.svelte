@@ -5,7 +5,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { t } from "$lib/i18n";
 	import { renderMarkdown } from "$lib/markdown";
-	import { messageTextClass } from "$lib/message-styles";
+	import { MESSAGE_CARD, MESSAGE_MEDIA, messageTextClass } from "$lib/message-styles";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatShortDateTime } from "$lib/utils/time";
 	import { webEmbed } from "$lib/urls";
@@ -106,12 +106,12 @@
 			muted={card.type === EmbedType.Gifv}
 			playsinline
 			controls
-			class="shadow-duvet-raised self-start rounded-2xl {mediaFit}"
+			class="{MESSAGE_MEDIA} self-start {mediaFit}"
 		></video>
 	{:else if card.image}
 		<button
 			type="button"
-			class="shadow-duvet-raised block cursor-zoom-in self-start overflow-hidden rounded-2xl {mediaWidth}"
+			class="{MESSAGE_MEDIA} block cursor-zoom-in self-start {mediaWidth}"
 			aria-label={t("media_open_image")}
 			onclick={() => onImageClick?.(card.image!.url)}
 		>
@@ -119,9 +119,7 @@
 		</button>
 	{/if}
 {:else if isTikTokEmbed(card)}
-	<div
-		class="bg-duvet-card shadow-duvet-raised relative flex w-[320px] max-w-full flex-col overflow-hidden rounded-2xl"
-	>
+	<div class="{MESSAGE_CARD} relative flex w-[320px] max-w-full flex-col overflow-hidden">
 		<span class="absolute inset-y-0 left-0 z-1 w-[3px] bg-[#fe2c55]" aria-hidden="true"></span>
 		<div class="flex flex-col gap-1 px-3.5 pt-3 pb-2.5 select-text">
 			{#if card.provider}
@@ -154,11 +152,7 @@
 	</div>
 {:else if card.title || card.description || card.video || card.image}
 	{@const bar = embedBorderStyle(card)}
-	<div
-		class="bg-duvet-card shadow-duvet-raised relative flex max-w-full flex-col overflow-hidden rounded-2xl {compact
-			? 'w-80'
-			: 'w-[380px]'}"
-	>
+	<div class="{MESSAGE_CARD} relative flex max-w-full flex-col overflow-hidden {compact ? 'w-80' : 'w-[380px]'}">
 		{#if bar}
 			<span class="absolute inset-y-0 left-0 z-1 w-[3px]" style={bar} aria-hidden="true"></span>
 		{/if}
@@ -230,7 +224,7 @@
 					<img
 						src={card.thumbnail.url}
 						alt=""
-						class="size-16 shrink-0 self-start rounded-xl object-cover"
+						class="rounded-row size-16 shrink-0 self-start object-cover"
 						loading="lazy"
 					/>
 				{/if}

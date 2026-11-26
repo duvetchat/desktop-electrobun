@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { countBadgeClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, FOCUS_RING_INSET } from "$lib/components/ui/recipes";
 	import {
 		Columns2 as ColumnsIcon,
 		Search as SearchIcon,
@@ -209,8 +209,7 @@
 		}),
 	);
 
-	const tabBase =
-		"group/tab relative flex h-[34px] min-w-28 shrink items-center gap-1 rounded-[10px] text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
+	const tabBase = `group/tab relative flex h-[34px] min-w-28 shrink items-center gap-1 rounded-[10px] text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none ${FOCUS_RING_INSET}`;
 	const tabActive = "bg-duvet-card text-duvet-ink shadow-duvet-raised ring-duvet-line ring-[0.5px]";
 	const tabIdle = "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink";
 	const closeButton =
@@ -218,7 +217,7 @@
 	// A Close button that shows only once its tab is pointed at or has the focus.
 	const closeOnHover = "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100";
 	const halfButton =
-		"focus-visible:outline-duvet-accent flex h-[26px] min-w-0 flex-1 items-center gap-[7px] rounded-[7px] px-1.5 text-left focus-visible:outline-2";
+		"focus-visible:outline-duvet-accent flex h-[26px] min-w-0 flex-1 items-center gap-[7px] rounded-chip px-1.5 text-left focus-visible:outline-2";
 
 	// A digit with ⌘ on macOS, or Ctrl elsewhere, picks a tab by its place (lib/keyboard.ts: tabDigit). In the app each
 	// tab names its shortcut to assistive tech, and on macOS shows it (#420): always, where its Close button is, which

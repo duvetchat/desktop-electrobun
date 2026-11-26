@@ -40,7 +40,7 @@
 			align="center"
 			sideOffset={4}
 			collisionPadding={10}
-			class="{GLASS} animate-float-in z-[1000] flex flex-col items-center gap-1 rounded-[14px] p-2 pb-2.5"
+			class="{GLASS} animate-float-in rounded-panel z-[1000] flex flex-col items-center gap-1 p-2 pb-2.5"
 		>
 			<input
 				type="range"

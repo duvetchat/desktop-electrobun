@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GLASS } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE } from "$lib/components/ui/recipes";
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -171,7 +171,7 @@
 
 		<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-[14px] p-3">
 			<h2
-				class="font-serif-lg text-duvet-ink flex items-center gap-1.5 text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-all"
+				class="text-duvet-ink flex items-center gap-1.5 text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-all"
 			>
 				{member.username}
 				{#if member.is_bot}
@@ -195,7 +195,7 @@
 
 			{#if member.bio}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+				<h3 class="{OVERLINE} mb-1.5 text-left">
 					{t("people_profile_about")}
 				</h3>
 				<ProfileBio bio={member.bio} />
@@ -205,12 +205,12 @@
 
 			{#if visibleRoles.length > 0}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+				<h3 class="{OVERLINE} mb-1.5 text-left">
 					{t("people_profile_roles")}
 				</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
-						<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+						<div class="bg-duvet-secondary-fill rounded-chip flex h-[22px] w-max items-center gap-1.5 px-2">
 							<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
 							<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 						</div>

@@ -24,7 +24,7 @@
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import OverlayLayer from "$lib/components/OverlayLayer.svelte";
-	import { GLASS, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
 	import { t } from "$lib/i18n";
 
 	let {
@@ -257,7 +257,7 @@
 									{@const reqState = friendRequestState[member.id] ?? "idle"}
 									{#if isFriend(member.id)}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
 											title={t("people_profile_friends")}
 											disabled
 										>
@@ -274,7 +274,7 @@
 										</button>
 									{:else if reqState === "sent"}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
 											title={t("people_profile_request_sent")}
 											disabled
 										>
@@ -312,7 +312,7 @@
 									: 'max-h-[max(160px,calc(100vh-330px))]'} overflow-hidden overflow-y-auto rounded-[14px] p-3"
 							>
 								<h2
-									class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
+									class="text-duvet-ink text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
 								>
 									{member.username}
 								</h2>
@@ -330,7 +330,7 @@
 
 								{#if member.bio}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+									<h3 class="{OVERLINE} mb-1.5 text-left">
 										{t("people_profile_about")}
 									</h3>
 									<ProfileBio bio={member.bio} />
@@ -340,12 +340,12 @@
 
 								{#if visibleRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+									<h3 class="{OVERLINE} mb-1.5 text-left">
 										{t("people_profile_roles")}
 									</h3>
 									<div class="flex flex-wrap gap-1">
 										{#each visibleRoles as role}
-											<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+											<div class="bg-duvet-secondary-fill rounded-chip flex h-[22px] w-max items-center gap-1.5 px-2">
 												<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
 												<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 											</div>
@@ -355,7 +355,7 @@
 
 								{#if showPermissions}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+									<h3 class="{OVERLINE} mb-1.5 text-left">
 										{t("people_profile_permissions")}
 									</h3>
 									{@const memberPermissions = getMemberPermissions(member)}
@@ -375,7 +375,7 @@
 
 								{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+									<h3 class="{OVERLINE} mb-1.5 text-left">
 										{t("people_profile_assign_roles")}
 									</h3>
 									<div class="max-h-32 space-y-1.5 overflow-y-auto">
@@ -384,7 +384,7 @@
 											{@const toggleKey = `${member.id}-${role.id}`}
 											{@const manageable = canManageRoleAt(space, role.position)}
 											<button
-												class="flex h-[22px] w-fit items-center rounded-[7px] px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
+												class="rounded-chip flex h-[22px] w-fit items-center px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
 													? 'bg-duvet-chosen text-duvet-chosen-ink'
 													: 'bg-duvet-secondary-fill text-duvet-ink hover:bg-duvet-hover-strong'}"
 												onclick={() => toggleMemberRole(member, role.id)}

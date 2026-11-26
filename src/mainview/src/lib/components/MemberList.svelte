@@ -84,15 +84,13 @@
 </script>
 
 <script lang="ts">
-	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
 	import { currentUser, ownTyping, typingNow, userActivities } from "$lib/stores.svelte";
 	import { isSpotify, shownActivities } from "$lib/activity";
-	import MemberBanner from "$lib/components/MemberBanner.svelte";
-	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import StatusDot from "$lib/components/StatusDot.svelte";
-	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import PersonButton from "$lib/components/PersonButton.svelte";
 	import MemberMenu from "$lib/components/MemberMenu.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import { OVERLINE } from "$lib/components/ui/recipes";
+	import { MEMBER_ROW_TRIGGER } from "$lib/components/people/recipes";
 	import { withoutLongPress } from "$lib/default-menu";
 	import { personOf } from "$lib/member-menu";
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
@@ -287,9 +285,7 @@
 		{@const [start, end] = windows[g] ?? [0, 0]}
 		<div>
 			<!-- The heading stays at the top while its rows scroll under it, on the list's own colour. -->
-			<div
-				class="text-duvet-ink2 {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
-			>
+			<div class="{OVERLINE} {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 select-none">
 				{t("people_members_group", { group: group.title, count: group.members.length })}
 			</div>
 
@@ -297,84 +293,39 @@
 				<div style="height: {start * MEMBER_ROW}px"></div>
 			{/if}
 			{#each group.members.slice(start, end) as member (member.id)}
-				<MemberProfilePopover
-					{member}
-					{spaceId}
-					{space}
-					side={profileSide}
-					open={activePopoverMemberId === member.id}
-					onOpenChange={(o) => {
-						activePopoverMemberId = o ? member.id : null;
-					}}
-					triggerClass="group relative mx-2 flex h-12 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
-					{onRemoveMember}
-				>
-					{#snippet children()}
-						<div class="absolute inset-y-1.5 right-2 left-7 overflow-hidden rounded-lg">
-							<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
-						</div>
-						<div class="relative flex min-w-0 items-center gap-2.5">
-							<div class="relative shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}">
-								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
-								{#if isTyping(member.id)}
-									<span
-										class="{ground.border} bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
-									>
-										{#if isRecording(member.id)}
-											<MicIcon class="text-duvet-danger size-2 animate-pulse" />
-										{:else}
-											<span class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"></span>
-											<span
-												class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
-												style="animation-delay:0.2s"
-											></span>
-											<span
-												class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
-												style="animation-delay:0.4s"
-											></span>
-										{/if}
-									</span>
-								{:else}
-									<StatusDot
-										status={member.status}
-										mobileOnly={member.mobile_only}
-										class="{ground.ring} absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
-									/>
-								{/if}
-							</div>
-
-							<div class="min-w-0 text-left">
-								<span
-									class="flex items-center gap-1 truncate text-[13.5px] leading-5 font-semibold"
-									style={getMemberColorStyle(member)}
-								>
-									<span class="truncate">{member.username}</span>
-									{#if member.is_bot}
-										<span
-											class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em] [-webkit-text-fill-color:currentColor] {member.status ===
-											'offline'
-												? 'opacity-60'
-												: ''}">{t("people_tag_bot")}</span
-										>
-									{/if}
-									{#if member.is_owner}
-										<CrownSimpleIcon
-											class="text-duvet-crown size-[13px] shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}"
-										/>
-									{/if}
-								</span>
-								{#if shownActivities($userActivities[member.id]).length}
-									{@const activity = shownActivities($userActivities[member.id])[0]!}
-									<p class="text-duvet-ink2 truncate text-[11.5px] leading-4">
-										{isSpotify(activity)
-											? t("people_activity_spotify")
-											: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
-									</p>
-								{/if}
-							</div>
-						</div>
-					{/snippet}
-				</MemberProfilePopover>
+				<div class="flex flex-col gap-2">
+					<PersonButton
+						{member}
+						{spaceId}
+						{space}
+						side={profileSide}
+						open={activePopoverMemberId === member.id}
+						onOpenChange={(o) => {
+							activePopoverMemberId = o ? member.id : null;
+						}}
+						triggerClass={MEMBER_ROW_TRIGGER}
+						{onRemoveMember}
+						banner
+						badges
+						dimOffline
+						typing={isTyping(member.id)}
+						recording={isRecording(member.id)}
+						statusClass={ground.ring}
+						typingBorderClass={ground.border}
+						nameStyle={getMemberColorStyle(member)}
+					>
+						{#snippet subtitle()}
+							{#if shownActivities($userActivities[member.id]).length}
+								{@const activity = shownActivities($userActivities[member.id])[0]!}
+								<p class="text-duvet-ink2 truncate text-[11.5px] leading-4">
+									{isSpotify(activity)
+										? t("people_activity_spotify")
+										: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
+								</p>
+							{/if}
+						{/snippet}
+					</PersonButton>
+				</div>
 			{/each}
 			{#if end < group.members.length}
 				<div style="height: {(group.members.length - end) * MEMBER_ROW}px"></div>

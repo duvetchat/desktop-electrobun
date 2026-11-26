@@ -3,6 +3,28 @@
 Every call the redesign made without asking the founder, with the reason. The parity ledger
 (`PARITY.md`) points here for anything marked "see DECISIONS.md". Newest first.
 
+## Settings' larger scale (2026-11-24)
+
+The Settings screens were too condensed at a mouse's distance, so the tests and the design map's
+first sizes give way to a roomier scale:
+
+- **Windows:** Settings is 980 × 720 and a Space's settings 1060 × 760, up from 860 × 620 and
+  940 × 660. The display's work area less 80 each way still caps them.
+- **Side panel:** 272 wide, with 40 px items, 28 px tiles and 16 px glyphs. The search field is 36
+  tall and reads at 13.5 px.
+- **Page:** a 60 px toolbar, a 20 px Fraunces title, 32 px side padding, and content at most 760
+  wide (940 for a Space's lists). Group gaps are 28 px.
+- **Rows and fields:** 60 px rows with 34 px icon tiles, 14.5 px labels and 13 px lines; 44 px
+  fields at 14.5 px; 36 px selects. Notes, labels, tags and callouts grow with them.
+- **Type:** Settings uses the app's base interface font throughout. The toolbar title is 18 px
+  semibold, a Space's name in its head 17 px, and a section heading 16 px; Fraunces stays out of
+  Settings.
+- **Section groups:** Settings reads as Account, App and media, Files, Developer. A Space's settings
+  reads as Space, People, Apps and data, following S-58's groups.
+
+The map remains the prototype's record; this ruling is the implementation's larger translation of
+it.
+
 ## The sidebar's glass on macOS (2026-11-19, #374)
 
 Supersedes ruling 1 of the platform spike's follow-ups below. A person looked at a test window with Liquid
@@ -62,6 +84,7 @@ The design map's writer listed questions the brief doesn't answer. Rulings:
    click away. The pane bar's members button opens and closes it, it's remembered per kind of chat
    and open by default, a pane too narrow for it opens the members in the popover, and voice rooms and
    DMs keep the popover. It replaces #366's pin, which kept the popover open.
+
 3. **The Now section.** It has no surface in the new design. Its call state moves into the call panel
    (the media controls grow into it, the brief says so): where you are, the ping, Disconnect. Its
    remaining states (a stream's viewers) go to the call panel or the stream window, decided by the
@@ -80,8 +103,8 @@ Rulings, from `PLATFORM.md`:
 
 1. **Vibrancy** ships **off** everywhere for now: the opaque tint (the prototype's Linux/web look) on
    every platform. The native bridge is proven and cheap, but it was never seen by a human, so it waits
-   for one look before it ships. Listed as a follow-up. *Superseded on 2026-11-19: see "The sidebar's
-   glass on macOS" above.*
+   for one look before it ships. Listed as a follow-up. _Superseded on 2026-11-19: see "The sidebar's
+   glass on macOS" above._
 2. **Typing on macOS 27** is broken in today's build (the window isn't key, the webview isn't first
    responder). The foundation fixes it; until then desktop QA drives through the QA socket, which
    never ships.

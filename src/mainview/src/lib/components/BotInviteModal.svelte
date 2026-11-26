@@ -97,7 +97,7 @@
 					disabled={adding}
 				>
 					<div
-						class="bg-duvet-chosen text-duvet-chosen-ink grid size-8 shrink-0 place-items-center rounded-[9px] text-sm font-bold select-none"
+						class="bg-duvet-chosen text-duvet-chosen-ink rounded-tile grid size-8 shrink-0 place-items-center text-sm font-bold select-none"
 					>
 						{space.name.charAt(0).toUpperCase()}
 					</div>
