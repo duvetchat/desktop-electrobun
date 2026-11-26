@@ -5,6 +5,7 @@ import { e2eApi } from "$lib/api/e2e";
 import type { EnginePlatform } from "./engine.svelte";
 import { toEngine, type EngineEvent } from "./events";
 import type { CoreHost } from "./host";
+import type { ShownChange } from "./engine/contacts";
 import { notice } from "./notices";
 import { firstDevice, groupOf, rejection, shownKey, testDevice, testHost, until, useFake } from "./testing/engines";
 import { FakeApi } from "./testing/fake-api";
@@ -431,6 +432,64 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			expect(await page.verifyContact(bo, digits)).toBe(true);
 			await until(() => page.encryption.contacts.verified[bo] === true);
 			expect(engine.contacts().verified[bo]).toBe(true);
+			await page.stopEngine();
+			await engine.stop();
+			leading.close();
+		},
+		SLOW,
+	);
+
+	// Round 3: a tab that doesn't lead asks the leader for a conversation's changed keys, and its close and its yes name
+	// the change it showed: one for another change takes nothing.
+	test(
+		"on the web, a tab that doesn't lead shows a conversation's changed keys, and closes and says yes to the change shown",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			fake.befriend(ana, bo);
+			const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const b = await firstDevice(fake, bo);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			// The leader serves the changes' methods as the page's own tabs do.
+			const { engine } = testDevice(fake, ana);
+			const leading = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: {
+					state: () => engine.state,
+					contacts: () => engine.contacts(),
+					keyChangesIn: (id: string) => engine.keyChangesIn(id),
+					closeKeyChange: ({ user, change }: ShownChange) => engine.closeKeyChange(user, change),
+					confirmKeyChanges: (changes: ShownChange[]) => engine.confirmKeyChanges(changes),
+				},
+				lead: async () => {
+					await engine.start();
+					await engine.makeIdentity();
+					await engine.keySaved();
+				},
+			});
+			engine.onContacts(() => leading.stateChanged());
+			await leading.leading;
+			// Ana verified Bo, whose new keys are a strong change on her leader's engine.
+			const { digits } = await engine.safetyNumber(bo);
+			expect(await engine.verifyContact(bo, digits)).toBe(true);
+			await b.engine.changeKeys();
+			await b.engine.keySaved();
+			expect(await engine.contact(bo)).toBe(false);
+			const change = engine.contacts().changes[bo]?.change ?? "";
+			expect(engine.contacts().changes[bo]).toEqual({ verified: true, change: expect.any(String) });
+
+			await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) } }));
+			await until(() => page.encryption.state.name === "ready");
+			expect(await page.keyChangesIn(dm)).toEqual({ [bo]: { verified: true, change } });
+			await page.closeKeyChange(bo, "another change");
+			await page.confirmKeyChanges([{ user: bo, change: "another change" }]);
+			expect(engine.contacts().changes[bo]).toEqual({ verified: true, change });
+			await page.closeKeyChange(bo, change);
+			expect(engine.contacts().changes[bo]).toEqual({ verified: true, closed: true, change });
+			await page.confirmKeyChanges([{ user: bo, change }]);
+			expect(engine.contacts().changes).toEqual({});
 			await page.stopEngine();
 			await engine.stop();
 			leading.close();

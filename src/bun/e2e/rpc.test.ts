@@ -324,6 +324,44 @@ describe("what asks the person first, outside the page", () => {
 		});
 		expect(await broken(question)).toBe(false);
 	});
+
+	// Round 3: the yes runs Bun's own verify_user, by the QR of the number its box showed, never the page's command; and
+	// what the page sends while the box is open waits for it, as every request waits for the one before.
+	test("after the yes, the core gets Bun's verify_user, by the QR of the number it showed, and nothing runs meanwhile", async () => {
+		const digits = "11111 22222 33333 44444 55555 66666 77777 88888 99999 00000 12345 67890";
+		const qr = "oWF2AQ==";
+		const core = fakeCore((op, params) => {
+			if (op === "open") return { ok: { state: "ready", keyStorage: "file", handle: 1 } };
+			const { cmd } = params.command;
+			return { ok: cmd === "safety_number" ? { digits, qr } : cmd === "verify_user" ? { verified: true } : {} };
+		});
+		let shown = () => {};
+		const open = new Promise<void>((resolve) => (shown = resolve));
+		let answer = (_yes: boolean) => {};
+		const page = pageOf({
+			start: core.start,
+			confirm: () =>
+				new Promise<boolean>((resolve) => {
+					answer = resolve;
+					shown();
+				}),
+		});
+		await page.ask("open", { userId: ANA });
+		const handed = () => core.calls.filter(({ op }) => op === "handle").map(({ params }) => params.command);
+		const verifying = page.run({ cmd: "verify_user", user_id: BO, digits, note: "the page's" });
+		await open;
+		const status = page.run({ cmd: "status" });
+		await Bun.sleep(20);
+		expect(handed()).toEqual([{ cmd: "safety_number", user_id: BO }]);
+		answer(true);
+		expect((await verifying).ok).toEqual({ verified: true });
+		await status;
+		expect(handed()).toEqual([
+			{ cmd: "safety_number", user_id: BO },
+			{ cmd: "verify_user", user_id: BO, qr },
+			{ cmd: "status" },
+		]);
+	});
 });
 
 /** A device of Ana's with her identity, the API having taken it, behind a boundary of its own. */
@@ -534,6 +572,48 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits })).ok).toEqual({ verified: true });
 		expect((await seen()).verified).toBe(true);
 		expect(asked).toHaveLength(3);
+	});
+
+	// Round 3: the core marks the identities Bun's box showed, compared in its own transaction, so another one pinned while
+	// the box is open (by any other way into the core: the page's requests wait for the box) gets no mark.
+	test("a re-pin that lands while verify_user's box is open ends unverified, with no mark", async () => {
+		const startAna = realCore();
+		let anaCore: CoreWorker | null = null;
+		let whileOpen: (() => Promise<void>) | null = null;
+		const ana = pageOf({
+			start: () => (anaCore = startAna()),
+			confirm: async () => {
+				await whileOpen?.();
+				return true;
+			},
+		});
+		const bo = pageOf({ start: realCore(), confirm: async () => true });
+		// Another identity of Bo's, which a script, or a server with it, would have the core pin.
+		const forged = pageOf({ start: realCore(), confirm: async () => true });
+		type Made = { identity_key: string; device_list: string; certificate: string };
+		const made: Record<string, Made> = {};
+		for (const [page, user, device, name] of [
+			[ana, ANA, APPROVER, "ana"],
+			[bo, BO, BO_DEVICE, "bo"],
+			[forged, BO, "0193a4b2-0000-7000-8000-0000000000b3", "forged"],
+		] as const) {
+			await page.ask("open", { userId: user });
+			await page.run({ cmd: "create_device", user_id: user, device_id: device });
+			made[name] = (await page.run({ cmd: "create_identity" })).ok;
+			await page.run({ cmd: "identity_uploaded" });
+		}
+		const observe = ({ identity_key, device_list, certificate }: Made) => ({
+			...{ cmd: "observe_user", user_id: BO, identity_key, device_list, certificates: [certificate] },
+		});
+		expect((await ana.run(observe(made.bo))).ok).toMatchObject({ state: "new", verified: false });
+		const { digits } = (await ana.run({ cmd: "safety_number", user_id: BO })).ok;
+		let repinned: WorkerReply | null = null;
+		whileOpen = async () => {
+			repinned = (await anaCore?.run("handle", { command: observe(made.forged) })) ?? null;
+		};
+		expect((await ana.run({ cmd: "verify_user", user_id: BO, digits })).ok).toEqual({ verified: false });
+		expect(repinned).toMatchObject({ ok: { state: "changed", verified: false } });
+		expect((await ana.run(observe(made.forged))).ok).toMatchObject({ state: "same", verified: false });
 	});
 
 	test.each(["reset_identity", "create_identity"])("%s asks first, and runs on a yes alone", async (cmd) => {

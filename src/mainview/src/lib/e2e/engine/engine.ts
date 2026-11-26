@@ -310,7 +310,7 @@ export class E2EEngine {
 		return this.#act(async () => {
 			if ((await this.#safetyNumber(userId)).digits !== digits) return false;
 			const { host } = this.#parts;
-			// The digits go along: on the desktop, Bun's own box names them, and runs verify_user only for its own (Ruling 6).
+			// The digits go along: on the desktop, Bun's own box names them, and marks by the QR of that number (Ruling 6).
 			const { verified } = await host.handle<{ verified: boolean }>({ cmd: "verify_user", user_id: userId, digits });
 			this.#contacts.verifiedNow(userId, verified);
 			// Verifying the new number is a yes too (review, Minor 7).

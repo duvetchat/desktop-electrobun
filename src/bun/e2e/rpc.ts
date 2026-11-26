@@ -251,9 +251,13 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 		}
 	}
 
-	/** Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. */
-	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<void> {
+	/**
+	 * Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. It gives what runs
+	 * on the yes: the page's command, or for verify_user Bun's own.
+	 */
+	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
 		let question: Question;
+		let runs = command;
 		if (cmd === "approval_confirm") {
 			// Bun learns what an approval would approve from its offer: one made before the app started, or before another
 			// open, or of a commitment Bun can't read, is unknown here, and is offered again (the same commitment gets the
@@ -267,9 +271,14 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			if (typeof command.digits !== "string") throw bad("digits", "the digits the person compared are a text");
 			// Bun reads the number itself: other digits than the core holds (a script's, or a number that changed since the
 			// page showed it) are refused, as nothing would match them.
-			const { digits } = unwrap(await core("handle", { command: { cmd: "safety_number", user_id: userId } }));
+			const { digits, qr } = unwrap(await core("handle", { command: { cmd: "safety_number", user_id: userId } }));
 			if (command.digits !== digits) throw refused("refused", "those aren't the digits of the security number");
+			// Without its QR the core would mark whatever it pins as it runs.
+			if (typeof qr !== "string") throw refused("internal", "the core gave the security number no QR");
 			question = verifyQuestion({ user: userId, digits });
+			// The core marks by the QR of the number the box shows, compared with what it pins then: an identity pinned
+			// since, by any other way into the core, gets no mark.
+			runs = { cmd: "verify_user", user_id: userId, qr };
 		} else if (cmd === "sign_device_list") {
 			const remove = devices(command.remove);
 			// A list that takes off no device would be a box that names none (M8).
@@ -291,6 +300,7 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			console.error("[e2e] the confirmation failed:", error);
 		}
 		if (!yes) throw refused("refused", "the person didn't confirm it");
+		return runs;
 	}
 
 	async function handleCommand(command: unknown): Promise<unknown> {
@@ -307,8 +317,8 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			const read = readCommitment(commitment);
 			if (read) offered = { device: read.device, fingerprint: await approvalFingerprint(read.bytes) };
 		}
-		if (CONFIRMED.has(cmd)) await askFirst(cmd, command);
-		const result = await core("handle", { command });
+		const runs = CONFIRMED.has(cmd) ? await askFirst(cmd, command) : command;
+		const result = await core("handle", { command: runs });
 		if (cmd === "approval_offer" && "ok" in result) underWay = offered;
 		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
 		return unwrap(result);
