@@ -657,6 +657,9 @@ export class FakeApi {
 	 * a test has it lie, as a server could.
 	 */
 	servedAs: (view: IdentityView, route: "identity" | "identities", viewer: string) => IdentityView = (view) => view;
+	/** How the API lists a user's devices to them (GET …/devices): as they are, unless a test has it lie, as a server
+	 * could. */
+	devicesAs: <View extends { id: string }>(devices: View[]) => View[] = (devices) => devices;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -1085,7 +1088,7 @@ export class FakeApi {
 			route("POST", `${me}/devices`, "session", (ctx) => this.#registerDevice(ctx)),
 			route("POST", `${me}/devices/(?<device>${UUID_PATH})/bind`, "session", (ctx) => this.#bindDevice(ctx)),
 			route("GET", `${me}/devices`, "session", ({ session }) =>
-				ok(this.#devicesOf(session.user).map((device) => this.#deviceView(device, session))),
+				ok(this.devicesAs(this.#devicesOf(session.user).map((device) => this.#deviceView(device, session)))),
 			),
 			route("DELETE", `${me}/devices/(?<device>${UUID_PATH})`, "session", ({ session, params }) => {
 				const device = this.#devices.get(params.device!);

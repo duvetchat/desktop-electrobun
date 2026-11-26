@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { InboxMessage } from "$lib/api/e2e";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { asBytes, asMap, cbor, listDevices } from "../cbor";
-import { approvalFrameMessage, readApprovalFrame } from "../conventions";
+import { approvalFingerprint, approvalFrameMessage, readApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
 import conventions from "../testing/e2e-conventions.json";
 import { FakeApi } from "../testing/fake-api";
@@ -414,6 +414,92 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await until(() => n.engine.state.name === "ready");
 			expect(listDevices((await n.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(n)].sort());
 			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Step 5's review, I1 (desktop-electrobun#542): «unfinished» was read from the served list, raw, and the way out took
+	// off what GET …/devices left out. A server that served a list from before one of the person's devices, and brought a
+	// commitment under that device's ID, had the yes take it off the account.
+	test(
+		"a commitment under a listed device's ID, while the served list and GET …/devices leave it out, asks only «Is this device yours?», and its yes changes no list",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			const puts: string[] = [];
+			useFake(fake, (request) => {
+				if (request.method === "PUT" && request.url.endsWith("/device-list")) puts.push(request.url);
+			});
+			const log: string[] = [];
+			const a = await firstDevice(fake, ana, { host: watchedHost(testHost(), log) });
+			const before = await a.api.identity(ana);
+			// A device approved here by the code, whose list went up and was taken here.
+			const n = await newDevice(fake, ana);
+			await n.engine.acceptCode(await toTheCode(a, n));
+			await a.engine.confirmApproval(deviceOf(n));
+			await until(() => n.engine.state.name === "ready");
+			await until(() => approvalOf(a.engine.state) === null);
+
+			// The server serves the list from before it, lists the user's devices without it, and brings a commitment under
+			// its ID and with its name, which a core of the server's own made.
+			fake.servedAs = (view, _route, viewer) => (viewer === ana ? before : view);
+			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(n));
+			const forger = testHost();
+			await forger.open(ana);
+			await forger.handle({ cmd: "create_device", user_id: ana, device_id: deviceOf(n) });
+			const { commitment } = await forger.handle<{ commitment: string }>({ cmd: "approval_begin" });
+			const frame = { duvet: "approval" as const, step: "commitment" as const, data: commitment };
+			await n.api.sendToDevice(deviceOf(a), approvalFrameMessage({ ...frame, name: "Duvet for Windows" }));
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			expect(approvalOf(a.engine.state)).toEqual({
+				...{ device: deviceOf(n), name: "Duvet for Windows" },
+				...{ fingerprint: await approvalFingerprint(base64Bytes(commitment)), step: "asked" },
+			});
+
+			// The yes changes no list: none signed, none put up, and the device stays on both.
+			const asked = log.length;
+			puts.length = 0;
+			await a.engine.approveDevice(deviceOf(n));
+			expect(log.slice(asked)).not.toContain("sign_device_list");
+			expect(puts).toEqual([]);
+			const held = listDevices((await a.host.handle<{ device_list: string }>({ cmd: "status" })).device_list);
+			expect(held).toContain(deviceOf(n));
+			fake.servedAs = (view) => view;
+			expect(listDevices((await a.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(n)].sort());
+			await Promise.all([a.engine.stop(), n.engine.stop(), forger.close()]);
+		},
+		SLOW,
+	);
+
+	// desktop-electrobun#542: the way out took off, with the device approved here, every device GET …/devices left out.
+	test(
+		"the way out of an unfinished approval signs off that device alone, whatever GET …/devices leaves out",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const removed: unknown[][] = [];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd === "sign_device_list" && Array.isArray(command.remove)) removed.push(command.remove);
+				return null;
+			});
+			const a = await firstDevice(fake, ana, { host });
+			const b = await approvedDevice(fake, a);
+			let reading = true;
+			const n = await newDevice(fake, ana, { hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			await toTheCode(a, n);
+			// Confirmed before the code was typed, and the sheet reopened: the new attempt can't take that transfer.
+			reading = false;
+			await a.engine.confirmApproval(deviceOf(n));
+			await n.engine.useCode();
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), unfinished: true });
+			// The server lists the user's devices without the other one.
+			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(b));
+			await a.engine.approveDevice(deviceOf(n));
+			expect(removed).toEqual([[deviceOf(n)]]);
+			expect(listDevices((await a.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(b)].sort());
+			await Promise.all([a, b, n].map((device) => device.engine.stop()));
 		},
 		SLOW,
 	);
