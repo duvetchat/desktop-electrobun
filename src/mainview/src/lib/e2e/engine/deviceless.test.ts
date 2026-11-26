@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { Identity } from "$lib/api/e2e";
+import { certificateDevice } from "../cbor";
 import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -7,6 +9,7 @@ import {
 	groupOf,
 	rejection,
 	sameGroup,
+	testDevice,
 	testHost,
 	turnEnded,
 	until,
@@ -15,6 +18,7 @@ import {
 	type TestDevice,
 } from "../testing/engines";
 import { holdUploads, useXHR } from "../testing/xhr";
+import type { IdentityMade } from "./identity";
 
 // Members without a device (PLAN-E2E-CLIENTES.md, «Quien no tenía dispositivo»; Task 22): who they are, as the person
 // opens the conversation, told to the core and over the message box; and the catch-up of what was sent them meanwhile,
@@ -76,6 +80,19 @@ async function waitingForCy(given: Parameters<typeof firstDevice>[2] = {}) {
 		text: "while you were away",
 	});
 	return { ...setup, ana, cy, conversation, a, sent: sent! };
+}
+
+/**
+ * An identity of the user's that only the server knows, as a server forges one: made by a core of its own, on a device
+ * registered as the user's that's on none of their lists, which it certifies. What it made, and that device.
+ */
+async function forgedIdentity(fake: FakeApi, user: string): Promise<{ made: IdentityMade; device: string }> {
+	const forger = testDevice(fake, user);
+	await forger.engine.start();
+	await forger.engine.stop();
+	await forger.host.open(user);
+	const made = await forger.host.handle<IdentityMade>({ cmd: "create_identity" });
+	return { made, device: certificateDevice(made.certificate)! };
 }
 
 /** The message reached Cy's device by its catch-up from Ana. */
@@ -350,6 +367,59 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await caughtUp(c, conversation, sent!.id);
 			const [row] = await c.engine.messages(conversation, [sent!.id]);
 			expect(row).toMatchObject({ status: "ok", text: "kept a day" });
+		},
+		SLOW,
+	);
+
+	// #530: a verified contact's changed key can come in the catch-up's own identity round, after the check before its
+	// make. What Ana sent while Cy had no identity was noted under none, which any identity of his takes; she verified
+	// him once he had one, while the API held his catch-up off. Then the server forges him an identity, with a device of
+	// its own, and serves Ana its certificates as his identity, his real identity to the make's observation, and the
+	// forged one to the round the core asks for, which seals the package to the forged device: no part, completion or key
+	// of it goes until Ana's yes, and then that same package goes.
+	test(
+		"a catch-up whose own identity round brings a verified contact's changed key waits for the yes",
+		async () => {
+			const made: string[] = [];
+			const { fake, requests, puts, ana, cy, a } = await waitingForCy({ host: countingCatchUps(testHost(), made) });
+			fake.refuse({ method: "PUT", path: SHARES }, 429, { error: "too many requests" }, { "Retry-After": "120" });
+			await firstDevice(fake, cy);
+			await until(() => puts().length === 1);
+			await turnEnded(a);
+			const { digits } = await a.engine.safetyNumber(cy);
+			expect(await a.engine.verifyContact(cy, digits)).toBe(true);
+			const forged = await forgedIdentity(fake, cy);
+			const { identity_key, device_list, certificate } = forged.made;
+			const lie = (view: Identity): Identity => ({ ...view, identity_key, device_list, certificates: [certificate] });
+			// After Ana's device asks for Cy's identity, its next GET …/identities gets his own, and the later ones the lie.
+			let next: "his" | "forged" | null = null;
+			fake.servedAs = (view, route, viewer) => {
+				if (viewer !== ana || view.user_id !== cy) return view;
+				if (route === "identity") {
+					next ??= "his";
+					return lie(view);
+				}
+				if (next !== "his") return next === "forged" ? lie(view) : view;
+				next = "forged";
+				return view;
+			};
+			const onward = () =>
+				requests.filter(
+					(request) =>
+						/\/history-shares\/[0-9a-f-]{36}\/(parts\/\d+|complete)$/.test(request) ||
+						request === `POST /api/devices/${forged.device}/inbox`,
+				);
+			a.clock.advance(120_000);
+			await until(() => a.engine.contacts().changes[cy] !== undefined);
+			await turnEnded(a);
+			expect(a.engine.contacts().changes[cy]?.verified).toBe(true);
+			expect(onward()).toEqual([]);
+			// Her yes: the package made for the forged device goes on, its key to that device, and no other is made.
+			const makes = made.length;
+			await a.engine.confirmKeyChanges([{ user: cy, change: a.engine.contacts().changes[cy]!.change }]);
+			await until(() => requests.includes(`POST /api/devices/${forged.device}/inbox`));
+			await turnEnded(a);
+			expect(made).toHaveLength(makes);
 		},
 		SLOW,
 	);
