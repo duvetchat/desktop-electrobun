@@ -79,6 +79,27 @@ const urlOf = (message: DirectMessage, id: string) => message.attachments?.find(
 const onTheApi = async (device: TestDevice, conversation: string) =>
 	(await device.api.queue(conversation, 0)).entries.filter((e) => e.kind === "message").map((e) => e.message_id!);
 
+// Step 5's review, M4 (desktop-electrobun#544): a thumbnail of its own was taken whatever its size, up to a request's
+// 32 MiB, and every reader downloaded it as its row neared the screen.
+test("a thumbnail of its own past what a 320 px JPEG or PNG takes is none: it's never downloaded", () => {
+	const ref = { id: crypto.randomUUID(), key: "a2V5", sha256: "aGFzaA==" };
+	const raw = {
+		id: crypto.randomUUID(),
+		key: "a2V5",
+		sha256: "aGFzaA==",
+		name: "a.png",
+		type: "image/png",
+		size: 1000,
+	};
+	expect(shownFile({ ...raw, thumbnail_ref: { ...ref, size: 512 << 10 } })?.thumbnail_ref).toEqual({
+		...ref,
+		size: 512 << 10,
+	});
+	expect(shownFile({ ...raw, thumbnail_ref: { ...ref, size: (512 << 10) + 1 } })).toMatchObject({ name: "a.png" });
+	expect(shownFile({ ...raw, thumbnail_ref: { ...ref, size: (512 << 10) + 1 } })?.thumbnail_ref).toBeUndefined();
+	expect(shownFile({ ...raw, thumbnail_ref: { ...ref, size: 32 << 20 } })?.thumbnail_ref).toBeUndefined();
+});
+
 describe.skipIf(!coreLibrary)("a conversation's files", () => {
 	test(
 		"a file is sealed, sent with its id, and opened by the other device",
@@ -118,6 +139,32 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 			expect(opened.type).toBe("image/png");
 			expect(opened.blob.type).toBe("image/png");
 			expect(drawnBy(opened.type)).toBe("image");
+		},
+		SLOW,
+	);
+
+	// Step 5's review, M6 (desktop-electrobun#544): in the core's format a part's nonce is its index, so one key over two
+	// contents would use GCM's nonces twice. Only a key drawn for each file keeps that from happening.
+	test(
+		"each file is sealed under a key of its own: two files, a thumbnail apart, and one file sent again with other content",
+		async () => {
+			const { a, b, conversation } = await dm();
+			const first = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [
+					{ file: blob(png(1000)), name: "a.png" },
+					{ file: blob(png(2000)), name: "b.png", thumbnail: blob(jpeg(20 << 10)) },
+				],
+			}))!;
+			const [one, two] = await filesOn(b, conversation, first.id);
+			// The same file sent again with other content, as after a Cancel: a message of its own.
+			const again = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [{ file: blob(png(1000)), name: "a.png" }],
+			}))!;
+			const [three] = await filesOn(b, conversation, again.id);
+			const keys = [one!.key, two!.key, two!.thumbnail_ref!.key, three!.key];
+			expect(new Set(keys).size).toBe(4);
 		},
 		SLOW,
 	);

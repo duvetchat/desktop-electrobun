@@ -588,7 +588,7 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			const own = fresh.registered.at(-1)!;
 			await eventually(async () => asked()?.step === "asked");
 			expect(asked()).toMatchObject({ device: own, name: deviceName() });
-			await c.engine.approveDevice(own);
+			await c.engine.approveDevice(own, asked()!.question!);
 			await eventually(async () => asked()?.step === "code");
 			const { code } = asked()!;
 			await eventually(async () => {

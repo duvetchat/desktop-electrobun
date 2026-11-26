@@ -16,6 +16,11 @@ export const PENDING_CHANGES = "pending_changes";
 /** The devices a change of keys under way takes off the list (devices.ts), which it runs again with, until it's uploaded. */
 export const KEPT_ROTATION = "rotation";
 /**
+ * The devices this device approved (approval_confirm), each with when, until a list the core took names it (identity.ts):
+ * one still kept is an approval of this device's that didn't finish, whose way out is to sign it off (approval.ts).
+ */
+export const APPROVED_HERE = "approved_here";
+/**
  * A change of keys of this device's went on without devices another device took off (gone, duvetchat/e2e#49): one of
  * them may still hold its keys, so another change is offered, until one is made. True, or nothing.
  */
@@ -64,7 +69,7 @@ export const BACKUP_PAUSE = "backup_paused";
 export const BACKUP_SET_ASIDE = "backup_set_aside";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
-	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
+	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER, APPROVED_HERE],
 	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEYS_AGAIN, RELISTED, KEPT_RESET, LISTED, REFUSED_GENERATIONS],
 	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE, BACKUP_SET_ASIDE],

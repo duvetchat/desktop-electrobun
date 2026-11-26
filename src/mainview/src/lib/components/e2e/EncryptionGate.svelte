@@ -76,9 +76,9 @@
 			resetIdentity(): Promise<void>;
 			finishSetup(): Promise<void>;
 		};
-		/** The person's answers about a new device of theirs that asks to be approved. */
+		/** The person's answers about a new device of theirs that asks to be approved: a yes, to the question they saw. */
 		approvalActions: {
-			approve(deviceId: string): Promise<void>;
+			approve(deviceId: string, question: string): Promise<void>;
 			decline(deviceId: string): Promise<void>;
 			confirm(deviceId: string): Promise<void>;
 		};
@@ -246,7 +246,7 @@
 		{#snippet body()}
 			<ApprovalPrompt
 				approval={approving}
-				onApprove={() => approvalActions.approve(approving.device)}
+				onApprove={() => approvalActions.approve(approving.device, approving.question ?? "")}
 				onDecline={() => approvalActions.decline(approving.device)}
 				onConfirm={() => approvalActions.confirm(approving.device)}
 			/>

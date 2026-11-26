@@ -19,7 +19,7 @@ import { CoreError } from "../errors";
 import { coreStatus } from "./bootstrap";
 import { signWithout } from "./devices";
 import type { EngineParts } from "./engine";
-import { observeOwn, servedIdentity } from "./identity";
+import { approvedHere, forgetApproved, noteApproved, observeOwn, servedIdentity } from "./identity";
 import { withPreviousKeys } from "./recover";
 import { KEPT_APPROVALS } from "./store";
 
@@ -36,12 +36,15 @@ export type DeviceSetup =
  * shows (Ruling 35); `asked` until the person's yes, `offered` until the new device's reveal, then the `code` to type
  * into it; `confirmed` once its transfer went, until its list is up; `ended` when it can't go on (`over`: its attempt
  * ended, or can't be confirmed here any more; `listed`: the device is set up already). `unfinished`: this device
- * approved it before and it never took its transfer, so it comes off this device's list first (the core's way out).
+ * approved it before, by its own record, and no list it took names it yet, so it comes off this device's list first
+ * (the core's way out). `question`: the inbox message of the commitment asked about, which the person's yes answers
+ * (desktop-electrobun#535).
  */
 export interface DeviceApproval {
 	device: string;
 	name: string;
 	fingerprint: string;
+	question?: string;
 	step: "asked" | "offered" | "code" | "confirmed" | "ended";
 	code?: string;
 	ended?: "over" | "listed";
@@ -140,9 +143,9 @@ export class Approvals {
 	shown(): DeviceApproval | null {
 		const asked = this.#asked;
 		if (asked) {
-			const { device, name, fingerprint, step, code, ended, unfinished } = asked;
+			const { device, name, fingerprint, message: question, step, code, ended, unfinished } = asked;
 			return {
-				...{ device, name, fingerprint, step },
+				...{ device, name, fingerprint, question, step },
 				...(code ? { code } : {}),
 				...(ended ? { ended } : {}),
 				...(unfinished ? { unfinished: true as const } : {}),
@@ -256,20 +259,25 @@ export class Approvals {
 	 * The person's yes on the approving device: its own user observed, then the offer to the new device. Nothing while
 	 * the identity it holds was replaced (`not_own_identity`: another device changed the keys, whose transfer this one
 	 * hasn't taken): the engine takes its inbox first. A device this one approved before that never took its transfer is
-	 * still on this device's list, where the core refuses to approve it again: it comes off first (the core's way out,
-	 * `sign_device_list`, which Bun asks about in its own box on the desktop).
+	 * still on this device's list, where the core refuses to approve it again: it comes off first, and alone (the core's
+	 * way out, `sign_device_list`, which Bun asks about in its own box on the desktop). Only this device's record says
+	 * which device that is: never the list the API serves, nor which devices it registers (desktop-electrobun#542). The
+	 * yes is to the `question` the person answered: once another stands, or a newer attempt of the device's waits for
+	 * its take, nothing is offered, and the newer question waits for its own yes (desktop-electrobun#535).
 	 */
-	async approve(device: string): Promise<"replaced" | void> {
+	async approve(device: string, question: string): Promise<"replaced" | void> {
 		this.#refuseWhileHeld(device);
 		const asked = this.#asked;
-		if (asked?.device !== device || asked.step !== "asked") return;
-		const { api, host } = this.#parts;
+		if (asked?.device !== device || asked.message !== question || asked.step !== "asked") return;
+		const { api, host, store } = this.#parts;
 		const frame = this.#commitmentOf(asked);
 		if (!frame) return this.#end(asked, "over");
+		if (this.#replacedAttempt(asked)) return;
 		const served = await servedIdentity(this.#parts);
 		if (served && (await observeOwn(this.#parts, served)) === "not_own_identity") return "replaced";
-		if (served && (await this.#unfinished(device, served))) {
-			await signWithout(this.#parts, device);
+		if (served && (await this.#unfinished(device))) {
+			await signWithout(this.#parts, device, { alone: true });
+			forgetApproved(store, [device]);
 			if (this.#confirmed?.device === device) this.#release();
 		}
 		let offer: string;
@@ -297,10 +305,19 @@ export class Approvals {
 		return (message && readApprovalFrame(message.message)) || null;
 	}
 
-	/** On the list this device holds and not on the API's: approved here before, its transfer never taken. */
-	async #unfinished(device: string, served: { device_list: string }): Promise<boolean> {
-		const held = listDevices((await coreStatus(this.#parts.host)).device_list ?? "") ?? [];
-		return held.includes(device) && !listDevices(served.device_list)?.includes(device);
+	/** A newer commitment of the device's waits in the record: its attempt replaced the one asked about. */
+	#replacedAttempt(asked: Asked): boolean {
+		const newest = keptIn(this.#parts).findLast(
+			(message) => message.from_device_id === asked.device && readApprovalFrame(message.message)?.step === "commitment",
+		);
+		return newest !== undefined && newest.id !== asked.message;
+	}
+
+	/** Approved here before, by this device's record, with no list it took naming it since, and still on the list it
+	 * holds: its transfer never taken. */
+	async #unfinished(device: string): Promise<boolean> {
+		if (!approvedHere(this.#parts.store).some((one) => one.device === device)) return false;
+		return (listDevices((await coreStatus(this.#parts.host)).device_list ?? "") ?? []).includes(device);
 	}
 
 	/** The approval can't go on: it says why until the person closes it, and its timer is called off. */
@@ -340,6 +357,8 @@ export class Approvals {
 					cmd: "approval_confirm",
 					code: asked.code,
 				});
+				// The core put it on this device's list: an approval of this device's, until a list it takes names it.
+				noteApproved(this.#parts.store, confirmed.device_id, this.#parts.clock.now());
 				asked.transfer = { device: confirmed.device_id, data: confirmed.transfer };
 			} catch (error) {
 				// The person's no in Bun's box: not yet, the code still shown.
@@ -451,8 +470,7 @@ export class Approvals {
 			// A new attempt of the device's, or the first ask: the question starts over, and ends with that attempt.
 			asked?.stop();
 			const fingerprint = await approvalFingerprint(base64Bytes(frame.data));
-			const served = await servedIdentity(this.#parts);
-			const unfinished = served !== null && (await this.#unfinished(device, served));
+			const unfinished = await this.#unfinished(device);
 			const question: Asked = {
 				...{ device, name: frame.name ?? "", fingerprint, message: message.id },
 				...{ step: "asked", unfinished, stop: () => {} },

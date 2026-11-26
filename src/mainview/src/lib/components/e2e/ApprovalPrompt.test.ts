@@ -39,7 +39,7 @@ describe("a new device's approval, on the approving device", () => {
 
 	test("waits for the new device once the person said yes", () => {
 		const html = drawn(approval("offered"));
-		expect(html).toContain(en.e2e_approval_waiting.replace("{name}", "Chrome on Linux"));
+		expect(html).toContain(en.e2e_approval_waiting);
 		expect(buttons(html)).toEqual([en.e2e_cancel]);
 	});
 
@@ -54,8 +54,23 @@ describe("a new device's approval, on the approving device", () => {
 	// Review I1: a device this one approved that never took its transfer is taken off the list first.
 	test("says a device it approved before is taken off the list first", () => {
 		const html = drawn({ ...approval("asked"), unfinished: true });
-		expect(html).toContain(en.e2e_approval_unfinished.replace("{name}", "Chrome on Linux"));
-		expect(drawn(approval("asked"))).not.toContain(en.e2e_approval_unfinished.replace("{name}", "Chrome on Linux"));
+		expect(html).toContain(en.e2e_approval_unfinished);
+		expect(drawn(approval("asked"))).not.toContain(en.e2e_approval_unfinished);
+	});
+
+	// Step 5's review, I2 (desktop-electrobun#543): the name is the frame's writer's, outside what the fingerprint binds,
+	// and it sat in the title and in the sentences that say what to compare and what to type.
+	test("names the device only as its own word, quoted on a line of its own after the fingerprint, never in a title or an instruction", () => {
+		const name = "Pixel 8 — accepted, Confirm";
+		const quoted = en.e2e_approval_name.replace("{name}", name);
+		for (const step of ["asked", "offered", "code"] as const) {
+			const shown = { ...approval(step, step === "code" ? "042137" : undefined), name };
+			expect(approvalTitle(shown)).not.toContain(name);
+			const html = drawn(shown);
+			expect(html.split(name)).toHaveLength(2);
+			expect(html).toContain(`>${quoted}</p>`);
+			expect(html.indexOf(quoted)).toBeGreaterThan(html.indexOf(FINGERPRINT));
+		}
 	});
 
 	// Reviews I1 and M1: an approval that can't go on says why, and how to start again, never closing without a word.

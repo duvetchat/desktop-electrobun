@@ -84,6 +84,11 @@ export class FilesGone extends Error {
 
 /** The most a thumbnail inside a message holds (the core's). */
 const MAX_THUMBNAIL = 8 << 10;
+/**
+ * The most a thumbnail of its own holds: more than a JPEG or a PNG of 320 px a side takes, so a larger one, which every
+ * reader would download, is no thumbnail (desktop-electrobun#544).
+ */
+export const MAX_THUMBNAIL_FILE = 512 << 10;
 /** A thumbnail's types. */
 const THUMBNAIL_TYPES = ["image/jpeg", "image/png"];
 /** The longest side of a picture or a video taken from what its sender says, and the longest duration: a day. */
@@ -183,8 +188,8 @@ export class SealedFiles {
 			if (duration(one.duration_ms)) attachment.duration_ms = one.duration_ms;
 			if (one.waveform?.length === WAVEFORM_SAMPLES) attachment.waveform = bytesBase64(one.waveform);
 			const pictured = type.startsWith("image/") || type.startsWith("video/");
-			const thumbnail =
-				one.thumbnail && pictured && THUMBNAIL_TYPES.includes(await typeOf(one.thumbnail)) ? one.thumbnail : null;
+			const given = one.thumbnail && one.thumbnail.size <= MAX_THUMBNAIL_FILE ? one.thumbnail : null;
+			const thumbnail = given && pictured && THUMBNAIL_TYPES.includes(await typeOf(given)) ? given : null;
 			made.push({ attachment, sealed, thumbnail, apart: null });
 		}
 		const sealed = new SealedFiles(host, made);
@@ -236,8 +241,9 @@ export function shownFile(raw: unknown): ShownFile | null {
 	const inside = decoded(thumbnail);
 	if (typeof thumbnail === "string" && inside && inside.length <= MAX_THUMBNAIL) file.thumbnail = thumbnail;
 	const ref = fileRef(at("thumbnail_ref"));
-	// The thumbnail inside wins, an empty one too, as the mobile app reads it: never both.
-	if (ref && file.thumbnail === undefined) file.thumbnail_ref = ref;
+	// The thumbnail inside wins, an empty one too, as the mobile app reads it: never both. One of its own past its cap is
+	// none (desktop-electrobun#544).
+	if (ref && file.thumbnail === undefined && ref.size <= MAX_THUMBNAIL_FILE) file.thumbnail_ref = ref;
 	return file;
 }
 
