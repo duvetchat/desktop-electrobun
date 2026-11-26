@@ -67,7 +67,7 @@ let
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-WMtdfU/Hmn7m14moO8qsJ5eEAtqtf9jBCoU9hRrhDSM=";
+    outputHash = "sha256-Kme3vOLtk+vMQ0Cn0AxJ95SAtpjvSXlp+AeuM6cPDDY=";
   };
 
   src = lib.cleanSourceWith {
