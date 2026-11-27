@@ -890,6 +890,32 @@ describe("end-to-end encryption's events", () => {
 		}
 	});
 
+	// N-I1: a DM is its two people, whom its view shows: a member's addition to one isn't taken, as the engine holds the
+	// DM's group to the page's drawing of it. A group's is.
+	test("a member's addition to a DM isn't taken; a group's is", () => {
+		const [dm, group] = [conversation(97), conversation(98)];
+		const at = { created_at: "2026-11-25T00:00:00Z", updated_at: "2026-11-25T00:00:00Z" };
+		const member = (where: string, user: string) => ({
+			...{ id: crypto.randomUUID(), conversation_id: where, user_id: user, ...at },
+			user: { id: user, username: user, alias: null, avatar: null, banner: null },
+		});
+		const drawnAs = (id: string, type: 1 | 2) => ({
+			...{ id, type, name: null, owner_id: ALICE, members: [member(id, ALICE), member(id, ME)] },
+			...{ ...at, deleted_at: null },
+		});
+		stores.conversations.set([drawnAs(dm, 1), drawnAs(group, 2)]);
+		const third = crypto.randomUUID();
+		for (const id of [dm, group]) {
+			deliver("CONVERSATION_MEMBER_ADD", { conversation_id: id, member_id: crypto.randomUUID(), user_id: third });
+		}
+		const users = (id: string) =>
+			get(stores.conversations)
+				.find((c) => c.id === id)
+				?.members.map((m) => m.user_id);
+		expect(users(dm)).toEqual([ALICE, ME]);
+		expect(users(group)).toEqual([ALICE, ME, third]);
+	});
+
 	// #550 (step 5's engines review, Minor 6): a group's owner handed on as they leave goes by CONVERSATION_UPDATE, which
 	// the engine hears once the app took it, so what the conversation says and its restart go by the new owner at once.
 	test("a conversation's change reaches it once the app took it", async () => {

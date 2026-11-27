@@ -3,7 +3,7 @@
 // their device signs, whose removal a member's commit makes once the API proposes it. A group has 20 members at most,
 // its owner among them: the cap holds before anything is asked. And who a blocked group's restart leaves out, which its
 // person confirms first; and whether the members of a newer generation are the ones this device holds.
-import type { Conversation } from "$lib/api/conversations";
+import type { Conversation, ConversationMember } from "$lib/api/conversations";
 import type { Commit } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineParts } from "./engine";
@@ -62,19 +62,30 @@ export async function removal(parts: EngineParts, conv: Conversation, user: stri
 	return { generation: at.generation, epoch: at.epoch, ...made };
 }
 
+/** A conversation's people as a page draws them (#574): its kind, a group's owner, its members' users. */
+export type Drawn = Pick<Conversation, "type" | "owner_id"> & { members: Pick<ConversationMember, "user_id">[] };
+
 /** The users the core's group holds that the API's conversation no longer lists: whom a restart leaves out. */
-export const leftOut = (held: HeldMembers, conv: Conversation) =>
+export const leftOut = (held: HeldMembers, conv: Drawn) =>
 	held.members.map((member) => member.user_id).filter((user) => !conv.members.some((m) => m.user_id === user));
 
 /**
- * Whether the core's group holds a user, a kind or an owner the API's conversation doesn't (#574): whom what's sent there
- * reaches that the conversation doesn't show. Those it lists that the group doesn't hold yet (an addition the queue
- * hasn't brought) aren't.
+ * Whether the core's group holds a user, a kind or an owner the conversation as drawn doesn't (#574): whom what's sent
+ * there reaches that the conversation doesn't show. Those it lists that the group doesn't hold yet (an addition the
+ * queue hasn't brought) aren't, but for a DM, which is exactly `user` and the one its view shows (N-I1): drawn with any
+ * other count of people, its title names one, and whom else it holds isn't shown.
  */
-export const heldBeyond = (held: HeldMembers, conv: Conversation) =>
+export const heldBeyond = (held: HeldMembers, conv: Drawn, user: string) =>
 	held.kind !== (conv.type === 1 ? "dm" : "group") ||
 	(held.kind === "group" && held.owner !== conv.owner_id) ||
+	(conv.type === 1 && !twoPeople(conv, user)) ||
 	leftOut(held, conv).length > 0;
+
+/** A DM as drawn: two members, `user` and another. */
+function twoPeople(conv: Drawn, user: string): boolean {
+	const users = new Set(conv.members.map((member) => member.user_id));
+	return conv.members.length === 2 && users.size === 2 && users.has(user);
+}
 
 /** Two lists of users, the same whatever their order. */
 export const sameUsers = (a: readonly string[], b: readonly string[]) =>

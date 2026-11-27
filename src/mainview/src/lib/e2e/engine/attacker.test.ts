@@ -607,6 +607,33 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// N-I1: a DM is exactly the person and the one its view shows. The server serves, as Bo's DM with Ana, a DM group of
+	// Bo and Eve, and lists Eve in the DM Bo's page draws, whose title names Ana: nothing goes there.
+	test(
+		"a DM drawn with a third member is held to its two people: what goes there waits",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			fake.befriend(bo, eve);
+			// To Bo, Eve's DM with him is his DM with Ana, its members Ana's first, as its title names her.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== bo || view.type !== 1 || !view.members.some((member) => member.user_id === eve)) return view;
+				return { ...view, members: [{ ...view.members[0]!, id: crypto.randomUUID(), user_id: ana }, ...view.members] };
+			};
+			const b = await firstDevice(fake, bo);
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 1, user_id: bo });
+			await until(async () => (await groupOf(b, id)) !== null, { what: "Bo's device in Eve's DM" });
+			await until(() => b.engine.conversationState(id)?.name === "other_members", {
+				what: "Bo's DM saying whom its group holds",
+			});
+			expect(await rejection(send(b, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
+			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
+		},
+		SLOW,
+	);
+
 	// The one honest case: a member who left stays in the group until a member's commit takes them out, under the API's
 	// proposal of their removal. It isn't said, and what goes there next commits that removal first.
 	test(

@@ -968,9 +968,9 @@ export class Conversations {
 	async #othersIn(id: string, held: Held, due: boolean): Promise<ConversationState | null> {
 		if (due) return null;
 		const drawn = await this.#parts.shown(id, false);
-		if (drawn && !heldBeyond(held, drawn)) return null;
+		if (drawn && !heldBeyond(held, drawn, this.#parts.user)) return null;
 		const again = await this.#parts.shown(id, true);
-		if (again && !heldBeyond(held, again)) return null;
+		if (again && !heldBeyond(held, again, this.#parts.user)) return null;
 		return { name: "other_members", users: held.members.map((member) => member.user_id) };
 	}
 

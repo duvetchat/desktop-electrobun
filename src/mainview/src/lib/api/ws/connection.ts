@@ -1800,7 +1800,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			if (raw.user_id !== get(currentUser)?.id) noteConversationMemberStatus(userStatusCache, raw.user_id, raw);
 			conversations.update((list) =>
 				list.map((c) => {
-					if (c.id !== raw.conversation_id) return c;
+					// A DM is its two people, whom its view shows (N-I1): an addition to one isn't taken.
+					if (c.id !== raw.conversation_id || c.type === 1) return c;
 					const alreadyHas = c.members.some((m) => m.id === raw.member_id || m.user_id === raw.user_id);
 					// Shown again with the presence just kept.
 					if (alreadyHas) return { ...c };
