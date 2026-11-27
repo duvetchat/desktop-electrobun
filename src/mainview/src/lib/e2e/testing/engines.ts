@@ -4,7 +4,7 @@
 import { afterAll, afterEach, mock, spyOn } from "bun:test";
 import { rmSync } from "node:fs";
 import { sessionApi } from "$lib/api/api";
-import type { DirectMessage } from "$lib/api/conversations";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { e2eApi, type E2eApi } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import type { EnvelopeFile } from "../conventions";
@@ -119,6 +119,26 @@ export interface TestDevice {
 }
 
 /**
+ * The conversation as a page draws it that lists what the API lists to its session, read anew each time, as READY's
+ * list and the conversations' events keep the app's: the live suite's, against a real API.
+ */
+export const listedTo =
+	(api: E2eApi): EngineParts["shown"] =>
+	async (id) =>
+		(await api.conversations()).find((conv) => conv.id === id) ?? null;
+
+/**
+ * The conversation as a test's page draws it: as the fake lists it to `user` now, a test's lies included, as READY's
+ * list and the conversations' events keep the app's, read without a request of its own, which a test counting the
+ * engine's requests would see.
+ */
+const pageOf =
+	(fake: FakeApi, user: string): EngineParts["shown"] =>
+	async (id) =>
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's listing is the API's, as GET …/conversations sends it
+		(fake.listedTo(user) as Conversation[]).find((conv) => conv.id === id) ?? null;
+
+/**
  * A device of the user on the fake: an engine with its core (`host`, a new one unless given), a session of its own (a
  * sign-in's, unless `token` names one), its record and its clock. It connects to the gateway with no device, then again
  * with the one the engine registers, as the app's one reopen does (Ruling 30).
@@ -132,7 +152,7 @@ export function testDevice(
 		token?: string;
 		/** Which events reach the engine: all of them unless this says no. */
 		hears?: (event: GatewayEvent) => boolean;
-		/** The conversation as its page draws it (EngineParts' shown): the engine's own listing unless given. */
+		/** The conversation as its page draws it (EngineParts' shown): as the fake lists it to the user now, unless given. */
 		shown?: EngineParts["shown"];
 	} = {},
 ): TestDevice {
@@ -171,7 +191,7 @@ export function testDevice(
 			registered.push(device);
 			if (device !== registered.at(-2)) connect(device);
 		},
-		...(given.shown ? { shown: given.shown } : {}),
+		shown: given.shown ?? pageOf(fake, user),
 	});
 	const states: EngineState[] = [];
 	engine.onState((state) => states.push(state));

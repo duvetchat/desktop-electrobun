@@ -678,9 +678,9 @@ export class FakeApi {
 	devicesAs: <View extends { id: string }>(devices: View[]) => View[] = (devices) => devices;
 	/**
 	 * How the API lists a conversation to `viewer` (GET …/conversations): as it is, unless a test has it lie, as a server
-	 * could, of its type, its owner or its members.
+	 * could, of its type, its owner or its members, or leave it out (null).
 	 */
-	conversationsAs: <View extends ListedConversation>(view: View, viewer: string) => View = (view) => view;
+	conversationsAs: <View extends ListedConversation>(view: View, viewer: string) => View | null = (view) => view;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -769,6 +769,15 @@ export class FakeApi {
 	}
 
 	/** Every conversation's ID. */
+	/**
+	 * The user's conversations as GET …/conversations lists them to a session of theirs without a device, a test's lies
+	 * included, as they go on the wire: what a test's page draws, read without a request of its own.
+	 */
+	listedTo(user: string): unknown[] {
+		const listed = this.#conversationsOf(user).flatMap((c) => this.conversationsAs(this.#view(c, null), user) ?? []);
+		return structuredClone(listed);
+	}
+
 	conversationIds(): string[] {
 		return [...this.#conversations.keys()];
 	}
@@ -1257,7 +1266,11 @@ export class FakeApi {
 				`${me}/conversations`,
 				"session",
 				({ session, device }) =>
-					ok(this.#conversationsOf(session.user).map((c) => this.conversationsAs(this.#view(c, device), session.user))),
+					ok(
+						this.#conversationsOf(session.user).flatMap(
+							(c) => this.conversationsAs(this.#view(c, device), session.user) ?? [],
+						),
+					),
 				true,
 			),
 			route("POST", `${me}/conversations`, "session", (ctx) => this.#createConversation(ctx)),

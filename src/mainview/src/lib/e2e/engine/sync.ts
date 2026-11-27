@@ -726,15 +726,9 @@ export class Conversations {
 	async #founding(conv: Conversation): Promise<LegacyRecord | null> {
 		const record = legacyRecord(this.#parts.store, conv);
 		if (record) return record;
-		let drawn = await this.#drawn(conv.id, false);
-		if (drawn && !isRecord(conv, peopleOf(drawn))) drawn = await this.#drawn(conv.id, true);
+		let drawn = await this.#parts.shown(conv.id, false);
+		if (drawn && !isRecord(conv, peopleOf(drawn))) drawn = await this.#parts.shown(conv.id, true);
 		return drawn && peopleOf(drawn);
-	}
-
-	/** The conversation as the page draws it (EngineParts' shown), read again when `fresh`; else the API's, as listed. */
-	async #drawn(id: string, fresh: boolean): Promise<Conversation | null> {
-		if (this.#parts.shown) return this.#parts.shown(id, fresh);
-		return fresh ? this.#fresh(id) : (this.#known.get(id) ?? this.#fresh(id));
 	}
 
 	/**
@@ -922,7 +916,7 @@ export class Conversations {
 			forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
-				this.#set(conv.id, (await this.#othersIn(conv, held, at.due)) ?? this.#goingOn(conv.id));
+				this.#set(conv.id, (await this.#othersIn(conv.id, held, at.due)) ?? this.#goingOn(conv.id));
 				if (at.due) this.#dueLater(conv.id);
 				return;
 			}
@@ -966,30 +960,31 @@ export class Conversations {
 	/**
 	 * Whom the group holds that the conversation doesn't show (#574): its core's users, when it holds a user, a kind or
 	 * an owner the conversation as the person sees it doesn't, drawn again from a new listing first, as an addition or a
-	 * new owner may be newer than the list the page or this device read. A member who left and waits for their removal
-	 * (`due`) isn't said: what goes there next commits that removal first (encrypt's pending_proposals), and is held to
-	 * the conversation once it's in.
+	 * new owner may be newer than the list the page read. One the page draws not at all differs (N-C1): a listing that
+	 * leaves it out shows the person nobody, and never stands for what they see. A member who left and waits for their
+	 * removal (`due`) isn't said: what goes there next commits that removal first (encrypt's pending_proposals), and is
+	 * held to the conversation once it's in.
 	 */
-	async #othersIn(conv: Conversation, held: Held, due: boolean): Promise<ConversationState | null> {
+	async #othersIn(id: string, held: Held, due: boolean): Promise<ConversationState | null> {
 		if (due) return null;
-		// What the person sees: the conversation as its page draws it, or the API's where it draws none.
-		const drawn = (await this.#drawn(conv.id, false)) ?? conv;
-		if (!heldBeyond(held, drawn)) return null;
-		const again = (await this.#drawn(conv.id, true)) ?? (await this.#fresh(conv.id));
-		if (!again || !heldBeyond(held, again)) return null;
+		const drawn = await this.#parts.shown(id, false);
+		if (drawn && !heldBeyond(held, drawn)) return null;
+		const again = await this.#parts.shown(id, true);
+		if (again && !heldBeyond(held, again)) return null;
 		return { name: "other_members", users: held.members.map((member) => member.user_id) };
 	}
 
 	/**
 	 * Before anything more goes to the conversation (#574): whether its core's group holds a user, a kind or an owner the
-	 * conversation the API lists doesn't, which the conversation then says (`other_members`). Never waived for a removal
-	 * that waits: what's sent is made only once it's committed (the core's ready_to_send). False without a group.
+	 * conversation as its page draws it doesn't, or the page doesn't draw it (N-C1), which the conversation then says
+	 * (`other_members`). The core's group and the page's drawing alone, never the engine's listing, which may leave the
+	 * conversation out. Never waived for a removal that waits: what's sent is made only once it's committed (the core's
+	 * ready_to_send). False without a group.
 	 */
 	async holdsOthers(conversationId: string): Promise<boolean> {
-		const conv = this.#known.get(conversationId) ?? (await this.#fresh(conversationId));
-		const held = conv ? await this.#group(conversationId) : null;
-		if (!conv || !held) return false;
-		const others = await this.#othersIn(conv, held, false);
+		const held = await this.#group(conversationId);
+		if (!held) return false;
+		const others = await this.#othersIn(conversationId, held, false);
 		if (others) this.#set(conversationId, others);
 		else if (this.#states.get(conversationId)?.name === "other_members") {
 			this.#set(conversationId, this.#goingOn(conversationId));

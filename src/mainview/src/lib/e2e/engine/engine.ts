@@ -122,11 +122,11 @@ export interface EngineParts {
 	registered(deviceId: string): void;
 	/**
 	 * The conversation as the page draws it (its own listing, which READY and the conversations' events keep), read again
-	 * from a new listing when `fresh`; null where it draws none (#574). A group this device founds without a record holds
-	 * the people it shows, and a group's own members are held to it as it goes on. Without it (the engine's tests), the
-	 * engine's own listing stands for it.
+	 * from a new listing when `fresh`, where one that leaves it out leaves the page's copy as it was; null where it draws
+	 * none (#574). A group this device founds without a record holds the people it shows, and a group's own members are
+	 * held to it as it goes on: nothing goes to one it doesn't draw (N-C1). The engine's own listing never stands for it.
 	 */
-	shown?: (conversationId: string, fresh: boolean) => Promise<Conversation | null>;
+	shown: (conversationId: string, fresh: boolean) => Promise<Conversation | null>;
 	/**
 	 * The engine's contacts (contacts.ts), set by the engine itself: what the core answers of each other user observed,
 	 * whichever flow observes them (identity.ts' observeUsers), and whose changed key holds what goes to them.

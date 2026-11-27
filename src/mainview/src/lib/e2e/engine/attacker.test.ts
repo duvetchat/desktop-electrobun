@@ -573,6 +573,40 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// N-C1: the check holds whatever the listings leave out. The API stops listing the conversation after the welcome;
+	// the page goes on drawing it as READY's list did: what waits there doesn't go at the next start, nor anything new.
+	test(
+		"a conversation the API stops listing is held to what its page still draws: nothing goes there, at a start either",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			let unlisted = false;
+			// To Bo, the group Eve makes is a DM between Ana and him, until the API leaves it out of his listings.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== bo || view.owner_id !== eve) return view;
+				if (unlisted) return null;
+				return { ...view, type: 1, owner_id: ana, members: view.members.filter((member) => member.user_id !== eve) };
+			};
+			let drawn: Conversation[] = [];
+			const shown = async (id: string) => drawn.find((conv) => conv.id === id) ?? null;
+			const b = await firstDevice(fake, bo, { shown });
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 2, name: "three", user_ids: [ana, bo] });
+			drawn = await b.api.conversations();
+			await until(async () => (await groupOf(b, id)) !== null, { what: "Bo's device in Eve's group" });
+			// One waits there, refused.
+			expect(await rejection(send(b, id, "waits"))).toMatchObject({ code: "other_members" });
+			unlisted = true;
+			const again = await restarted(fake, b, { shown });
+			await turnEnded(again);
+			expect(await rejection(send(again, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
+			await turnEnded(again);
+			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
+		},
+		SLOW,
+	);
+
 	// The one honest case: a member who left stays in the group until a member's commit takes them out, under the API's
 	// proposal of their removal. It isn't said, and what goes there next commits that removal first.
 	test(

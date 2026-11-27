@@ -19,7 +19,7 @@ import { e2eApi, type NewConversationRequest } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { useDeviceSearch } from "$lib/search";
-import { conversations, dmMessages } from "$lib/stores.svelte";
+import { conversations, dmMessages, friendsReady } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
 import { deviceName, forgetDevice } from "./client";
@@ -98,17 +98,43 @@ const toOpen = new Set<string>();
 /** What stops the upload of each message another tab asked this leader to send, by its nonce: that tab's Cancel. */
 const othersUploads = new Map<string, AbortController>();
 
+/** Whether the page listed its conversations: READY's lists came, or the engine's first need of them did it here. */
+let pageListed = false;
+friendsReady.subscribe((ready) => {
+	if (ready) pageListed = true;
+});
+/** The page's own first listing, made for the engine before READY's lists are in: one for all who ask meanwhile. */
+let firstListing: Promise<void> | null = null;
+
 /**
- * The conversation as this page draws it (#574): its store's, which READY and the conversations' events keep; with
- * `fresh`, the API's listing of it again, which the store takes too, so the person sees what the engine holds its group
- * to. Null for one the page doesn't have.
+ * The conversation as this page draws it (#574): its store's, which READY and the conversations' events keep. Before
+ * the page's first listing is in, the engine's first need of it lists them, which the store takes, so a start's resend
+ * waits for it (N-C1). With `fresh`, the API's listing of it again, which the store takes too (added, where it drew
+ * none), so the person sees what the engine holds its group to; a listing that leaves it out leaves the page's copy,
+ * which the group stays held to. Null for one the page doesn't draw.
  */
-async function shownConversation(conversationId: string, fresh: boolean): Promise<Conversation | null> {
-	if (!fresh) return get(conversations).find((conv) => conv.id === conversationId) ?? null;
-	const listed = (await getConversations()).find((conv) => conv.id === conversationId) ?? null;
-	if (listed) {
-		conversations.update((all) => all.map((conv) => (conv.id === conversationId ? { ...conv, ...listed } : conv)));
+export async function shownConversation(conversationId: string, fresh: boolean): Promise<Conversation | null> {
+	const drawn = () => get(conversations).find((conv) => conv.id === conversationId) ?? null;
+	if (!pageListed) {
+		firstListing ??= getConversations()
+			.then((list) => {
+				if (!pageListed) conversations.set(list);
+				pageListed = true;
+			})
+			.finally(() => {
+				firstListing = null;
+			});
+		await firstListing;
+		return drawn();
 	}
+	if (!fresh) return drawn();
+	const listed = (await getConversations()).find((conv) => conv.id === conversationId);
+	if (!listed) return drawn();
+	conversations.update((all) =>
+		all.some((conv) => conv.id === conversationId)
+			? all.map((conv) => (conv.id === conversationId ? { ...conv, ...listed } : conv))
+			: [listed, ...all],
+	);
 	return listed;
 }
 
@@ -663,6 +689,8 @@ export async function stopEngine(): Promise<void> {
 	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };
 	encryption.backup = { state: "uploading" };
+	// The next engine's first need of the conversations lists them again, as a new page would.
+	pageListed = false;
 	// What the device's database showed goes from memory, nothing searches it, and what it decrypted goes too.
 	useReader(null);
 	useDeviceSearch(null);

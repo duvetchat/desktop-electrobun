@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { get } from "svelte/store";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { sessionApi } from "$lib/api/api";
 import { e2eApi } from "$lib/api/e2e";
@@ -92,6 +93,27 @@ async function reopened(host: BunCoreHost, user: string) {
 afterEach(() => page.stopEngine());
 // A shared history's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
 useXHR();
+
+// N-C1: the conversation as the page draws it, which the engine holds a group to. Before READY's lists, the page's own
+// first listing; a fresh one writes into its store, one it didn't draw added; one that leaves it out leaves its copy.
+test("the page's drawing: its first listing, a fresh one into its store, and its copy where a listing has none", async () => {
+	const fake = new FakeApi();
+	useFake(fake);
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	drawnConversations.set([]);
+	expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([dm]);
+	const group = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+	expect(await page.shownConversation(group, false)).toBeNull();
+	expect((await page.shownConversation(group, true))?.id).toBe(group);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
+	// Left out of a listing, the conversation stays as the page drew it.
+	fake.conversationsAs = (view) => (view.id === dm ? null : view);
+	expect(await page.shownConversation(dm, true)).toEqual(get(drawnConversations).find((conv) => conv.id === dm)!);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
+});
 
 describe.skipIf(!coreLibrary)("the page's engine", () => {
 	// #575 (M6): what the page's engine last showed goes with it as it stops: the state its sheets draw (a first device's

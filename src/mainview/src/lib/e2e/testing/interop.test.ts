@@ -214,6 +214,8 @@ async function deviceOf(who: Account, store: EngineStore = keptStore()) {
 			...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
 			store,
 			deviceName: deviceName(),
+			// The page draws what the API lists to this session.
+			shown: async (id) => (await routes.conversations()).find((conv) => conv.id === id) ?? null,
 			registered: (id) => {
 				registered.push(id);
 				socket.connect(id);
