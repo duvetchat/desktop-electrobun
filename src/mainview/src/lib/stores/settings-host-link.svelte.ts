@@ -135,6 +135,10 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 			void pageSettingsHost.logout();
 			return true;
 		},
+		switchAccount: () => {
+			void pageSettingsHost.switchAccount();
+			return true;
+		},
 		stage: (args) => {
 			const stage = parseStage(args);
 			if (stage) stagedImages.take(stage.scope, stage.slot, stage.staged);

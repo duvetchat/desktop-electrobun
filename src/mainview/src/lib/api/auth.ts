@@ -1,4 +1,5 @@
 import api, { markSessionRefreshed, requestLimits } from "$lib/api/api";
+import { getHostURL } from "$lib/common/common";
 import { route } from "$lib/common/common";
 import { accessToken } from "$lib/stores/auth";
 import { inAppWords } from "$lib/api/error-wording";
@@ -97,27 +98,67 @@ export async function logout() {
 	}
 }
 
-export async function logIn(options: { password: string; email: string }) {
+/** The API's tokens for an email and password, without changing the session this page has. */
+async function logInRequest(options: { password: string; email: string }): Promise<any> {
 	try {
 		const res = await api.post("/api/auth/login", options);
-
-		if (res.data && res.data.token) {
-			const token = res.data.token;
-
-			accessToken.set(token);
-			localStorage.setItem("duvet_session_token", token);
-			if (res.data.session_token) {
-				localStorage.setItem("duvet_refresh_token", res.data.session_token);
-			}
-			markSessionRefreshed();
-
-			return res.data;
-		} else {
-			// For the log alone: the catch below shows the page's own message.
-			throw new Error("Server did not return a valid token");
-		}
+		if (res.data && res.data.token) return res.data;
+		// For the log alone: the catch below shows the page's own message.
+		throw new Error("Server did not return a valid token");
 	} catch (err: any) {
 		console.log(err);
+		throw new Error(reason(err, t("error_sign_in_failed")), { cause: err });
+	}
+}
+
+export async function logIn(options: { password: string; email: string }) {
+	const data = await logInRequest(options);
+	const token = data.token;
+
+	accessToken.set(token);
+	localStorage.setItem("duvet_session_token", token);
+	if (data.session_token) {
+		localStorage.setItem("duvet_refresh_token", data.session_token);
+	}
+	markSessionRefreshed();
+
+	return data;
+}
+
+/** Who an account is, from /users/@me: only what the account list shows. */
+export interface AccountProfile {
+	id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+}
+
+function profileOf(value: unknown): AccountProfile | null {
+	if (typeof value !== "object" || value === null) return null;
+	const fields: Record<string, unknown> = { ...value };
+	const { id, username, alias, avatar } = fields;
+	if (typeof id !== "string" || typeof username !== "string") return null;
+	if (!(alias === undefined || alias === null || typeof alias === "string")) return null;
+	if (!(avatar === undefined || avatar === null || typeof avatar === "string")) return null;
+	return { id, username, alias: alias ?? null, avatar: avatar ?? null };
+}
+
+/** An account's session for the multi-account list: its tokens and who they are, without replacing the one in use. */
+export async function logInForAccount(options: {
+	password: string;
+	email: string;
+}): Promise<{ token: string; sessionToken: string | null; user: AccountProfile }> {
+	const data = await logInRequest(options);
+	const token: string = data.token;
+	try {
+		const res = await fetch(`${getHostURL()}/api/users/@me`, {
+			headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+		});
+		if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+		const user = profileOf(await res.json());
+		if (!user) throw new Error("The API returned no user");
+		return { token, sessionToken: data.session_token ?? null, user };
+	} catch (err) {
 		throw new Error(reason(err, t("error_sign_in_failed")), { cause: err });
 	}
 }
