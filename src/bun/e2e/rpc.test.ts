@@ -19,6 +19,7 @@ import {
 } from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 import en from "../../mainview/messages/en.json";
+import conventions from "../../mainview/src/lib/e2e/testing/e2e-conventions.json";
 
 // Some of its cases run real cores, which a machine busy with other work takes past Bun's 5 s (#547), as fake-api's
 // tests allow for.
@@ -347,6 +348,25 @@ describe("what asks the person first, outside the page", () => {
 			showMessageBox: () => Promise.reject(new Error("no display")),
 		});
 		expect(await broken(question)).toBe(false);
+	});
+
+	// #557's re-review, RM6: the box's lines are the conventions' fingerprints, which the Android app reads too: the
+	// commitment's (approval_fingerprints) and the QR's (approval_qr_fingerprint), each of its bytes as the page's
+	// approvalFingerprint gives it.
+	test("the box's lines are the conventions' fingerprints of the core's commitment and QR", async () => {
+		const [made] = conventions.approval_fingerprints;
+		const scanned = conventions.approval_qr_fingerprint;
+		const notices: (Notice | null)[] = [];
+		const core = fakeCore((op) =>
+			op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: { commitment: made.commitment, qr: scanned.qr } },
+		);
+		const page = pageOf({ start: core.start, show: (notice) => notices.push(notice) });
+		await page.ask("open", { userId: ANA });
+		await page.run({ cmd: "approval_begin" });
+		const message = notices.at(-1)?.message ?? "";
+		expect(message).toContain(`With a code:\n${made.fingerprint}`);
+		expect(message).toContain(`Scanning its QR code with your phone:\n${scanned.fingerprint}`);
+		expect(await approvalFingerprint(Buffer.from(scanned.qr, "base64"))).toBe(scanned.fingerprint);
 	});
 
 	// #557's re-review, RC1: every approving device says the same of the new device's fingerprint, the web's page too.
