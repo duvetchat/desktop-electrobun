@@ -351,6 +351,40 @@ describe("what asks the person first, outside the page", () => {
 		expect(await broken(question)).toBe(false);
 	});
 
+	// PLAN-E2E-PLATAFORMAS.md, Task 6: off Windows the box is Electrobun's: macOS's NSAlert, whose first button is its
+	// Return, and GTK's dialog, its default response the first and Esc or its window's close answering cancelId. A command
+	// the box was asked for runs on its second button alone.
+	test("off Windows the box is Electrobun's, Cancel first, and a no runs nothing", async () => {
+		const boxes: unknown[] = [];
+		let response = 0;
+		const core = fakeCore((op) => (op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: {} }));
+		const page = pageOf({
+			start: core.start,
+			confirm: nativeConfirm({
+				platform: "linux",
+				owner: () => null,
+				showMessageBox: async (options) => {
+					boxes.push(options);
+					return { response };
+				},
+			}),
+		});
+		await page.ask("open", { userId: ANA });
+		const remove = [BO];
+		// Cancel (Enter), Esc or a closed window (cancelId), or anything else Electrobun answers.
+		for (response of [0, -1, 2]) {
+			expect((await page.run({ cmd: "sign_device_list", remove })).error).toMatchObject({ code: "refused" });
+		}
+		expect(boxes).toHaveLength(3);
+		expect(boxes[0]).toMatchObject({ buttons: ["Cancel", "Remove"], defaultId: 0, cancelId: 0 });
+		expect(core.calls.filter(({ op }) => op === "handle")).toEqual([]);
+		response = 1;
+		expect((await page.run({ cmd: "sign_device_list", remove })).ok).toEqual({});
+		expect(core.calls.filter(({ op }) => op === "handle")).toMatchObject([
+			{ params: { command: { cmd: "sign_device_list", remove } } },
+		]);
+	});
+
 	// #557's re-review, RM6: the box's lines are the conventions' fingerprints, which the Android app reads too: the
 	// commitment's (approval_fingerprints) and the QR's (approval_qr_fingerprint), each of its bytes as the page's
 	// approvalFingerprint gives it.
