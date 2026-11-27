@@ -91,6 +91,7 @@
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { threadReplyTarget } from "$lib/threads";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
+	import { keptIn } from "$lib/edit-box.svelte";
 	import { takesChatShortcut } from "$lib/keyboard";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -237,8 +238,9 @@
 	const emojiGroups = $derived(pickerGroups($spaceEmojis, $gatewaySpaces, navPrefs.pinned, spaceId || null));
 	const stickerGroups = $derived(pickerGroups($spaceStickers, $gatewaySpaces, navPrefs.pinned, spaceId || null));
 
-	// A command and an edit are of the chat they started in: they end on leaving it, as neither is a draft. Focus input
-	// when switching channels, unless keyboard navigation switched them and goes on
+	// A command and an edit are of the chat they started in: they end on leaving it, as neither is a draft, but an edit
+	// whose save went, which the chat keeps (lib/edit-box.svelte.ts, #584). Focus input when switching channels, unless
+	// keyboard navigation switched them and goes on
 	$effect(() => {
 		channelId;
 		command = null;
@@ -268,14 +270,28 @@
 		});
 	}
 	let editingMessageId = $state<string | null>(null);
+	// The edit open here: the one the person opened, else the one this chat keeps from its first save on, whatever
+	// unmounted its box meanwhile (another chat, a READY's remount, its row leaving the list: #584).
+	const editing = $derived(editingMessageId ?? keptIn(channelId)?.message ?? null);
 	let editMessageIndex = $state<number | null>(null);
 	let replyMessageIndex = $state<number | null>(null);
 
 	$effect(() => {
-		if (editingMessageId === null) {
+		if (editing === null) {
 			editMessageIndex = null;
 		}
 	});
+
+	/**
+	 * Opens the edit of the message (null: none) in the place of the edit open here, unless that one's save waits for its
+	 * word: the chat keeps it until then, on every path (#584). Whether it opened.
+	 */
+	function editMessage(id: string | null): boolean {
+		const open = keptIn(channelId);
+		if (open && open.message === editing && open.message !== id && !open.close()) return false;
+		editingMessageId = id;
+		return true;
+	}
 
 	$effect(() => {
 		if (replyTo === null) {
@@ -305,9 +321,8 @@
 
 	function tryEditAtIndex(index: number) {
 		const msg = getOwnMessages()[index];
-		if (!msg) return false;
+		if (!msg || !editMessage(msg.id)) return false;
 		editMessageIndex = index;
-		editingMessageId = msg.id;
 		return true;
 	}
 
@@ -363,8 +378,7 @@
 			event.preventDefault();
 			if (editMessageIndex === null) return;
 			if (editMessageIndex === 0) {
-				editingMessageId = null;
-				editMessageIndex = null;
+				if (editMessage(null)) editMessageIndex = null;
 			} else {
 				tryEditAtIndex(editMessageIndex - 1);
 			}
@@ -547,8 +561,8 @@
 	}
 
 	function handleReply(message: Message) {
-		// The box holds one thing at a time: a reply picked while a message is edited ends the edit.
-		if (editingMessageId !== null) cancelEdit();
+		// The box holds one thing at a time: a reply picked while a message is edited ends the edit, unless its save waits.
+		if (editing !== null) cancelEdit();
 		setReply(message);
 		chatInputRef?.focus();
 	}
@@ -556,30 +570,25 @@
 	// A right-click menu's Mention of a member (#423), from this chat's list of members or of authors: at the end of the
 	// box, which an edit gives back first, as a reply's does.
 	export async function mention(userId: string) {
-		if (editingMessageId !== null) {
-			cancelEdit();
-			await tick();
-		}
+		if (editing !== null && cancelEdit()) await tick();
 		chatInputRef?.addMention(userId);
 	}
 
 	// Quote in reply, on a message's selected text (#423): a reply to the message, the text quoted at the box's end.
 	async function handleQuote(message: Message, text: string) {
-		if (editingMessageId !== null) {
-			cancelEdit();
-			await tick();
-		}
+		if (editing !== null && cancelEdit()) await tick();
 		setReply(message);
 		chatInputRef?.addQuote(text);
 	}
 
 	// An edit is made in the message's own row: its text becomes a box, with Save and Discard. An unchanged or empty
 	// edit saves nothing.
-	function cancelEdit() {
-		editingMessageId = null;
+	function cancelEdit(): boolean {
+		return editMessage(null);
 	}
 
-	async function saveEdit(messageId: string, content: string): Promise<string | void> {
+	async function saveEdit(messageId: string, content: string): Promise<string | false | void> {
+		const chat = channelId;
 		const original = messages.find((m) => m.id === messageId)?.content;
 		const trimmed = content.trim();
 		if (trimmed && trimmed !== original) {
@@ -588,12 +597,13 @@
 					console.error(error);
 				});
 				// The person's no (a conversation's question before it goes): the box stays, with what they typed.
-				if (saved === false) return;
+				if (saved === false) return false;
 				// Refused, made nowhere: the box stays with what they typed, and says why (T-M1).
 				if (typeof saved === "string") return saved;
 			} else updateMessage(messageId, trimmed, channelId).catch(console.error);
 		}
-		cancelEdit();
+		// Done: the edit closes where it's still the one open, whichever chat this shows by now (#584).
+		if (chat === channelId && editingMessageId === messageId) editingMessageId = null;
 	}
 
 	// The message box's height, for the list above it and the jump button (--composer-h): the list's newest message
@@ -641,9 +651,7 @@
 			)
 				return;
 			if (request.kind === "reply") handleReply(message);
-			else if (message.author_id === $currentUser?.id) {
-				editingMessageId = message.id;
-			}
+			else if (message.author_id === $currentUser?.id) editMessage(message.id);
 		});
 	});
 
@@ -865,7 +873,7 @@
 		{failedNonces}
 		bind:isAtBottom
 		{onDeleteMsg}
-		bind:editingMessageId
+		bind:editingMessageId={() => editing, (id) => void editMessage(id)}
 		onSaveEdit={saveEdit}
 		onRetry={retryMessage}
 		onDismiss={dismissFailedMessage}

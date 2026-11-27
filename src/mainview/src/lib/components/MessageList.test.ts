@@ -507,11 +507,11 @@ describe("editing a message", () => {
 		expect(editor).toContain("bind:value={() => box.text, (text) => box.type(text)}");
 		expect(editor).toContain("readonly={box.saving}");
 		expect(editor).toMatch(
-			/<IconButton label="Discard edit"[^>]*disabled=\{box\.saving\} onclick=\{\(\) => box\.discard\(\)\}/,
+			/<IconButton\s+label="Discard edit"[^>]*disabled=\{box\.saving\}\s+onclick=\{\(\) => box\.discard\(onCancel\)\}/,
 		);
 		expect(editor).toMatch(/<Button size="sm" disabled=\{box\.saving\} onclick=\{\(\) => void save\(\)\}>/);
-		expect(editor).toMatch(/event\.key === "Escape"[^]*?box\.discard\(\);[^]*?void save\(\);/);
-		expect(editor).toMatch(/async function save\(\) \{\s*await box\.save\(\);/);
+		expect(editor).toMatch(/event\.key === "Escape"[^]*?box\.discard\(onCancel\);[^]*?void save\(\);/);
+		expect(editor).toMatch(/async function save\(\) \{\s*await box\.save\(onSave\);/);
 		expect(editor).not.toMatch(/onclick=\{onCancel\}|onCancel\(\);/);
 	});
 
