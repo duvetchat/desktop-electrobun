@@ -15,6 +15,8 @@ import {
 	firstDevice,
 	groupOf,
 	madeHere,
+	memoryStore,
+	refusingStore,
 	rejection,
 	resetFrom,
 	restarted,
@@ -31,7 +33,7 @@ import {
 } from "../testing/engines";
 import { useXHR } from "../testing/xhr";
 import { keepMade } from "./legacy";
-import type { EngineStore } from "./store";
+import { PENDING_SENDS, type EngineStore } from "./store";
 
 // Step 5: the server as an attacker, against the desktop's and the web's engine (PLAN-E2E-CLIENTES.md, «Lo que el paso
 // 5 revisa»). End-to-end encryption lets the server withhold and delay, but never read, forge, or make a device act on
@@ -933,6 +935,68 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			expect(await madeAt(a, conversation, bo, ["message"])).toHaveLength(1);
 			expect(changes).toEqual(["PATCH"]);
 			expect((await again.engine.pendingMessages(conversation)).map((row) => row.nonce)).toEqual([nonce]);
+		},
+		SLOW,
+	);
+
+	// T-M3: what another tab left waiting goes first, so it holds what's sent after it. A Retry from the page that runs the
+	// engine is the person's act on a page that draws the conversation: it takes the message over, as that tab's own
+	// Retry would with its drawing, and what waited behind it goes after it.
+	test(
+		"a Retry from the engine's page takes over what another tab left waiting, freeing what's behind it",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			fake.befriend(ana, cy);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			// Bo's other tab drew the group before Ana added Cy: what it sends waits for that drawing.
+			const listed = (await b.api.conversations()).find((conv) => conv.id === conversation)!;
+			const drawn = { type: listed.type, owner_id: listed.owner_id, members: listed.members };
+			await a.engine.addMember(conversation, cy);
+			await sameGroup([a, b, c], conversation);
+			const theirs = { conversation_id: conversation, nonce: crypto.randomUUID(), text: "from the other tab" };
+			expect(await rejection(b.engine.sendMessage({ ...theirs, drawn }))).toMatchObject({ code: "other_members" });
+			const mine = { conversation_id: conversation, nonce: crypto.randomUUID(), text: "from here" };
+			expect(await rejection(b.engine.sendMessage(mine))).toMatchObject({ code: "other_members" });
+			// The engine's page retries the other tab's message: it goes, then what waited behind it, in the same flush.
+			await b.engine.sendMessage(theirs);
+			expect(await madeAt(a, conversation, bo, ["message"])).toHaveLength(2);
+			expect(await b.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// One the record kept no writer for (a storage that refused it, or a version before writers) waits for its tab, and
+	// holds what's sent after it; a Retry from the engine's page takes it over too.
+	test(
+		"a message kept with no writer waits for its tab, holding what's behind it, until a Retry from here",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo, { store: refusingStore(memoryStore(), PENDING_SENDS) });
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			fake.refuse({ method: "POST", path: messagesPath(conversation) }, 500);
+			const first = { conversation_id: conversation, nonce: crypto.randomUUID(), text: "kept with no writer" };
+			await rejection(b.engine.sendMessage(first));
+			const again = await restarted(fake, b);
+			await turnEnded(again);
+			const next = { conversation_id: conversation, nonce: crypto.randomUUID(), text: "next" };
+			expect(await rejection(again.engine.sendMessage(next))).toMatchObject({ code: "other_tab" });
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([]);
+			// Its Retry here sends it, and what waited behind it after it, in the same flush (or one a READY began first).
+			await again.engine.sendMessage(first);
+			await turnEnded(again);
+			expect(await madeAt(a, conversation, bo, ["message"])).toHaveLength(2);
+			expect(await again.engine.pendingMessages(conversation)).toEqual([]);
 		},
 		SLOW,
 	);

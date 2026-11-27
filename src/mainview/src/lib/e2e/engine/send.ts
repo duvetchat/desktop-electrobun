@@ -260,9 +260,10 @@ export class Sends {
 	 */
 	async send(out: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
 		const { conversation_id: id, nonce, text, files, drawn, ...clear } = out;
-		// Each send of it from another tab says what that tab draws now, which every delivery of it is held to; one from
-		// the page that runs the engine leaves another tab's as it was (R-M1: kept with it in the record).
-		const writer: Writer = drawn !== undefined ? { drawn } : (this.#writerOf(nonce) ?? { here: true });
+		// Each send of it says who sends it now, which every delivery of it is held to (R-M1: kept with it in the record):
+		// another tab, by what it draws now, or the page that runs the engine, a page that draws the conversation, which
+		// takes it over as that tab's Retry would (T-M3).
+		const writer: Writer = drawn !== undefined ? { drawn } : { here: true };
 		const waits = await this.#turn(async (): Promise<{ went: string | null } | null> => {
 			await this.#groups.current(id);
 			const { rows, older } = await this.#waiting(id);

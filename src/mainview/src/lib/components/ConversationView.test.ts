@@ -205,6 +205,13 @@ test("a send with files offers its Cancel from the start, while its thumbnails a
 	expect(view.indexOf("outgoingFiles(saved.files)")).toBeGreaterThan(view.indexOf("real = await sendFollowed("));
 });
 
+// T-M3: a send held behind a message that waits for the tab it was written in says so, and what to do about it.
+test("a send held behind another tab's waiting message says so", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain('if (err instanceof CoreError && err.code === "other_tab") return t("e2e_other_tab");');
+	expect(en.e2e_other_tab).toBe("An earlier message here waits for its tab to send it. Retry or dismiss it first.");
+});
+
 test("a send refused as not ready, or past the cap, says so in the table's words (#508)", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain('if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");');

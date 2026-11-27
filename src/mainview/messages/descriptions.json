@@ -176,6 +176,7 @@
 	"e2e_no_device": "Over an encrypted conversation's message box: {name} is the members who have no device that can read it yet, as a list (\"Bo and Cy\").",
 	"e2e_no_e2e_here": "In a direct message, on a platform where encrypted direct messages don't work yet (macOS and Linux): they work in the web app, at duvet.chat. Duvet is the app's name.",
 	"e2e_not_ready": "Shown when this device's encryption isn't ready yet (still opening its conversations, or open in another window): under a message to an encrypted conversation that couldn't be sent, and in place of an encrypted conversation's search results.",
+	"e2e_other_tab": "Under a message of an encrypted conversation that didn't send: an earlier message there waits for the tab it was written in to send it (another tab's, or one this device kept before it could say which tab), so it goes first. A Retry or a Dismiss of that earlier message from here frees what's after it.",
 	"e2e_paused": "Shown when the person sends a message while the server has paused encrypted conversations: the message waits on this device and goes once they're back.",
 	"e2e_qr_label": "What a screen reader says of the QR code under e2e_setup_qr_line.",
 	"e2e_range_all": "[short] As e2e_range_day: all of the conversation's messages this device holds.",

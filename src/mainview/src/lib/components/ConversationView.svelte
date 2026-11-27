@@ -806,6 +806,7 @@
 		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
 		if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);
 		if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");
+		if (err instanceof CoreError && err.code === "other_tab") return t("e2e_other_tab");
 		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
 	}
 
