@@ -49,6 +49,16 @@ jobs:
         working-directory: src/mainview
       # The Bun process's own: the Spotify reader's parsing.
       - run: bun test src/bun
+      # The core's key in a Secret Service, as a Linux desktop keeps it (src/bun/e2e/core.test.ts): gnome-keyring on a
+      # session bus of the step's own, unlocked with a password of its own. The run above has no bus, where the key goes
+      # to a file beside the database.
+      - name: bun test, with a Secret Service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends dbus gnome-keyring
+          dbus-run-session -- sh -c 'printf test | gnome-keyring-daemon --unlock --components=secrets && bun test src/bun/e2e/core.test.ts'
+        env:
+          DUVET_E2E_SECRET_SERVICE: "1"
       # The web's E2E core in a browser (scripts/web-e2e.ts): the Chrome this runner has, else Chrome for Testing in its
       # tool cache. Without one that runs here (none installs, or it lacks a system library), the step says so in a
       # warning and the tests are skipped.

@@ -64,9 +64,10 @@ test.skipIf(!existsSync(LIBRARY))(
 /**
  * A run of the core as the app opens it, in a Bun of its own: its config names a keyring, and in a process without a
  * session bus Linux has no Secret Service, so the key goes to a file beside the database. The run can't be this one:
- * process.env doesn't reach the library's getenv, and this machine's session bus has a person's keyring on it.
+ * process.env doesn't reach the library's getenv, and this machine's session bus has a person's keyring on it. With
+ * `bus`, the run keeps this process's session bus, which must be one of its own (SECRET_SERVICE).
  */
-function asTheApp(steps: string, home: string): any[] {
+function asTheApp(steps: string, home: string, bus = false): any[] {
 	const script = `
 		const { startCore } = await import(${JSON.stringify(join(import.meta.dir, "core.ts"))});
 		const library = ${JSON.stringify(LIBRARY)};
@@ -78,8 +79,9 @@ function asTheApp(steps: string, home: string): any[] {
 		console.log(JSON.stringify(log));
 		process.exit(0);
 	`;
+	const noBus = { DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(home, "no-bus")}`, XDG_RUNTIME_DIR: home };
 	const run = Bun.spawnSync([process.execPath, "-e", script], {
-		env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(home, "no-bus")}`, XDG_RUNTIME_DIR: home },
+		env: { ...process.env, ...(bus ? {} : noBus) },
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -172,5 +174,52 @@ describe.skipIf(process.platform !== "linux" || !existsSync(LIBRARY))("the core 
 		for (const file of [database, `${database}.key`]) expect(existsSync(file)).toBe(false);
 		// The locks stay, empty: an open may be waiting for one or racing for the other (the core's contract).
 		for (const lock of [`${database}.lock`, `${database}.key.lock`]) expect(statSync(lock).size).toBe(0);
+	});
+});
+
+/**
+ * A session bus with a Secret Service of the run's own, as DUVET_E2E_SECRET_SERVICE says: CI's run under dbus-run-session,
+ * with gnome-keyring (the core's binding tests take the same word). Never a person's own keyring: a run without it skips.
+ */
+const SECRET_SERVICE = process.platform === "linux" && process.env.DUVET_E2E_SECRET_SERVICE === "1";
+
+describe.skipIf(!SECRET_SERVICE || !existsSync(LIBRARY))("the core with a Secret Service", () => {
+	test("the key goes to the Secret Service when there is one", () => {
+		const home = folder();
+		// An account of this run's own: the Secret Service outlives the test's folder.
+		const owner = crypto.randomUUID();
+		const database = join(home, owner, "core.db");
+		const [opened, made, again, status, keyFile, otherKey, destroyed, fresh] = asTheApp(
+			`
+			const { existsSync } = await import("node:fs");
+			const core = startCore({ library, folder, keyring });
+			note(await core.run("open", { userId: "${owner}" }));
+			note(await core.run("handle", { command: { cmd: "create_device", user_id: "${owner}", device_id: "${device}" } }));
+			await core.run("close");
+			note(await core.run("open", { userId: "${owner}" }));
+			note(await core.run("handle", { command: { cmd: "status" } }));
+			await core.run("close");
+			note(existsSync(${JSON.stringify(`${database}.key`)}));
+			// Another key doesn't open that database: its key is the Secret Service's.
+			const stranger = startCore({ library, folder, key: Buffer.alloc(32, 7).toString("base64") });
+			note(await stranger.run("open", { userId: "${owner}" }));
+			stranger.stop();
+			// Destroying it takes the credential away: what opens there next is a database of its own.
+			note(await core.run("destroy", { userId: "${owner}" }));
+			note(await core.run("open", { userId: "${owner}" }));
+			await core.run("destroy", { userId: "${owner}" });
+			core.stop();
+			`,
+			home,
+			true,
+		);
+		expect(opened).toMatchObject({ ok: { state: "ready", keyStorage: "keyring" } });
+		expect(made.ok).toHaveProperty("signature_key");
+		expect(again).toMatchObject({ ok: { state: "ready", keyStorage: "keyring" } });
+		expect(status.ok).toMatchObject({ device_id: device, user_id: owner, key_storage: "keyring" });
+		expect(keyFile).toBe(false);
+		expect(otherKey).toMatchObject({ ok: { state: "failed", reason: "bad_key" } });
+		expect(destroyed).toEqual({ ok: {} });
+		expect(fresh).toMatchObject({ ok: { state: "ready", keyStorage: "keyring" } });
 	});
 });
