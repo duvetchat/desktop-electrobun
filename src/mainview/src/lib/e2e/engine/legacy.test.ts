@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Conversation } from "$lib/api/conversations";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import { firstDevice, groupOf, memoryStore, refusingStore, sameGroup, until, useFake } from "../testing/engines";
@@ -98,6 +99,39 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 			expect((await a.engine.createConversation({ type: 1, user_id: bo })).id).toBe(conversation);
 			await sameGroup([a, b], conversation);
 			expect(a.store.read<unknown>(LEGACY_RECORDS)).toEqual({ [conversation]: { members: [ana, bo] } });
+		},
+		SLOW,
+	);
+
+	// N-M1: a record made from a listing (from before the cutover) is the API's word on who was there, so it holds a
+	// founding only to the people the page draws too. A listing called legacy with a third member founds nothing.
+	test(
+		"a listing called legacy on a device without a record founds nothing its page doesn't draw",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed: string[] = [];
+			useFake(fake, (request) => {
+				const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+				if (claim?.[1]) claimed.push(claim[1]);
+			});
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			fake.befriend(ana, eve);
+			let drawn: Conversation[] = [];
+			const a = await firstDevice(fake, ana, { shown: async (id) => drawn.find((conv) => conv.id === id) ?? null });
+			await firstDevice(fake, bo);
+			await firstDevice(fake, eve);
+			drawn = await a.api.conversations();
+			// From now on the API lists the group to Ana's engine as from before the cutover, with Eve in it.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== ana || view.id !== conversation) return view;
+				const eves = { ...view.members[0]!, id: crypto.randomUUID(), user_id: eve };
+				return { ...view, legacy: true, members: [...view.members, eves] };
+			};
+			await a.engine.openConversation(conversation);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(a.engine.conversationState(conversation)?.name).toBe("members_changed");
+			expect(claimed).not.toContain(eve);
 		},
 		SLOW,
 	);

@@ -19,7 +19,7 @@ import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
 import { observeUsers, withIdentities } from "./identity";
-import { dropRecord, forgetRecord, isRecord, legacyRecord, peopleOf, type LegacyRecord } from "./legacy";
+import { dropRecord, forgetRecord, isRecord, legacyRecord, peopleOf, recordMade, type LegacyRecord } from "./legacy";
 import {
 	addition,
 	checkAddition,
@@ -702,7 +702,9 @@ export class Conversations {
 		const founding = await this.#founding(conv);
 		// Not drawn yet: nothing is made until it is.
 		if (!founding) return;
-		if (!isRecord(conv, founding)) return this.#membersChanged(conv, conv.mls?.generation ?? 0);
+		if (founding === "differs" || !isRecord(conv, founding)) {
+			return this.#membersChanged(conv, conv.mls?.generation ?? 0);
+		}
 		if (await this.#group(conv.id)) {
 			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
 		}
@@ -721,17 +723,21 @@ export class Conversations {
 
 	/**
 	 * Whom this device founds the conversation's group with (#574): those it can account for, never the API's word alone
-	 * on who they are or the kind, which gives their order only. The record (the person's picks, of the kind they asked
-	 * for, as they made it here; a conversation from before the cutover as first listed); without one (a DM's other
-	 * member, a group's owner on another device, or after the person's yes), the conversation as its page draws it,
-	 * which the person sees, read again when it differs from the API's. Null while it isn't drawn.
+	 * on who they are or the kind, which gives their order only. The person's own record (their picks, of the kind they
+	 * asked for, as they made it here); else the conversation as its page draws it, which the person sees, read again
+	 * when it differs from the API's, and whose people a record made from a listing (a conversation from before the
+	 * cutover, as first listed) must be too, or it `differs` (N-M1). Null while it isn't drawn.
 	 */
-	async #founding(conv: Conversation): Promise<LegacyRecord | null> {
-		const record = legacyRecord(this.#parts.store, conv);
-		if (record) return record;
+	async #founding(conv: Conversation): Promise<LegacyRecord | "differs" | null> {
+		const { store } = this.#parts;
+		const record = legacyRecord(store, conv);
+		if (record && recordMade(store, conv.id)) return record;
 		let drawn = await this.#parts.shown(conv.id, false);
 		if (drawn && !isRecord(conv, peopleOf(drawn))) drawn = await this.#parts.shown(conv.id, true);
-		return drawn && peopleOf(drawn);
+		if (!drawn) return null;
+		// One made from a listing (from before the cutover) holds the people the page draws too, never more (N-M1).
+		if (record && !isRecord(drawn, record)) return "differs";
+		return peopleOf(drawn);
 	}
 
 	/**

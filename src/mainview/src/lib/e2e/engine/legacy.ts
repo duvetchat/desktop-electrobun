@@ -95,6 +95,12 @@ export function keepMade(store: EngineStore, conversationId: string, record: Leg
 	if (!records(store).has(conversationId)) keep(store, conversationId, { ...record, made: true });
 }
 
+/** Whether the conversation's record is the person's own (their picks, their yes), not one made from a listing. */
+export const recordMade = (store: EngineStore, conversationId: string) => {
+	const record = records(store).get(conversationId);
+	return !!record && record.made === true;
+};
+
 /** The person said yes to the members of today: the record goes, and none is made again. */
 export const dropRecord = (store: EngineStore, conversationId: string) => keep(store, conversationId, false);
 
