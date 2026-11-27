@@ -301,6 +301,13 @@ export async function madeHere(device: TestDevice, conversation: string): Promis
 	keepMade(device.store, conv.id, conv.type === 2 ? { owner: conv.owner_id, members } : { members });
 }
 
+/** The person's yes to the conversation's question of its members, as the view sends it: to the people it names. */
+export async function sayYes(device: TestDevice, conversation: string): Promise<void> {
+	const asked = device.engine.conversationState(conversation);
+	if (asked?.name !== "members_changed") throw new Error(`${device.user} isn't asked about ${conversation}'s members`);
+	await device.engine.acceptMembers(conversation, asked.people);
+}
+
 /** Waits until every device holds the conversation's group at one generation and epoch, with one authenticator. */
 export async function sameGroup(devices: TestDevice[], conversation: string, ms = 60_000): Promise<HeldGroup> {
 	let held: HeldGroup | null = null;

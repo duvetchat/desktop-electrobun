@@ -1269,10 +1269,9 @@
 	<ConversationState
 		conversationState={groupState}
 		{ownerName}
-		memberNames={conversation.members.map((member) => member.user.alias ?? member.user.username)}
 		{memberName}
 		onRestart={restartEncryption}
-		onAccept={() => acceptMembers(conversation.id)}
+		onAccept={(people) => acceptMembers(conversation.id, people)}
 	/>
 	<!-- What other members shared of its history with this person, added on their word (Task 30) -->
 	<SharedHistoryOffer

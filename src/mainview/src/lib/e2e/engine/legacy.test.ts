@@ -2,7 +2,16 @@ import { describe, expect, test } from "bun:test";
 import type { Conversation } from "$lib/api/conversations";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, groupOf, memoryStore, refusingStore, sameGroup, until, useFake } from "../testing/engines";
+import {
+	firstDevice,
+	groupOf,
+	memoryStore,
+	refusingStore,
+	sameGroup,
+	sayYes,
+	until,
+	useFake,
+} from "../testing/engines";
 import { LEGACY_RECORDS } from "./legacy";
 
 // A conversation from before the cutover (PLAN-E2E-CLIENTES.md, «Entrar a un grupo», its record; Ruling 14): its members
@@ -11,7 +20,7 @@ const SLOW = 180_000;
 
 describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 	test(
-		"a legacy group is held to its record; the person's yes drops the record and joins by external commit",
+		"a legacy group is held to its record; the person's yes joins with the members named, then lets the record go",
 		async () => {
 			const fake = new FakeApi();
 			const [ana, bo, cy, dee] = [fake.addUser(), fake.addUser(), fake.addUser(), fake.addUser()];
@@ -37,8 +46,9 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 			await until(() => c.engine.conversationState(conversation)?.name === "members_changed");
 			expect(await groupOf(c, conversation)).toBeNull();
 
-			// Cy says yes: the record goes, and the device joins by an external commit, with no record to hold it to.
-			await c.engine.acceptMembers(conversation);
+			// Cy says yes to the members named (N-M10): the device joins by an external commit with them, and once it's in,
+			// the record is let go, and none is made again.
+			await sayYes(c, conversation);
 			await sameGroup([a, c], conversation);
 			expect(c.engine.conversationState(conversation)).toBeNull();
 			expect(c.store.read<unknown>("legacy_records")).toEqual({ [conversation]: false });
@@ -181,11 +191,11 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 			const b = await firstDevice(fake, bo);
 			// Cy opens it first: the group would have a member her record doesn't, so she's asked before it's made.
 			await c.engine.openConversation(conversation);
-			expect(c.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(c.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect(await groupOf(c, conversation)).toBeNull();
 
 			// Her yes makes it with the members of today, and Bo's device comes in.
-			await c.engine.acceptMembers(conversation);
+			await sayYes(c, conversation);
 			const listed = (await c.api.conversations()).find((conv) => conv.id === conversation);
 			expect(listed?.mls).toMatchObject({ generation: 0 });
 			await sameGroup([c, b], conversation);

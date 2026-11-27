@@ -16,6 +16,7 @@ import {
 	rejection,
 	restarted,
 	sameGroup,
+	sayYes,
 	testHost,
 	turnEnded,
 	until,
@@ -709,11 +710,11 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 				c.clock.advance(60_000);
 				await turnEnded(c);
 			}
-			expect(c.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(c.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect((await groupOf(c, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
 			// On his yes, it joins the new generation by an external commit.
-			await c.engine.acceptMembers(conversation);
+			await sayYes(c, conversation);
 			const held = await sameGroup([b, c], conversation);
 			expect(held.generation).toBe(1);
 			expect(c.engine.conversationState(conversation)).toBeNull();
@@ -734,10 +735,10 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 				c.clock.advance(60_000);
 				await turnEnded(c);
 			}
-			expect(c.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(c.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect((await groupOf(c, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
-			await c.engine.acceptMembers(conversation);
+			await sayYes(c, conversation);
 			expect((await sameGroup([a, b, c], conversation)).generation).toBe(1);
 		},
 		SLOW,
@@ -757,7 +758,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await turnEnded(back);
 			expect((await groupOf(back, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
-			await back.engine.acceptMembers(conversation);
+			await sayYes(back, conversation);
 			expect((await sameGroup([a, b, back], conversation)).generation).toBe(1);
 		},
 		SLOW,
@@ -774,7 +775,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await missedRestart(fake, a, conversation, [cy]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
 			expect((await groupOf(b, conversation))?.generation).toBe(0);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			const held = await sameGroup([a, b], conversation);
 			expect(held.generation).toBe(1);
 			expect(usersOf(held)).toEqual([ana, bo].sort());
@@ -792,7 +793,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			let { a } = group;
 			await missedRestart(fake, a, conversation, [cy]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			expect((await sameGroup([a, b], conversation)).generation).toBe(1);
 			// Dee joins generation 1 with no device yet, then it's blocked, and restarted without her.
 			const dee = fake.addUser();
@@ -804,7 +805,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await missedRestart(fake, a, conversation, [dee]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
 			expect((await groupOf(b, conversation))?.generation).toBe(1);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			expect((await sameGroup([a, b], conversation)).generation).toBe(2);
 		},
 		SLOW,
@@ -827,7 +828,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const back = await restarted(fake, b);
 			await until(() => back.engine.conversationState(conversation)?.name === "members_changed");
 			expect((await groupOf(back, conversation))?.generation).toBe(0);
-			await back.engine.acceptMembers(conversation);
+			await sayYes(back, conversation);
 			const held = await sameGroup([a, back], conversation);
 			expect(held.generation).toBe(1);
 			expect(usersOf(held)).toEqual([ana, bo].sort());

@@ -9,11 +9,10 @@ import { tags } from "../server-render";
 // the group goes on; else why it can't, in the notices' words, and what the person can do about it.
 const { default: ConversationState } = await import("./ConversationState.svelte");
 
-const NAMES: Record<string, string> = { bo: "Bo", cy: "Cy" };
+const NAMES: Record<string, string> = { ana: "Ana", bo: "Bo", cy: "Cy" };
 const props = (state: State | null) => ({
 	conversationState: state,
 	ownerName: "Ana",
-	memberNames: ["Ana", "Bo", "Cy"],
 	memberName: (userId: string) => NAMES[userId] ?? userId,
 	onRestart: async () => {},
 	onAccept: async () => {},
@@ -50,7 +49,7 @@ describe("a conversation's state", () => {
 	});
 
 	test("members that changed since the device last saw them, who they are now, and the person's yes", () => {
-		const changed = drawn({ name: "members_changed" });
+		const changed = drawn({ name: "members_changed", people: { owner: "ana", members: ["ana", "bo", "cy"] } });
 		expect(changed).toContain(NOTICES.members_changed);
 		expect(changed).toContain(notice("members_now", { names: "Ana, Bo, and Cy" }));
 		expect(changed).toMatch(/<button [^>]*>\s*Open with these members\s*<\/button>/);

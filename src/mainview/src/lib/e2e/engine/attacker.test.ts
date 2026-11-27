@@ -436,7 +436,7 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			await turnEnded(a);
 			for (const { id } of made) {
 				expect(await groupOf(a, id)).toBeNull();
-				expect(a.engine.conversationState(id)).toEqual({ name: "members_changed" });
+				expect(a.engine.conversationState(id)).toMatchObject({ name: "members_changed" });
 			}
 			expect(claimed).not.toContain(eve);
 		},
@@ -469,7 +469,7 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			};
 			await a.engine.openConversation(conversation);
 			expect(await groupOf(a, conversation)).toBeNull();
-			expect(a.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(a.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect(claimed).not.toContain(eve);
 			// Listed as drawn again, the group is founded with the people the page shows.
 			fake.conversationsAs = (view) => view;
@@ -569,6 +569,46 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			expect(b.engine.conversationState(id)).toEqual({ name: "other_members", users: [eve, ana, bo] });
 			expect(await rejection(send(b, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
 			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// N-M10: the yes is to the people its question named, whom this device would go in with: the founding after it goes
+	// with exactly them, and a listing that changed meanwhile asks again, naming its own. Nothing goes to whom it adds.
+	test(
+		"the yes to members_changed takes the people it named, and a listing that changed asks again",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy, eve] = [fake.addUser(), fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed: string[] = [];
+			useFake(fake, (request) => {
+				const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+				if (claim?.[1]) claimed.push(claim[1]);
+			});
+			for (const user of [bo, cy, eve]) fake.befriend(ana, user);
+			const a = await firstDevice(fake, ana);
+			for (const user of [bo, cy, eve]) await firstDevice(fake, user);
+			let more = [cy];
+			// The API lists Ana's new group with more members than she picked.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== ana || view.type !== 2 || view.owner_id !== ana) return view;
+				const added = more.map((user) => ({ ...view.members[0]!, id: crypto.randomUUID(), user_id: user }));
+				return { ...view, members: [...view.members, ...added] };
+			};
+			const { id } = await a.engine.createConversation({ type: 2, name: "two", user_ids: [bo] });
+			const asked = a.engine.conversationState(id);
+			if (asked?.name !== "members_changed") throw new Error("Ana's device asked nothing");
+			// Before the yes, the listing adds Eve too: the yes to Ana, Bo and Cy doesn't take her in.
+			more = [cy, eve];
+			await a.engine.acceptMembers(id, asked.people);
+			expect(claimed).not.toContain(eve);
+			expect(await groupOf(a, id)).toBeNull();
+			expect(asked.people).toEqual({ owner: ana, members: [ana, bo, cy] });
+			expect(a.engine.conversationState(id)).toEqual({
+				name: "members_changed",
+				people: { owner: ana, members: [ana, bo, cy, eve] },
+			});
+			expect(claimed).not.toContain(eve);
 		},
 		SLOW,
 	);

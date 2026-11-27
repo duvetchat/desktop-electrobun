@@ -45,6 +45,7 @@ import {
 	type ShownMessage,
 } from "./engine/engine";
 import { SHARE_RANGES } from "./engine/history";
+import type { LegacyRecord } from "./engine/legacy";
 import type { Drawn } from "./engine/members";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
@@ -318,7 +319,8 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
 			openConversation: (id: string) => openOnEngine(id),
 			restartGroup: ({ conversationId, leaving }: MessageParams) => live().restartGroup(conversationId, leaving),
-			acceptMembers: (id: string) => engine?.acceptMembers(id),
+			acceptMembers: ({ conversationId, people }: { conversationId: string; people: LegacyRecord }) =>
+				engine?.acceptMembers(conversationId, people),
 			createConversation: (made: NewConversationRequest) => live().createConversation(made),
 			addMember: ({ conversationId, userId: user }: MessageParams) => live().addMember(conversationId, user ?? ""),
 			removeMember: ({ conversationId, userId: user }: MessageParams) =>
@@ -433,17 +435,12 @@ async function followConversation(conversationId: string): Promise<void> {
 	if (offers !== undefined) showOffers(conversationId, offers);
 }
 
-type ConversationTap = "openConversation" | "acceptMembers";
-
-/** The person's act on a conversation, run by the engine of this tab or of the one that leads. */
-function onConversation(method: ConversationTap, conversationId: string): Promise<void> {
-	if (tabs) return tabs.call<void>(method, conversationId).finally(() => followConversation(conversationId));
-	if (method === "openConversation") return openOnEngine(conversationId);
-	return engine?.[method](conversationId) ?? Promise.resolve();
-}
-
 /** The conversation opened: its group goes on, or is made where this user may (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»). */
-export const openConversation = (conversationId: string) => onConversation("openConversation", conversationId);
+export function openConversation(conversationId: string): Promise<void> {
+	if (tabs)
+		return tabs.call<void>("openConversation", conversationId).finally(() => followConversation(conversationId));
+	return openOnEngine(conversationId);
+}
 /**
  * Restart encryption, over a blocked group this user may restart: whom it would leave out that the person hasn't
  * confirmed (`leaving`), and nothing restarted while there are some; none once it restarts.
@@ -452,8 +449,15 @@ export const restartGroup = (conversationId: string, leaving: readonly string[] 
 	onMessages<string[]>("restartGroup", { conversationId, leaving: [...leaving] }, (made) =>
 		made.restartGroup(conversationId, leaving),
 	).finally(() => followConversation(conversationId));
-/** Open with these members, over a conversation whose members aren't those this device first saw. */
-export const acceptMembers = (conversationId: string) => onConversation("acceptMembers", conversationId);
+/**
+ * Open with these members, over a conversation whose members aren't those this device first saw: the yes to the people
+ * its question named (`members_changed`'s), which this device goes in with (N-M10).
+ */
+export function acceptMembers(conversationId: string, people: LegacyRecord): Promise<void> {
+	const params = { conversationId, people };
+	if (tabs) return tabs.call<void>("acceptMembers", params).finally(() => followConversation(conversationId));
+	return engine?.acceptMembers(conversationId, people) ?? Promise.resolve();
+}
 
 /** What a tab asks of the leader's engine about a conversation's messages, or its members. */
 interface MessageParams {

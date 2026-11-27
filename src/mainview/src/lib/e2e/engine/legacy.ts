@@ -22,8 +22,11 @@ export interface LegacyRecord {
 	members: string[];
 }
 
-/** A record as the store keeps it: `made`, one the person made here (keepMade), which goes once its group is held. */
-type Kept = LegacyRecord & { made?: true };
+/**
+ * A record as the store keeps it: `made`, the person's own (keepMade, keepChosen), which goes once its group is held;
+ * `chosen`, their yes to the people a question named (keepChosen), which goes as the old yes did: let go, none made again.
+ */
+type Kept = LegacyRecord & { made?: true; chosen?: true };
 
 /** A record as the store kept it, or null for anything else. */
 function recordIn(kept: unknown): Kept | false | null {
@@ -33,8 +36,10 @@ function recordIn(kept: unknown): Kept | false | null {
 	const owner = "owner" in kept ? kept.owner : undefined;
 	if (!Array.isArray(members) || !members.every((member) => typeof member === "string")) return null;
 	if (owner !== undefined && typeof owner !== "string") return null;
-	const record = owner === undefined ? { members } : { owner, members };
-	return "made" in kept && kept.made === true ? { ...record, made: true } : record;
+	const record: Kept = owner === undefined ? { members } : { owner, members };
+	if ("made" in kept && kept.made === true) record.made = true;
+	if ("chosen" in kept && kept.chosen === true) record.chosen = true;
+	return record;
 }
 
 function records(store: EngineStore): Map<string, Kept | false> {
@@ -84,7 +89,7 @@ export function peopleOf(conv: Conversation): LegacyRecord {
 }
 
 /** The record as the core's `expected` takes it, without the store's mark. */
-const peopleIn = ({ made: _made, ...record }: Kept): LegacyRecord => record;
+const peopleIn = ({ made: _made, chosen: _chosen, ...record }: Kept): LegacyRecord => record;
 
 /**
  * The person made the conversation here: its record is this user and their picks, of the kind they asked for. Where one
@@ -101,17 +106,24 @@ export const recordMade = (store: EngineStore, conversationId: string) => {
 	return !!record && record.made === true;
 };
 
-/** The person said yes to the members of today: the record goes, and none is made again. */
-export const dropRecord = (store: EngineStore, conversationId: string) => keep(store, conversationId, false);
+/**
+ * The person's yes to the people its question named (N-M10): the record from now on, whatever was kept, which the
+ * founding and every welcome and join are held to, and which goes once this device holds the group, as one made here.
+ */
+export const keepChosen = (store: EngineStore, conversationId: string, record: LegacyRecord) =>
+	keep(store, conversationId, { ...record, made: true, chosen: true });
 
 /**
  * This device holds the conversation's group: a record the person made here goes from the store, and this session
- * holds none for it from now on. One from before the cutover stays, whatever the API says of the conversation now.
+ * holds none for it from now on; one of their yes is let go, none made again. One from before the cutover stays,
+ * whatever the API says of the conversation now.
  */
 export function forgetRecord(store: EngineStore, conversationId: string) {
 	const kept = records(store);
 	const record = kept.get(conversationId);
 	if (!record || !record.made) return;
+	// The person's yes to the members of today: let go, and none is made again for that conversation (Ruling 14).
+	if (record.chosen) return keep(store, conversationId, false);
 	heldBy(store).set(conversationId, false);
 	kept.delete(conversationId);
 	store.write(LEGACY_RECORDS, kept.size ? Object.fromEntries(kept) : null);

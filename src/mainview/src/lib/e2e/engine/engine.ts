@@ -43,7 +43,7 @@ import {
 } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
-import { keepMade } from "./legacy";
+import { keepMade, type LegacyRecord } from "./legacy";
 import { checkRoom, type Drawn } from "./members";
 import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
@@ -838,9 +838,12 @@ export class E2EEngine {
 		return out ?? [];
 	}
 
-	/** The person's yes to a conversation's members of today, which its record from before the cutover didn't have. */
-	acceptMembers(conversationId: string): Promise<void> {
-		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId)));
+	/**
+	 * The person's yes to a conversation's members of today, which its record didn't have: to the people its question
+	 * named (`members_changed`'s), which this device goes in with (N-M10).
+	 */
+	acceptMembers(conversationId: string, people: LegacyRecord): Promise<void> {
+		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId, people)));
 	}
 
 	/**

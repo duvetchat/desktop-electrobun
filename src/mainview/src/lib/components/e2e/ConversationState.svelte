@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from "$lib/components/ui/Button.svelte";
 	import type { ConversationState } from "$lib/e2e/engine/engine";
+	import type { LegacyRecord } from "$lib/e2e/engine/legacy";
 	import { t } from "$lib/i18n";
 	import { formatList } from "$lib/i18n/format";
 
@@ -12,7 +13,6 @@
 	let {
 		conversationState,
 		ownerName,
-		memberNames = [],
 		memberName = (userId: string) => userId,
 		onRestart,
 		onAccept,
@@ -20,12 +20,11 @@
 		conversationState: ConversationState | null;
 		/** The conversation's owner, by the name the app shows them. */
 		ownerName: string;
-		/** The conversation's members as the API has them now, by the names the app shows them. */
-		memberNames?: string[];
 		/** A member's name as the app shows it, by their user ID. */
 		memberName?: (userId: string) => string;
 		onRestart: () => Promise<void>;
-		onAccept: () => Promise<void>;
+		/** The person's yes to the people the question named. */
+		onAccept: (people: LegacyRecord) => Promise<void>;
 	} = $props();
 
 	let busy = $state(false);
@@ -43,9 +42,15 @@
 				return { text: t("e2e_wait_owner", { owner: ownerName }) };
 			case "wait_rejoin":
 				return { text: t("e2e_wait_rejoin") };
+			// Whom this device would go in with, which the yes accepts and no other (N-M10).
 			case "members_changed": {
-				const detail = memberNames.length ? t("e2e_members_now", { names: formatList(memberNames) }) : undefined;
-				return { text: t("e2e_members_changed"), detail, label: t("e2e_members_accept"), run: onAccept };
+				const detail = t("e2e_members_now", { names: formatList(said.people.members.map(memberName)) });
+				return {
+					text: t("e2e_members_changed"),
+					detail,
+					label: t("e2e_members_accept"),
+					run: () => onAccept(said.people),
+				};
 			}
 			// Whom its group holds, the people the conversation doesn't show among them (#574): nothing more goes there.
 			case "other_members":

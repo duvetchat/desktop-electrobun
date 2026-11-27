@@ -91,10 +91,6 @@ function twoPeople(conv: Drawn, user: string): boolean {
 export const sameUsers = (a: readonly string[], b: readonly string[]) =>
 	a.length === b.length && a.every((user) => b.includes(user));
 
-/** The conversation's members as the API has them, and a group's owner: what the person said yes to (accept). */
-export const membersKey = (conv: Conversation) =>
-	[conv.type === 2 ? conv.owner_id : "", ...conv.members.map((member) => member.user_id).sort()].join(",");
-
 /**
  * Whether the API's conversation has the members, and a group the owner, that the core's group holds: only then does
  * this device join a newer generation it has no welcome for on its own (sync.ts' #join).
