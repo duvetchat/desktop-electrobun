@@ -179,3 +179,25 @@ export function monogram(name: string): string {
 export function segmentIndex<T>(values: readonly T[], picked: T | undefined): number {
 	return picked === undefined ? 0 : Math.max(0, values.indexOf(picked));
 }
+
+/**
+ * Whether every option of a segmented control fits its column with its label (#562): `needed` is the width each one
+ * takes on one line, its icon, label and padding, and `column` the width of one of the control's equal columns. Half
+ * a pixel of slack, for widths rounded differently.
+ */
+export function segmentsFit(needed: readonly number[], column: number): boolean {
+	return needed.every((width) => width <= column + 0.5);
+}
+
+/**
+ * What a segmented control's option says beside its words (#562). With its label it is named by that label, and its
+ * tooltip is its title, if any. With its icon only, its label names it for a screen reader and is its tooltip, above
+ * its title.
+ */
+export function segmentNaming(
+	option: { label: string; title?: string },
+	iconOnly: boolean,
+): { ariaLabel: string | undefined; title: string | undefined } {
+	if (!iconOnly) return { ariaLabel: undefined, title: option.title };
+	return { ariaLabel: option.label, title: option.title ? `${option.label}\n${option.title}` : option.label };
+}

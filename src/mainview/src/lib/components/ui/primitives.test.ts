@@ -217,6 +217,45 @@ describe("Segmented", () => {
 		const radios = found.filter((tag) => tag.attributes.role === "radio");
 		for (const radio of radios) expect(classes(radio)).toContain("justify-center");
 	});
+
+	// #562: a longer language's label in a column too narrow for it.
+	test("draws each label cut where it can't fit, named by its words until it shows its icon alone", async () => {
+		const found = await tags(Segmented, { options, value: "all", label: "Show in the sidebar" });
+		const radios = found.filter((tag) => tag.attributes.role === "radio");
+		for (const radio of radios) {
+			expect(radio.attributes["aria-label"]).toBeUndefined();
+			expect(classes(radio)).toContain("min-w-0");
+			const words = found[found.indexOf(radio) + 1]!;
+			expect(classes(words)).toEqual(expect.arrayContaining(["min-w-0", "truncate", "leading-normal"]));
+		}
+	});
+
+	test("measures what each option takes on a hidden copy, of no size, out of a screen reader's reach", async () => {
+		const icon = (await import("@lucide/svelte/icons/layout-grid")).default;
+		const found = await tags(Segmented, {
+			options: options.map((option) => ({ ...option, icon })),
+			value: "all",
+			label: "Show in the sidebar",
+			size: "sm",
+		});
+		const copy = found.find((tag) => tag.attributes["aria-hidden"] === "true" && classes(tag).includes("invisible"))!;
+		expect(classes(copy)).toEqual(expect.arrayContaining(["absolute", "size-0", "overflow-hidden"]));
+		const inside = found.slice(found.indexOf(copy) + 1);
+		const rows = inside.filter((tag) => classes(tag).includes("w-max"));
+		expect(rows).toHaveLength(3);
+		// Each in the option's type, with 2 px either side (the option's padding gives way before its words, #426), and
+		// room for its icon instead of a second one.
+		for (const row of rows) expect(classes(row)).toEqual(expect.arrayContaining(["px-0.5", "text-xs", "gap-[5px]"]));
+		expect(inside.some((tag) => tag.name === "svg")).toBe(false);
+		expect(inside.filter((tag) => classes(tag).includes("size-[14px]"))).toHaveLength(3);
+		// With icons to fall back on, the options' words are never cut: they spill into the padding.
+		const radios = found.filter((tag) => tag.attributes.role === "radio");
+		for (const radio of radios) {
+			const words = found.slice(found.indexOf(radio) + 1).find((tag) => tag.name === "span")!;
+			expect(classes(words)).toContain("shrink-0");
+			expect(classes(words)).not.toContain("truncate");
+		}
+	});
 });
 
 describe("Avatar", () => {
