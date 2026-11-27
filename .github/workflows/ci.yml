@@ -19,8 +19,8 @@ concurrency:
 
 jobs:
   check:
-    # On the organisation's own runner: the 2,000 free Actions minutes a month ran out.
-    runs-on: [self-hosted, linux, x64, duvet]
+    # On GitHub's runners, free for a public repository: the organisation's own runner takes only its private ones.
+    runs-on: ubuntu-24.04
     # 30: a passing run takes 12 to 16 minutes, the browser tests (Task 8 of the E2E plan) and the engine's real cores
     # among them, and a runner busy with other repositories' runs stretches it past 20 (#538).
     timeout-minutes: 30
