@@ -5,6 +5,7 @@
 	import { loadMoreMembers, membersFailed } from "$lib/stores/member-pages.svelte";
 	import MemberList from "$lib/components/MemberList.svelte";
 	import MemberPagesStatus from "$lib/components/MemberPagesStatus.svelte";
+	import { t } from "$lib/i18n";
 
 	// A chat's members under their head, in a list that scrolls on its own: what the members popover of a pane's bar
 	// holds, and the members column beside a chat (#409). A Space's members come a page at a time as the list nears its
@@ -14,7 +15,7 @@
 		spaceId = null,
 		space = null,
 		channelId,
-		title = "Members",
+		title = undefined,
 		onRemoveMember = undefined,
 		onMention = undefined,
 		surface = "popover",
@@ -25,7 +26,7 @@
 		space?: GatewaySpace | null;
 		/** The room or the conversation whose typing the rows show. */
 		channelId: string;
-		/** The head: "Members", or a group's name. */
+		/** The head: a group's name; without one, Members. */
 		title?: string;
 		/** Removes a member from a group, for its owner. */
 		onRemoveMember?: (userId: string) => Promise<void>;
@@ -56,8 +57,8 @@
 </script>
 
 <div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1">
-	<p class="min-w-0 truncate text-[13.5px] font-semibold">{title}</p>
-	<span class="text-duvet-ink2 shrink-0 text-xs">{online} online</span>
+	<p class="min-w-0 truncate text-[13.5px] font-semibold">{title ?? t("people_members_title")}</p>
+	<span class="text-duvet-ink2 shrink-0 text-xs">{t("people_members_online", { count: online })}</span>
 </div>
 <div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
 	<MemberList {members} {spaceId} {space} {channelId} {onRemoveMember} {onMention} {surface} />

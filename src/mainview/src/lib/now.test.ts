@@ -9,7 +9,6 @@ import {
 	joinableCalls,
 	liveIn,
 	friendsNow,
-	peopleCount,
 	voiceRoomLabel,
 } from "$lib/now";
 
@@ -96,11 +95,6 @@ describe("fitFaces", () => {
 });
 
 describe("labels", () => {
-	test("count people in the singular and the plural", () => {
-		expect(peopleCount(1)).toBe("1 person");
-		expect(peopleCount(3)).toBe("3 people");
-	});
-
 	test("a voice room's row says where it is and how many are in it", () => {
 		expect(voiceRoomLabel("lounge", "Si", 3)).toBe("Open lounge in Si, 3 people");
 	});

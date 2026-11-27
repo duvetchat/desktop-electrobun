@@ -3,11 +3,15 @@ import api from "$lib/api/api";
 import { holdWav, releaseWav } from "$lib/audio/waveform";
 import { getHostURL } from "$lib/common/common";
 
+// The names are kept as the app has them, and the bar (VoiceNoteBar) puts its own words in their place where it draws
+// them: words kept here would stay in the language the note started in (#464).
 export interface VoiceNoteState {
 	src: string;
 	attachmentId: string;
+	/** The author's name, "" for an author the app doesn't know. */
 	authorName: string;
-	channelName: string;
+	/** The room's name, "" where there's none (a conversation), null for a room the app doesn't know. */
+	channelName: string | null;
 	filename?: string;
 	playing: boolean;
 	currentTime: number;
@@ -135,7 +139,7 @@ export async function playVoiceNote(
 	src: string,
 	attachmentId: string,
 	authorName: string,
-	channelName: string,
+	channelName: string | null,
 	filename?: string,
 ) {
 	// Asked for again while its URL is signed again (a double click): it plays once, when it has its URL (#175).

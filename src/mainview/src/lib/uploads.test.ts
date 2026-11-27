@@ -7,6 +7,7 @@ import {
 	allUp,
 	CANCELLED,
 	cancelUpload,
+	chatFileSize,
 	fileGoingUp,
 	fileShare,
 	forgetUnlisted,
@@ -17,6 +18,17 @@ import {
 	uploadPercent,
 	withoutSending,
 } from "$lib/uploads";
+
+// A file's size under it in the chat, and in the message box: the app's sizes (lib/i18n/format.ts), and megabytes with
+// one decimal, as the chat has always written them.
+describe("a file's size in the chat", () => {
+	test("is bytes, then kilobytes and megabytes with one decimal", () => {
+		expect(chatFileSize(500)).toBe("500 B");
+		expect(chatFileSize(1536)).toBe("1.5 KB");
+		expect(chatFileSize(2.5 * 1024 * 1024)).toBe("2.5 MB");
+		expect(chatFileSize(1500 * 1024 * 1024)).toBe("1500.0 MB");
+	});
+});
 
 // What an image's Save or Upload says while it goes up (#78), as the mobile app says it.
 describe("an upload's percent", () => {

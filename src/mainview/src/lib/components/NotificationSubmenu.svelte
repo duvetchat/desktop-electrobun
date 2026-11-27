@@ -4,6 +4,7 @@
 	import { Bell as BellIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
 	import { clearNotificationLevel, setNotificationLevel } from "$lib/api/notifications";
+	import { t, type MessageKey } from "$lib/i18n";
 	import { notificationLevels } from "$lib/notification-levels";
 	import { toast } from "$lib/stores/toast.svelte";
 	import type { NotificationLevel, NotificationTarget } from "$lib/types";
@@ -28,7 +29,9 @@
 		contentClass?: string;
 	} = $props();
 
-	const LEVELS = ["All messages", "Only mentions", "Nothing"];
+	// Each level's words, by its number (lib/types: NotificationLevel), and its case in the Default item's message.
+	const LEVELS: MessageKey[] = ["shell_notify_all", "shell_notify_mentions", "shell_notify_nothing"];
+	const DEFAULT_CASES = ["all", "mentions", "nothing"];
 	const withDefault = $derived(target !== 2);
 	const own = $derived($notificationLevels[targetId]);
 	const chosen = $derived(own !== undefined ? String(own) : withDefault ? "default" : "0");
@@ -39,7 +42,7 @@
 			if (value === "default") await clearNotificationLevel(targetId);
 			else await setNotificationLevel(targetId, target, Number(value) as NotificationLevel);
 		} catch (err) {
-			toast(getApiError(err, "Couldn't change the notifications"), "error");
+			toast(getApiError(err, t("shell_notify_change_failed")), "error");
 		}
 	}
 
@@ -67,7 +70,7 @@
 <DropdownMenu.Sub bind:open>
 	<DropdownMenu.SubTrigger class={itemClass}>
 		<span class="text-duvet-ink2 grid w-[18px] shrink-0 place-items-center"><BellIcon size={16} /></span>
-		<span class="min-w-0 flex-1 truncate">Notifications</span>
+		<span class="min-w-0 flex-1 truncate">{t("shell_notifications")}</span>
 		<ChevronRightIcon size={14} class="text-duvet-ink2 shrink-0" />
 	</DropdownMenu.SubTrigger>
 	<!-- In the page's root, as MenuSub's panel is: a glass menu's backdrop filter would otherwise be what this panel's
@@ -87,10 +90,10 @@
 				>
 					<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>
 						{#if withDefault}
-							{@render choice("default", `Default (${LEVELS[inherited]})`)}
+							{@render choice("default", t("shell_notify_default", { level: DEFAULT_CASES[inherited] ?? "all" }))}
 						{/if}
 						{#each LEVELS as label, level (label)}
-							{@render choice(String(level), label)}
+							{@render choice(String(level), t(label))}
 						{/each}
 					</DropdownMenu.RadioGroup>
 				</DropdownMenu.SubContent>

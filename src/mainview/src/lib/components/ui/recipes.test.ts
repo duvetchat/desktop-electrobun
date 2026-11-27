@@ -8,6 +8,7 @@ import {
 	GLASS_STRONG,
 	iconButtonClass,
 	iconTileClass,
+	marqueeRun,
 	MENU_PANEL,
 	menuItemClass,
 	monogram,
@@ -17,6 +18,7 @@ import {
 	presenceSize,
 	SCRIM,
 	segmentIndex,
+	segmentTitle,
 	spaceIconRadius,
 } from "./recipes";
 
@@ -254,5 +256,23 @@ describe("the sums", () => {
 		expect(segmentIndex(options, "spaces")).toBe(2);
 		expect(segmentIndex<string>(options, "elsewhere")).toBe(0);
 		expect(segmentIndex(options, undefined)).toBe(0);
+	});
+
+	// #562: at the sidebar's narrowest Spanish's Espacios is 55 px of words in a column that leaves them 37.
+	test("a segmented control's label scrolls as far as it's clipped, and only when it is", () => {
+		expect(marqueeRun(55, 37.7)).toEqual({ shift: 18, seconds: 2.5 });
+		// Rounded apart by less than half a pixel, it fits.
+		expect(marqueeRun(38.1, 37.7)).toEqual({ shift: 0, seconds: 0 });
+		expect(marqueeRun(30, 37.7)).toEqual({ shift: 0, seconds: 0 });
+		// Farther, at 30 px a second over the middle 60% of the run.
+		expect(marqueeRun(127, 37)).toEqual({ shift: 90, seconds: 5 });
+	});
+
+	test("a segmented control's clipped option gives its label whole in its tooltip, over its title", () => {
+		const chats = { label: "Keskustelut", title: "Vain chatit" };
+		expect(segmentTitle(chats, false)).toBe("Vain chatit");
+		expect(segmentTitle(chats, true)).toBe("Keskustelut\nVain chatit");
+		expect(segmentTitle({ label: "Kaikki" }, true)).toBe("Kaikki");
+		expect(segmentTitle({ label: "Kaikki" }, false)).toBeUndefined();
 	});
 });

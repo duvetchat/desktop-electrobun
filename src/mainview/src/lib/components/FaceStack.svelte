@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Face } from "$lib/now";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { formatNumber } from "$lib/i18n/format";
 
 	// A few people's faces, overlapping, and how many more there are: a room's members in a pane's bar, who's in a
 	// voice room. Each face is ringed in the color it sits on, so it reads apart from the one under it.
@@ -41,6 +42,6 @@
 		</span>
 	{/if}
 	{#if more > 0}
-		<span class="text-duvet-ink2 text-xs font-semibold tabular-nums">+{more}</span>
+		<span class="text-duvet-ink2 text-xs font-semibold tabular-nums">+{formatNumber(more)}</span>
 	{/if}
 </span>

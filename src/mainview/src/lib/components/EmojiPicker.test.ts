@@ -75,7 +75,7 @@ test("a tab for each Space with emojis comes first, named as its Space, and the 
 // sideways, with its scrollbar hidden: a mouse, whose wheel only turns up and down, reaches the rest with that wheel.
 test("the categories' row scrolls sideways under a mouse wheel", () => {
 	const picker = source();
-	const start = picker.lastIndexOf("<div", picker.indexOf('aria-label="Emoji categories"'));
+	const start = picker.lastIndexOf("<div", picker.indexOf('aria-label={t("media_emoji_categories")}'));
 	const row = picker.slice(start, picker.indexOf("{#each", start));
 	expect(row).toContain("onwheel={(e) => scrollSideways(e, e.currentTarget)}");
 });

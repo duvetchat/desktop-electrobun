@@ -7,12 +7,13 @@
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import { renderEmoji } from "$lib/emoji";
 	import { MESSAGE_CARD, messageTextClass } from "$lib/message-styles";
 	import { CUSTOM_EMOJI_CLASS } from "$lib/emoji-retry";
 	import { emojiImageUrl, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
-	import { formatFileSize } from "$lib/utils/format";
+	import { formatFileSize } from "$lib/i18n/format";
 	import {
 		ButtonStyle,
 		ComponentType,
@@ -70,8 +71,8 @@
 		} catch (err) {
 			const text =
 				err instanceof FetchError && err.response?.status === 504
-					? "The application did not respond"
-					: "This interaction failed";
+					? t("chat_interaction_no_response")
+					: t("chat_interaction_failed");
 			failure = { text, detail: getApiError(err, text) };
 		} finally {
 			pending.delete(id);
@@ -190,7 +191,7 @@
 				<FileIcon class="text-duvet-accent-text size-6 shrink-0" />
 				<span class="flex min-w-0 flex-col">
 					<span class="text-duvet-ink truncate text-[13.5px] font-semibold group-hover:underline"
-						>{c.name ?? "file"}</span
+						>{c.name ?? t("chat_file_unnamed")}</span
 					>
 					{#if c.size != null}
 						<span class="text-duvet-ink2 text-xs">{formatFileSize(c.size)}</span>
@@ -274,8 +275,9 @@
 			<!-- A custom emoji of a Space the user isn't in: its image from the API, named as the bot named it. -->
 			<img
 				src={elsewhere}
-				alt=":{e.name ?? 'emoji'}:"
-				title=":{e.name ?? 'emoji'}:"
+				alt=":{e.name ?? t('chat_emoji_unknown')}:"
+				title=":{e.name ?? t('chat_emoji_unknown')}:"
+				data-emoji-unnamed={e.name === undefined ? "" : undefined}
 				class="size-5 shrink-0 object-contain {CUSTOM_EMOJI_CLASS}"
 				draggable="false"
 			/>
@@ -296,7 +298,7 @@
 			<button
 				type="button"
 				class="block size-full cursor-zoom-in"
-				aria-label={c.description ? undefined : "Open image"}
+				aria-label={c.description ? undefined : t("chat_open_image")}
 				onclick={() => onPreview(mediaSrc(media), c.description)}
 			>
 				<img
@@ -370,7 +372,7 @@
 			<button
 				type="button"
 				class="block cursor-zoom-in {size || !alone ? 'size-full' : ''}"
-				aria-label={item.description ? undefined : "Open image"}
+				aria-label={item.description ? undefined : t("chat_open_image")}
 				onclick={() => onPreview(src, item.description)}
 			>
 				<img

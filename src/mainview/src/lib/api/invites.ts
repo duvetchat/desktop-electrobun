@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import { t } from "$lib/i18n";
 import { pathSegment } from "$lib/urls";
 
 export interface InviteInfo {
@@ -10,12 +11,13 @@ export interface InviteInfo {
 }
 
 // An invite's code comes from a link anyone can write: it's one segment of the path (pathSegment). One that can't
-// be is no invite at all, and reads as the API's answer for any other code it doesn't know.
+// be is no invite at all, and reads as the API's answer for any other code it doesn't know does, in the app's words
+// (error-wording.ts).
 function codeSegment(code: string): string {
 	try {
 		return pathSegment(code);
 	} catch {
-		throw new Error("invite link not found or has expired");
+		throw new Error(t("error_invite_gone"));
 	}
 }
 

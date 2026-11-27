@@ -188,7 +188,8 @@ describe("a message's preview", () => {
 				},
 			}),
 		);
-		expect(used).toMatch(/used <span[^>]*>\/ping<\/span>/);
+		// One sentence (chat_interaction_used), drawn by Rich: its pieces come with the server render's markers.
+		expect(used.replace(/<!--[^>]*-->/g, "")).toMatch(/>me<\/span> used <span[^>]*>\/ping<\/span>/);
 		expect(used).toContain(">BOT</span>");
 		expect(html(message({ content: "Hi", webhook_id: "w" }))).toContain(">WEBHOOK</span>");
 	});

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { prefersReducedMotion } from "svelte/motion";
 	import { fly } from "svelte/transition";
+	import { formatNumber } from "$lib/i18n/format";
 	import { countRoll } from "$lib/reactions";
 
 	let { count }: { count: number } = $props();
@@ -44,6 +45,6 @@
 
 <span bind:this={box} class="relative grid overflow-hidden tabular-nums">
 	{#key roll}
-		<span class="w-max" in:enter out:leave>{count}</span>
+		<span class="w-max" in:enter out:leave>{formatNumber(count)}</span>
 	{/key}
 </span>

@@ -5,7 +5,7 @@
 export const LOCALE_KEY = "duvet.locale.v1";
 
 /** Every language the app has words for. English first: the others are written from it. */
-export const LOCALES = ["en", "es", "fr", "de", "pt-BR", "it"] as const;
+export const LOCALES = ["en", "es", "fr", "de", "pt-BR", "it", "fi"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**
@@ -13,7 +13,7 @@ export type Locale = (typeof LOCALES)[number];
  * every key (lib/i18n.test.ts holds it to that): until then a system in that language would get the app half in it.
  * A development build offers every language, and the pseudo-language, to pick by hand.
  */
-export const SHIPPED: readonly Locale[] = ["en"];
+export const SHIPPED: readonly Locale[] = ["en", "es", "pt-BR", "it", "fr", "de", "fi"];
 
 /**
  * English with every letter accented, in brackets and a third longer (lib/i18n/pseudo.ts): text still in English after
@@ -31,8 +31,31 @@ export const LOCALE_NAMES: Record<UiLocale, string> = {
 	de: "Deutsch",
 	"pt-BR": "Português (Brasil)",
 	it: "Italiano",
+	fi: "Suomi",
 	[PSEUDO]: "Ƥšéûðö (en-XA)",
 };
+
+/**
+ * The country whose flag the picker shows beside each language (#565), as its region code. A flag is a country's, not
+ * a language's: English's is the United States', whose spelling the app's English keeps, and Spanish, written for Latin
+ * America, has Mexico's, its largest country. The pseudo-language has none. The flag only decorates: the name is the
+ * option's label.
+ */
+export const LOCALE_FLAGS: Record<UiLocale, string | null> = {
+	en: "US",
+	es: "MX",
+	fr: "FR",
+	de: "DE",
+	"pt-BR": "BR",
+	it: "IT",
+	fi: "FI",
+	[PSEUDO]: null,
+};
+
+/** A region's flag emoji: its two letters as regional indicator symbols ("FR" is 🇫🇷). */
+export function flagEmoji(region: string): string {
+	return String.fromCodePoint(...[...region.toUpperCase()].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65));
+}
 
 /** System follows the system's languages, among those shipped; a language keeps to it. */
 export type LocalePref = "system" | UiLocale;

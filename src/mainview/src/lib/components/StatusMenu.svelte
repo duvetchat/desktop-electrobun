@@ -6,6 +6,7 @@
 	import { currentUser } from "$lib/stores.svelte";
 	import { setMyStatus } from "$lib/api/user";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString, type ChosenStatus } from "$lib/types";
@@ -16,7 +17,6 @@
 	let { children, class: className = "" }: { children: Snippet; class?: string } = $props();
 
 	const current = $derived(chosenStatus($currentUser?.status));
-	const currentLabel = $derived(STATUS_CHOICES.find((c) => c.status === current)?.label ?? "");
 	let saving = $state(false);
 
 	async function choose(status: ChosenStatus) {
@@ -27,7 +27,7 @@
 			// Every session hears of it (USER_STATUS_UPDATE), this one too; the menu shows it at once.
 			currentUser.update((u) => (u?.id === saved.id ? { ...u, status: chosenStatus(saved.status) } : u));
 		} catch (err) {
-			toast(getApiError(err, "Failed to change your status"), "error");
+			toast(getApiError(err, t("status_change_failed")), "error");
 		} finally {
 			saving = false;
 		}
@@ -44,7 +44,13 @@
 </script>
 
 <DropdownMenu.Root bind:open>
-	<DropdownMenu.Trigger class={className} aria-label="{$currentUser?.alias || $currentUser?.username}, {currentLabel}">
+	<DropdownMenu.Trigger
+		class={className}
+		aria-label={t("status_menu_label", {
+			name: $currentUser?.alias || $currentUser?.username || "",
+			status: current === 2 ? "dnd" : "online",
+		})}
+	>
 		{@render children()}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
@@ -71,9 +77,9 @@
 								<StatusDot status={userStatusToString(choice.status)} class="w-2.5" />
 							</span>
 							<span class="flex min-w-0 flex-1 flex-col gap-px">
-								<span class="truncate">{choice.label}</span>
+								<span class="truncate">{t(choice.label)}</span>
 								{#if choice.description}
-									<span class="text-duvet-ink2 text-[11px] leading-[1.2] font-normal">{choice.description}</span>
+									<span class="text-duvet-ink2 text-[11px] leading-[1.2] font-normal">{t(choice.description)}</span>
 								{/if}
 							</span>
 							{#if chosen}

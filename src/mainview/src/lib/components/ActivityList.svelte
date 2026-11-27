@@ -2,6 +2,7 @@
 	import type { UserActivity } from "$lib/stores.svelte";
 	import { inlineActivityImage, resolveActivityIcon } from "$lib/activity-icons";
 	import { formatPlaybackTime, isSpotify, shownActivities, spotifySearchUrl } from "$lib/activity";
+	import { t } from "$lib/i18n";
 	import ElapsedTime from "./ElapsedTime.svelte";
 
 	// A member's activities in their profile card and popover: Spotify's as the song with its progress, any other
@@ -21,7 +22,7 @@
 {#if shown.length}
 	<div class="bg-duvet-card my-3 h-px w-full"></div>
 	<h3 class="text-duvet-ink2 mb-1.5 text-left text-[13px] font-bold">
-		{shown.length === 1 ? "Activity" : "Activities"}
+		{t("call_activity_heading", { count: shown.length })}
 	</h3>
 	<div class="flex flex-col gap-2">
 		{#each shown as activity}
@@ -30,7 +31,7 @@
 				{@const length = Math.max((activity.timestamps?.end ?? start) - start, 0)}
 				{@const elapsed = Math.min(Math.max(now - start, 0), length)}
 				<div class="flex flex-col gap-1.5">
-					<span class="text-duvet-ink2 text-left text-xs font-semibold">Listening to Spotify</span>
+					<span class="text-duvet-ink2 text-left text-xs font-semibold">{t("call_activity_spotify_listening")}</span>
 					<div class="flex items-center gap-2">
 						<div class="bg-duvet-card flex size-10 shrink-0 items-center justify-center rounded" title="Spotify">
 							<svg viewBox="0 0 24 24" class="size-6 fill-[#1ED760]" aria-hidden="true">
@@ -44,14 +45,18 @@
 								href={spotifySearchUrl(activity)}
 								target="_blank"
 								rel="noopener noreferrer"
-								title="Find it on Spotify"
+								title={t("call_activity_spotify_find")}
 								class="text-duvet-ink truncate text-sm font-medium hover:underline">{activity.details}</a
 							>
 							{#if activity.state}
-								<span class="text-duvet-ink2 truncate text-xs">by {activity.state}</span>
+								<span class="text-duvet-ink2 truncate text-xs"
+									>{t("call_activity_spotify_artist", { artist: activity.state })}</span
+								>
 							{/if}
 							{#if activity.assets?.large_text}
-								<span class="text-duvet-ink2 truncate text-xs">on {activity.assets.large_text}</span>
+								<span class="text-duvet-ink2 truncate text-xs"
+									>{t("call_activity_spotify_album", { album: activity.assets.large_text })}</span
+								>
 							{/if}
 						</div>
 					</div>

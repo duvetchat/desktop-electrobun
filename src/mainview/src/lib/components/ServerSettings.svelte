@@ -11,6 +11,7 @@
 	import { onMount } from "svelte";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import { whenIdle } from "$lib/lazy";
 	import { currentShell } from "$lib/platform";
 	import { openAppWindow, startSettingsHost } from "$lib/stores/settings-host-link.svelte";
@@ -44,7 +45,7 @@
 				// Only someone who asked for it is told; the next opening tries again.
 				if (!open) return;
 				open = false;
-				toast("Couldn't open the Space's settings", "error");
+				toast(t("space_settings_open_failed"), "error");
 			},
 		);
 	}

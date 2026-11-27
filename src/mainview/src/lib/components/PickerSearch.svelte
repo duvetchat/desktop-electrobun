@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Search, X } from "@lucide/svelte";
+	import { t } from "$lib/i18n";
 
 	// The search field at the top of a picker (emoji, GIFs, stickers): 34 px tall on the field's fill, ringed in the
 	// accent's tint while it has the focus, with a × that clears it once it holds text.
@@ -42,7 +43,7 @@
 		<button
 			type="button"
 			class="text-duvet-ink2 hover:text-duvet-ink grid size-5 shrink-0 place-items-center rounded-md"
-			aria-label="Clear search"
+			aria-label={t("media_search_clear")}
 			onclick={() => {
 				value = "";
 				oninput?.();

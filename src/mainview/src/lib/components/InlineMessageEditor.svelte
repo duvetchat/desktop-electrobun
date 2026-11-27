@@ -3,6 +3,7 @@
 	import { Check, X } from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import { t } from "$lib/i18n";
 
 	// A message's own text, edited where it is (#357): a text box on the message's place, with Save and Discard
 	// beside it. Esc discards; Ctrl or ⌘ with Enter saves, as the message box's own edit did.
@@ -55,19 +56,20 @@
 		bind:this={area}
 		bind:value={text}
 		rows="1"
-		aria-label="Edit message"
+		placeholder={t("chat_edit_placeholder")}
+		aria-label={t("chat_edit_message")}
 		oninput={grow}
 		onkeydown={onKeydown}
 		class="font-content text-duvet-ink block max-h-[45vh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[16px] leading-[1.45] wrap-anywhere outline-none"
 	></textarea>
 	<div class="flex items-center gap-1">
-		<span class="text-duvet-ink2 min-w-0 flex-1 truncate px-1 text-[11px]"> Esc to cancel · Ctrl/⌘ Enter to save </span>
-		<IconButton label="Discard edit" title="Discard" size="sm" onclick={onCancel}>
+		<span class="text-duvet-ink2 min-w-0 flex-1 truncate px-1 text-[11px]">{t("chat_edit_keys")}</span>
+		<IconButton label={t("chat_edit_cancel")} title={t("chat_edit_discard")} size="sm" onclick={onCancel}>
 			<X size={15} />
 		</IconButton>
 		<Button size="sm" onclick={save}>
 			<Check size={14} />
-			Save
+			{t("chat_edit_save")}
 		</Button>
 	</div>
 </div>

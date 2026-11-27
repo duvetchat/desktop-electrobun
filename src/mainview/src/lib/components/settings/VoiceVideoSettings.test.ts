@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "svelte/server";
 import { tags } from "../server-render";
+import en from "../../../../messages/en.json";
 
 // The Settings section (#357, DESIGN-MAP.md S-54): the microphone voice uses, a test of it, noise suppression, and the
 // camera with a preview. The test and the preview open devices, which a server render can't: what they draw and what
@@ -98,9 +99,12 @@ describe("Voice and video", () => {
 		expect(source).toContain("aspect-video");
 		expect(source).toContain("use:srcObject={preview}");
 		expect(source).toContain("-scale-x-100");
-		expect(source).toMatch(/>\s*Preview\s*</);
-		expect(source).toContain("Opening your camera…");
-		expect(source).toContain("Try again");
+		expect(source).toMatch(/>\s*\{t\("settings_camera_preview"\)\}\s*</);
+		expect(source).toContain('t("settings_camera_opening")');
+		expect(source).toContain('t("settings_camera_retry")');
+		expect(en.settings_camera_preview).toBe("Preview");
+		expect(en.settings_camera_opening).toBe("Opening your camera…");
+		expect(en.settings_camera_retry).toBe("Try again");
 	});
 
 	// The test opens a microphone and the preview a camera: the section that goes must let both go.

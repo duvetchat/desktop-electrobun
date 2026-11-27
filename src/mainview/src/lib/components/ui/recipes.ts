@@ -163,7 +163,13 @@ export function monogramSize(size: number): number {
 	return Math.round(size * 0.46);
 }
 
-/** The letter on a Space icon without a picture: its name's first character, in upper case. */
+/**
+ * The letter on a Space icon without a picture: its name's first character, in upper case.
+ *
+ * Upper case as the system's locale writes it, not the app's language (#464): a Space's name is its owner's own words,
+ * in no language the app can know, and none of the app's languages has casing rules of its own, while the system's
+ * may (Turkish writes İ for i). Graphemes don't depend on a locale.
+ */
 export function monogram(name: string): string {
 	const [first] = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(name.trim())];
 	return (first?.segment ?? "").toLocaleUpperCase();
@@ -172,4 +178,26 @@ export function monogram(name: string): string {
 /** Where a segmented control's thumb sits: the picked option's place, the first's when none is picked. */
 export function segmentIndex<T>(values: readonly T[], picked: T | undefined): number {
 	return picked === undefined ? 0 : Math.max(0, values.indexOf(picked));
+}
+
+/**
+ * How far a segmented control's clipped label scrolls, and how long each way takes (#562): `words` is the width of
+ * its words on one line, `box` the width its option leaves them. Words that fit, give or take half a pixel for widths
+ * rounded differently, don't scroll. Those that don't travel at 30 px a second for the middle 60% of the run, resting
+ * at either end for the rest, and never take under 2.5 seconds a way.
+ */
+export function marqueeRun(words: number, box: number): { shift: number; seconds: number } {
+	const over = words - box;
+	if (over <= 0.5) return { shift: 0, seconds: 0 };
+	const shift = Math.ceil(over);
+	return { shift, seconds: Math.max(2.5, Math.round((shift / 30 / 0.6) * 10) / 10) };
+}
+
+/**
+ * A segmented control's option's tooltip (#562): its title, if any, and, while its label is clipped, the label whole
+ * above it.
+ */
+export function segmentTitle(option: { label: string; title?: string }, clipped: boolean): string | undefined {
+	if (!clipped) return option.title;
+	return option.title ? `${option.label}\n${option.title}` : option.label;
 }

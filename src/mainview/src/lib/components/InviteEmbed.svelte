@@ -6,6 +6,7 @@
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
 	import { signInUrl } from "$lib/urls";
+	import { t } from "$lib/i18n";
 	import { MESSAGE_INVITE_CARD } from "$lib/message-styles";
 
 	let { code }: { code: string } = $props();
@@ -20,11 +21,6 @@
 	let joining = $state(false);
 	let joined = $state(false);
 	let joinError = $state("");
-	const numberFormatter = new Intl.NumberFormat(typeof navigator !== "undefined" ? navigator.language : "en-US");
-
-	function formatCount(value: number) {
-		return numberFormatter.format(value);
-	}
 
 	onMount(async () => {
 		try {
@@ -47,7 +43,7 @@
 			await joinInvite(code);
 			joined = true;
 		} catch (err) {
-			joinError = getApiError(err, "Couldn't join the Space.");
+			joinError = getApiError(err, t("media_invite_join_failed"));
 		} finally {
 			joining = false;
 		}
@@ -68,7 +64,7 @@
 	</div>
 {:else if !error && invite}
 	<div class={MESSAGE_INVITE_CARD}>
-		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">You've been invited to join a Space</p>
+		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">{t("media_invite_title")}</p>
 		<div class="mb-4 flex items-center gap-3">
 			<!-- Server icon -->
 			<div
@@ -88,8 +84,7 @@
 				<div class="mt-0.5 flex items-center gap-1.5">
 					<span class="bg-duvet-alive inline-block h-2 w-2 shrink-0 rounded-full"></span>
 					<span class="text-duvet-ink2 text-xs">
-						{formatCount(invite.member_count)}
-						{invite.member_count === 1 ? "Member" : "Members"}
+						{t("media_invite_members", { count: invite.member_count })}
 					</span>
 				</div>
 			</div>
@@ -101,7 +96,7 @@
 
 		{#if joined}
 			<div class="bg-duvet-chosen text-duvet-chosen-ink w-full rounded-xl py-2 text-center text-sm font-bold">
-				You're in.
+				{t("media_invite_joined")}
 			</div>
 		{:else}
 			<button
@@ -109,7 +104,7 @@
 				onclick={handleJoin}
 				disabled={joining}
 			>
-				{joining ? "Joining…" : "Join Space"}
+				{joining ? t("media_invite_joining") : t("media_invite_join")}
 			</button>
 		{/if}
 	</div>

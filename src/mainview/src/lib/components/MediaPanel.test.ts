@@ -32,9 +32,9 @@ const inRoom: MediaState = {
 		{ id: "me", name: "Tamsin", src: null, speaking: false },
 		{ id: "ana", name: "Ana", src: null, speaking: true },
 	],
-	facesLabel: "2 people in voice, Ana speaking",
+	speakers: ["Ana"],
 };
-const inCall: MediaState = { ...inRoom, place: { kind: "call", id: "dm-1", where: "Ana" }, facesLabel: "" };
+const inCall: MediaState = { ...inRoom, place: { kind: "call", id: "dm-1", where: "Ana" } };
 
 const drawn = (state: MediaState) => tags(MediaPanel, { state, actions });
 const words = (state: MediaState) => render(MediaPanel, { props: { state, actions } }).body.replace(/<[^>]*>/g, " ");
@@ -145,7 +145,7 @@ describe("in a call", () => {
 		const all = await drawn(inCall);
 		expect(all.find((tag) => tag.name === "section")?.attributes["aria-label"]).toBe("Your call");
 		expect(words(inCall)).toContain("In a call");
-		expect(named(all).slice(0, 2)).toEqual(["Open Ana", "Leave call"]);
+		expect(named(all).slice(0, 2)).toEqual(["Open Ana, 2 people in voice, Ana speaking", "Leave call"]);
 	});
 
 	test("a call being placed says Calling…, with Cancel call, and its video waits for the call", async () => {

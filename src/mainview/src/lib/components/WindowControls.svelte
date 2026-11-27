@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import { closeWindow, maximizeWindow, minimizeWindow } from "$lib/window-controls";
 	import { TRAFFIC_LIGHTS_INSET } from "$lib/shell-layout";
@@ -53,13 +54,28 @@
 			class="titlebar-actions group/lights flex h-full shrink-0 items-center gap-2 pr-3 pl-[18px]"
 			style="min-width: {TRAFFIC_LIGHTS_INSET}px"
 		>
-			<button type="button" class="{light} bg-duvet-tl-close" aria-label="Close window" onclick={closeWindow}>
+			<button
+				type="button"
+				class="{light} bg-duvet-tl-close"
+				aria-label={t("shell_window_close")}
+				onclick={closeWindow}
+			>
 				<span class="opacity-0 group-hover/lights:opacity-100">{@render glyph("close", 1.4)}</span>
 			</button>
-			<button type="button" class="{light} bg-duvet-tl-minimize" aria-label="Minimize window" onclick={minimizeWindow}>
+			<button
+				type="button"
+				class="{light} bg-duvet-tl-minimize"
+				aria-label={t("shell_window_minimize")}
+				onclick={minimizeWindow}
+			>
 				<span class="opacity-0 group-hover/lights:opacity-100">{@render glyph("minimize", 1.4)}</span>
 			</button>
-			<button type="button" class="{light} bg-duvet-tl-zoom" aria-label="Maximize window" onclick={maximizeWindow}>
+			<button
+				type="button"
+				class="{light} bg-duvet-tl-zoom"
+				aria-label={t("shell_window_maximize")}
+				onclick={maximizeWindow}
+			>
 				<span class="opacity-0 group-hover/lights:opacity-100">{@render glyph("maximize", 1.4)}</span>
 			</button>
 		</div>
@@ -71,16 +87,16 @@
 	{/if}
 {:else if side === "end" && shell.chrome === "windows"}
 	<div class="titlebar-actions flex h-full shrink-0 items-stretch">
-		<button type="button" class={windowsButton} aria-label="Minimize window" onclick={minimizeWindow}>
+		<button type="button" class={windowsButton} aria-label={t("shell_window_minimize")} onclick={minimizeWindow}>
 			{@render glyph("minimize", 1)}
 		</button>
-		<button type="button" class={windowsButton} aria-label="Maximize window" onclick={maximizeWindow}>
+		<button type="button" class={windowsButton} aria-label={t("shell_window_maximize")} onclick={maximizeWindow}>
 			{@render glyph("maximize", 1)}
 		</button>
 		<button
 			type="button"
 			class="{windowsButton} hover:bg-duvet-win-close hover:text-fixed-white"
-			aria-label="Close window"
+			aria-label={t("shell_window_close")}
 			onclick={closeWindow}
 		>
 			{@render glyph("close", 1)}
@@ -88,13 +104,13 @@
 	</div>
 {:else if side === "end" && shell.chrome === "linux"}
 	<div class="titlebar-actions mr-1 ml-2.5 flex h-full shrink-0 items-center gap-2.5">
-		<button type="button" class={linuxButton} aria-label="Minimize window" onclick={minimizeWindow}>
+		<button type="button" class={linuxButton} aria-label={t("shell_window_minimize")} onclick={minimizeWindow}>
 			{@render glyph("minimize", 1.4)}
 		</button>
-		<button type="button" class={linuxButton} aria-label="Maximize window" onclick={maximizeWindow}>
+		<button type="button" class={linuxButton} aria-label={t("shell_window_maximize")} onclick={maximizeWindow}>
 			{@render glyph("maximize", 1.4)}
 		</button>
-		<button type="button" class={linuxButton} aria-label="Close window" onclick={closeWindow}>
+		<button type="button" class={linuxButton} aria-label={t("shell_window_close")} onclick={closeWindow}>
 			{@render glyph("close", 1.4)}
 		</button>
 	</div>

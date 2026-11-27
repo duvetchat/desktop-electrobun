@@ -57,7 +57,10 @@ describe("quotedAuthorName", () => {
 // The list and the previews (pins, search results, a thread's replies) quote a reply's message through one component.
 test("a reply's quote names the author through it, in the message list and in the previews", () => {
 	const component = (file: string) => readFileSync(join(import.meta.dir, "components", file), "utf8");
-	expect(component("MessageReference.svelte")).toContain("{quotedAuthorName(ref.author_name, ref)}");
+	// A message on its way (its ID is its nonce) names an author the app doesn't know in the language of the moment.
+	expect(component("MessageReference.svelte")).toContain(
+		"{quotedAuthorName(message.id === message.nonce ? authorLabel(ref) : ref.author_name, ref)}",
+	);
 	expect(component("MessageList.svelte")).toContain("<MessageReference");
 	expect(component("MessagePreview.svelte")).toContain("<MessageReference");
 });

@@ -4,6 +4,7 @@ import api, {
 	formBytes,
 	getApiError,
 	MAX_REQUEST_BYTES,
+	NetworkError,
 	NoAnswerError,
 	refreshSession,
 	requestLimits,
@@ -24,6 +25,8 @@ import {
 	type CreateBucketPayload,
 } from "$lib/api/user";
 import { accessToken } from "$lib/stores/auth";
+import { setLocalePref, t } from "$lib/i18n";
+import { PSEUDO } from "$lib/i18n/locale";
 
 // The requests the client sends, by URL, through fetch or XMLHttpRequest; each answers as the API does for a message it
 // took, unless a test says otherwise. Only while a test of this file runs: the next test, and the preload's check once
@@ -296,11 +299,18 @@ describe("an upload", () => {
 
 	test("refused by the API fails with its error, as a fetch's does", async () => {
 		FakeXHR.onSend = (xhr) =>
-			queueMicrotask(() => xhr.respond(413, { error: "failed to upload attachment: file is too large" }));
+			queueMicrotask(() =>
+				xhr.respond(413, {
+					error: "failed to upload attachment: file is too large: 26214400 bytes, your limit is 20971520",
+				}),
+			);
 		const failure = await api.post("/api/rooms/r/messages", messageForm(file(1024))).catch((e: unknown) => e);
 		if (!(failure instanceof FetchError)) throw new Error(`not the API's error: ${String(failure)}`);
 		expect(failure.response?.status).toBe(413);
-		expect(getApiError(failure, "")).toBe("Failed to upload attachment: file is too large");
+		// In the app's words (error-wording.ts): the API's, its numbers grouped.
+		expect(getApiError(failure, "")).toBe(
+			"Failed to upload attachment: file is too large: 26,214,400 bytes, your limit is 20,971,520",
+		);
 	});
 
 	test("that stops sending once it started is aborted after its idle time, and fails", async () => {
@@ -403,7 +413,11 @@ describe("an upload", () => {
 		FakeXHR.thrown = [];
 		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(999, { error: "weird" }));
 		const outcome = await within(api.patch("/api/users/@me", messageForm(file(1024))), 500);
-		expect(outcome).toMatchObject({ settled: "rejected", error: new TypeError("Failed to fetch") });
+		// A NetworkError, a TypeError as fetch's is, with the words a failed upload always had. (Read before toMatchObject,
+		// which puts its matcher in the object's place.)
+		expect(outcome).toHaveProperty("error.message", "Failed to fetch");
+		expect(outcome).toMatchObject({ settled: "rejected", error: expect.any(NetworkError) });
+		expect(NetworkError.prototype).toBeInstanceOf(TypeError);
 		expect(FakeXHR.thrown).toEqual([]);
 	});
 
@@ -434,13 +448,64 @@ describe("an upload", () => {
 
 	test("cut by the network fails as a fetch does", async () => {
 		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.onerror?.());
-		await expect(api.post("/api/rooms/r/messages", messageForm(file(1024)))).rejects.toThrow("Failed to fetch");
+		const failure = api.post("/api/rooms/r/messages", messageForm(file(1024)));
+		await expect(failure).rejects.toBeInstanceOf(NetworkError);
+		await expect(failure).rejects.toThrow("Failed to fetch");
 	});
 
 	test("isn't what a JSON request is: that one still goes through fetch", async () => {
 		await api.post("/api/rooms/r/messages", { content: "hi" });
 		expect(fetched).toHaveBeenCalledTimes(1);
 		expect(FakeXHR.last).toBeNull();
+	});
+});
+
+// #464: a request that failed on the network shows the webview's own English, "Failed to fetch" in Chromium and "Load
+// failed" in WebKit (macOS), as it always has, and the app's words in another language. getApiError took any TypeError
+// for one, a bug's too; the network's is marked where fetch fails instead.
+describe("a request the network failed", () => {
+	afterEach(() => setLocalePref("en"));
+
+	test("fails with a NetworkError, in the webview's words in English, its limit or none", async () => {
+		requestLimits.answerMs = 10_000;
+		// Chromium's, WebKit's and Firefox's.
+		for (const said of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."]) {
+			fetched.mockRejectedValue(new TypeError(said));
+			for (const failure of [api.get("/api/rooms/r/messages"), deleteAllMyAttachments()]) {
+				const err = await failure.catch((e: unknown) => e);
+				expect(err, said).toBeInstanceOf(NetworkError);
+				// A TypeError still, as a fetch's network error is.
+				expect(err, said).toBeInstanceOf(TypeError);
+				expect(getApiError(err, "Failed"), said).toBe(said);
+			}
+		}
+	});
+
+	test("says so in the app's words in another language, whatever the webview said", async () => {
+		await setLocalePref(PSEUDO);
+		fetched.mockRejectedValue(new TypeError("Load failed"));
+		const err = await api.get("/api/rooms/r/messages").catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(NetworkError);
+		expect(getApiError(err, "Failed")).toBe(t("error_network_failed"));
+		expect(getApiError(err, "Failed")).not.toMatch(/[A-Za-z]/);
+	});
+
+	test("is only what fetch failed with: an abort stays an abort, and an error of the caller's stays its own", async () => {
+		const caller = new AbortController();
+		fetched.mockImplementation(
+			((_input: string | URL | Request, init?: RequestInit) =>
+				new Promise<Response>((_, reject) =>
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+				)) as typeof fetch,
+		);
+		const aborted = api.get("/api/rooms/r/messages", { signal: caller.signal });
+		caller.abort();
+		const err = await aborted.catch((e: unknown) => e);
+		expect(err).not.toBeInstanceOf(NetworkError);
+		expect(err).toMatchObject({ name: "AbortError" });
+		// A bug's TypeError in a caller's try block gives way to what the caller was doing.
+		const bug = new TypeError("Cannot read properties of null (reading 'type')");
+		expect(getApiError(bug, "This interaction failed")).toBe("This interaction failed");
 	});
 });
 

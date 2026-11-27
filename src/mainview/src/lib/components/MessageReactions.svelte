@@ -5,6 +5,7 @@
 	import type { CustomEmojiMap } from "$lib/markdown";
 	import { reactionKey } from "$lib/reactions";
 	import { currentUser } from "$lib/stores.svelte";
+	import { t } from "$lib/i18n";
 	import type { MessageReaction } from "$lib/types";
 
 	// A message's reactions, as the chat and the previews (pins, search results, a thread) show them: each emoji with its
@@ -54,8 +55,8 @@
 			<button
 				type="button"
 				class="text-duvet-ink2 hover:text-duvet-ink inline-flex h-6 items-center rounded-xl px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-				title="Add reaction"
-				aria-label="Add reaction"
+				title={t("media_reaction_add")}
+				aria-label={t("media_reaction_add")}
 				onclick={onAdd}
 			>
 				<SmilePlusIcon size={14} />

@@ -12,6 +12,8 @@
 	import { tabDigit } from "$lib/keyboard";
 	import { currentShell } from "$lib/platform";
 	import { getAvatarURL } from "$lib/common/common";
+	import { currentLocale, t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 	import { isConversationTab, tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
 	import { chipCount, mentionsLabel, stripDrop, tabDropTarget, type StripHalf } from "$lib/shell-layout";
 	import { conversations, currentUser, gatewaySpaces, typingNow } from "$lib/stores.svelte";
@@ -182,7 +184,7 @@
 
 	const previewTabs = $derived(
 		(() => {
-			const all = tabs.map((t, i) => ({ ...t, origIndex: i }));
+			const all = tabs.map((each, i) => ({ ...each, origIndex: i }));
 			if (dragSrcIndex === null || dropIndex === null) return all;
 			const arr = [...all];
 			const [moved] = arr.splice(dragSrcIndex, 1);
@@ -196,8 +198,16 @@
 
 	// A split's halves stand in the active tab's place; a focused pane without tabs has them at the row's end.
 	const paired = $derived(halves.length > 1 && !friendsActive);
-	const halfTitle = (half: StripHalf) => (half.tab ? tabTitle(half.tab, $conversations, $currentUser?.id) : "New tab");
+	const halfTitle = (half: StripHalf) =>
+		half.tab ? tabTitle(half.tab, $conversations, $currentUser?.id) : t("shell_new_tab");
 	const pairTitles = $derived(halves.map(halfTitle));
+	// The joined tab's name for a screen reader: its panes' chats as a list, in one sentence. In English, joined by "and"
+	// as it always has been ("A and B and C"), whatever the system's region; in another language, as it lists them.
+	const pairLabel = $derived(
+		t("shell_split_pair", {
+			chats: currentLocale() === "en" ? pairTitles.join(" and ") : formatList(pairTitles),
+		}),
+	);
 
 	const tabBase = `group/tab relative flex h-[34px] min-w-28 shrink items-center gap-1 rounded-[10px] text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none ${FOCUS_RING_INSET}`;
 	const tabActive = "bg-duvet-card text-duvet-ink shadow-duvet-raised ring-duvet-line ring-[0.5px]";
@@ -221,7 +231,7 @@
 
 	// The strip is one tab stop, as a tab list is: the open tab (or the first, when the open one is a split, whose
 	// halves are buttons). Arrow Left and Right, Home and End move the focus between tabs; Enter or Space opens one.
-	const noTabStop = $derived(!friendsActive && !previewTabs.some((t) => t.channelId === activeTabId && !paired));
+	const noTabStop = $derived(!friendsActive && !previewTabs.some((each) => each.channelId === activeTabId && !paired));
 	function tabKeys(e: KeyboardEvent, select?: () => void) {
 		// A key on the tab's Close button is that button's.
 		if (e.target !== e.currentTarget) return;
@@ -267,7 +277,7 @@
 				e.stopPropagation();
 				onClose([channelId]);
 			}}
-			aria-label="Close tab"
+			aria-label={t("shell_close_tab")}
 		>
 			<XIcon class="size-3" />
 		</button>
@@ -293,7 +303,7 @@
 				</span>
 			{:else}
 				<span class="grid size-[18px] shrink-0 place-items-center"><SearchIcon class="size-3.5" /></span>
-				<span class="truncate">New tab</span>
+				<span class="truncate">{t("shell_new_tab")}</span>
 			{/if}
 		</button>
 	{/each}
@@ -306,7 +316,7 @@
 		? 'bg-duvet-accent-tint rounded-xl'
 		: ''}"
 	role="tablist"
-	aria-label="Open chats"
+	aria-label={t("shell_open_chats")}
 	tabindex="-1"
 	onwheel={handleBarWheel}
 	ondragover={handleBarDragOver}
@@ -322,7 +332,7 @@
 			onkeydown={(e) => tabKeys(e)}
 		>
 			<span class="grid size-[18px] shrink-0 place-items-center"><UsersIcon class="size-3.5" /></span>
-			<span class="min-w-0 flex-1 truncate">Friends</span>
+			<span class="min-w-0 flex-1 truncate">{t("shell_friends")}</span>
 		</div>
 	{/if}
 
@@ -333,7 +343,7 @@
 		{@const unread = !isActive && news.unread}
 		{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
 		{@const typing = typingSentence($typingNow[tab.channelId])}
-		{@const others = tabs.filter((t) => t.channelId !== tab.channelId)}
+		{@const others = tabs.filter((each) => each.channelId !== tab.channelId)}
 		{@const digit = tabDigit(i, previewTabs.length)}
 		<!-- A right click opens the tab's own menu, not the webview's. -->
 		<ContextMenu>
@@ -348,7 +358,7 @@
 						role="tab"
 						tabindex="-1"
 						aria-selected="true"
-						aria-label="{pairTitles.join(' and ')}, side by side"
+						aria-label={pairLabel}
 						aria-keyshortcuts={shortcutOf(digit)}
 						title={pairTitles.join(" · ")}
 						data-tab-id={tab.channelId}
@@ -400,22 +410,23 @@
 								>{chipCount(mentions)}</span
 							>
 						{:else if unread}
-							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
+							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" role="img" aria-label={t("shell_unread")}
+							></span>
 						{/if}
 						{@render closeSlot(tab.channelId, isActive, keysOf(digit))}
 					</div>
 				{/if}
 			{/snippet}
 			{#if halves.length > 1 && onSeparate}
-				<MenuItem onSelect={onSeparate}>Separate split view</MenuItem>
+				<MenuItem onSelect={onSeparate}>{t("shell_separate_split")}</MenuItem>
 			{:else if onSplitWith}
-				<MenuSub label="Split with" icon={ColumnsIcon}>
+				<MenuSub label={t("shell_split_with")} icon={ColumnsIcon}>
 					{#each others as other (other.channelId)}
 						<MenuItem onSelect={() => onSplitWith(tab.channelId, other.channelId)}>
 							{tabTitle(other, $conversations, $currentUser?.id)}
 						</MenuItem>
 					{:else}
-						<MenuItem disabled>No other tabs</MenuItem>
+						<MenuItem disabled>{t("shell_no_other_tabs")}</MenuItem>
 					{/each}
 				</MenuSub>
 			{/if}
@@ -424,28 +435,28 @@
 					onSelect={() => {
 						onSelect(tab.channelId);
 						onSplitWithChat();
-					}}>Split with a chat</MenuItem
+					}}>{t("shell_split_with_chat")}</MenuItem
 				>
 			{/if}
 			<MenuSeparator />
-			<MenuItem keys={closeKeys} onSelect={() => onClose([tab.channelId])}>Close tab</MenuItem>
-			<MenuItem disabled={tabs.length < 2} onSelect={() => onClose(others.map((t) => t.channelId))}>
-				Close other tabs
+			<MenuItem keys={closeKeys} onSelect={() => onClose([tab.channelId])}>{t("shell_close_tab")}</MenuItem>
+			<MenuItem disabled={tabs.length < 2} onSelect={() => onClose(others.map((other) => other.channelId))}>
+				{t("shell_close_other_tabs")}
 			</MenuItem>
 			<MenuItem
 				disabled={tab.origIndex === 0}
-				onSelect={() => onClose(tabs.slice(0, tab.origIndex).map((t) => t.channelId))}
+				onSelect={() => onClose(tabs.slice(0, tab.origIndex).map((left) => left.channelId))}
 			>
-				Close tabs to the left
+				{t("shell_close_tabs_left")}
 			</MenuItem>
 			<MenuItem
 				disabled={tab.origIndex === tabs.length - 1}
-				onSelect={() => onClose(tabs.slice(tab.origIndex + 1).map((t) => t.channelId))}
+				onSelect={() => onClose(tabs.slice(tab.origIndex + 1).map((right) => right.channelId))}
 			>
-				Close tabs to the right
+				{t("shell_close_tabs_right")}
 			</MenuItem>
 			<MenuSeparator />
-			<MenuItem onSelect={() => onClose(tabs.map((t) => t.channelId))}>Close all tabs</MenuItem>
+			<MenuItem onSelect={() => onClose(tabs.map((open) => open.channelId))}>{t("shell_close_all_tabs")}</MenuItem>
 		</ContextMenu>
 	{/each}
 
@@ -457,7 +468,7 @@
 				role="tab"
 				tabindex="-1"
 				aria-selected="true"
-				aria-label="{pairTitles.join(' and ')}, side by side"
+				aria-label={pairLabel}
 				title={pairTitles.join(" · ")}
 			>
 				{@render pairHalves()}
@@ -465,7 +476,7 @@
 		{:else if tabs.length === 0}
 			<div class="{tabBase} {tabActive} w-36 pr-2.5 pl-2.5" role="tab" aria-selected="true" tabindex="0">
 				<span class="grid size-[18px] shrink-0 place-items-center"><SearchIcon class="size-3.5" /></span>
-				<span class="min-w-0 flex-1 truncate">New tab</span>
+				<span class="min-w-0 flex-1 truncate">{t("shell_new_tab")}</span>
 			</div>
 		{/if}
 	{/if}
@@ -477,6 +488,8 @@
 		</div>
 	{/if}
 	{#if sidebarDragOver && !joinTargetId}
-		<span class="text-duvet-accent-text shrink-0 px-2 text-xs font-semibold whitespace-nowrap">Open room</span>
+		<span class="text-duvet-accent-text shrink-0 px-2 text-xs font-semibold whitespace-nowrap"
+			>{t("shell_open_room")}</span
+		>
 	{/if}
 </div>

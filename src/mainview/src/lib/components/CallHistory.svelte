@@ -10,7 +10,8 @@
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { callBackAction, callHistory, callRow, callTime, loadCalls } from "$lib/call-history";
-	import { callNoticeText } from "$lib/call-notices";
+	import { callNoticeSentence } from "$lib/call-notices";
+	import { t } from "$lib/i18n";
 	import {
 		activeCall,
 		conversations,
@@ -94,15 +95,15 @@
 		<p class="text-duvet-ink mt-3 font-serif text-[17px] font-medium">{title}</p>
 		<p class="text-duvet-ink2 mt-1 max-w-72 text-[13px]">{line}</p>
 		{#if failed}
-			<Button variant="secondary" size="sm" class="mt-4" onclick={load}>Try again</Button>
+			<Button variant="secondary" size="sm" class="mt-4" onclick={load}>{t("call_history_try_again")}</Button>
 		{/if}
 	</div>
 {/snippet}
 
 {#if failed && rows.length === 0}
-	{@render placeholder("shy", "Couldn't load your calls", "Your calls show here once they load.")}
+	{@render placeholder("shy", t("call_history_load_failed"), t("call_history_load_failed_line"))}
 {:else if !list || (rows.length === 0 && list.more)}
-	<ul use:watchEnd class="flex flex-col" aria-busy="true" aria-label="Loading your calls">
+	<ul use:watchEnd class="flex flex-col" aria-busy="true" aria-label={t("call_history_loading_label")}>
 		{#each [0, 1, 2, 3] as i (i)}
 			<li class="flex items-center gap-2.5 py-1.5 pr-1.5 pl-2">
 				<div
@@ -116,9 +117,9 @@
 		{/each}
 	</ul>
 {:else if rows.length === 0}
-	{@render placeholder("peek", "No calls yet", "Calls in your direct messages and groups show here.")}
+	{@render placeholder("peek", t("call_history_empty"), t("call_history_empty_line"))}
 {:else}
-	<ul class="flex flex-col" aria-label="Calls">
+	<ul class="flex flex-col" aria-label={t("call_history_list_label")}>
 		{#each rows as row (row.id)}
 			{@const action = row.conversation
 				? callBackAction(row.conversationId, $conversationsWithCalls, $ownCallsRinging, $activeCall)
@@ -154,7 +155,7 @@
 							{:else}
 								<PhoneIcon class="shrink-0" size={12} aria-hidden="true" />
 							{/if}
-							<span class="truncate">{callNoticeText(row.line)}</span>
+							<span class="truncate">{callNoticeSentence(row.line)}</span>
 						</span>
 					</span>
 					<time
@@ -163,11 +164,13 @@
 						title={formatShortDateTime(row.at)}>{callTime(row.at)}</time
 					>
 				</button>
-				<Tooltip text={action === "join" ? "Join the call" : "Call"} side="left">
+				<Tooltip text={action === "join" ? t("call_history_join_tip") : t("call_history_call_tip")} side="left">
 					{#snippet trigger(props)}
 						<IconButton
 							{...props}
-							label={action === "join" ? `Join the call in ${row.title}` : `Call ${row.title}`}
+							label={action === "join"
+								? t("call_history_join_label", { name: row.title })
+								: t("call_history_call_label", { name: row.title })}
 							disabled={!action}
 							onclick={() => row.conversation && callBack(row.conversation)}
 						>
@@ -181,11 +184,13 @@
 	{#if list.more}
 		{#if failed}
 			<div class="flex items-center justify-center gap-3 py-3" role="status">
-				<span class="text-duvet-ink2 text-[13px]">Couldn't load more calls</span>
-				<Button variant="secondary" size="sm" onclick={load}>Try again</Button>
+				<span class="text-duvet-ink2 text-[13px]">{t("call_history_more_failed")}</span>
+				<Button variant="secondary" size="sm" onclick={load}>{t("call_history_try_again")}</Button>
 			</div>
 		{:else}
-			<p use:watchEnd class="text-duvet-ink2 py-3 text-center text-xs" role="status">Loading…</p>
+			<p use:watchEnd class="text-duvet-ink2 py-3 text-center text-xs" role="status">
+				{t("call_history_loading_more")}
+			</p>
 		{/if}
 	{/if}
 {/if}

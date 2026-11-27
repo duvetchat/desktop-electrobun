@@ -59,7 +59,7 @@ test("the profile offers Send direct message to whom the user can chat with", ()
 	expect(popover).toMatch(
 		/const canMessage = \$derived\(\s*!!\$currentUser &&\s*canChatWith\(\s*\$currentUser\.id,\s*\{ id: member\.id, isBot: member\.is_bot \},\s*tiesOf\(member\.id, \$currentUser\.id, \{/,
 	);
-	expect(sendMessage).toContain("Send direct message");
+	expect(sendMessage).toContain('{t("people_profile_message")}');
 	// Under their details, before what removes them.
 	expect(popover.indexOf("{#if canMessage}")).toBeGreaterThan(popover.indexOf("{#if showPermissions}"));
 	expect(popover.indexOf("{#if canMessage}")).toBeLessThan(popover.indexOf("{#if moderation}"));

@@ -2,6 +2,8 @@
 	import { pillClass } from "$lib/components/ui/recipes";
 	import { CHECKBOX } from "$lib/components/settings/recipes";
 	import type { FilePicker } from "$lib/file-picker.svelte";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { FILE_KINDS, FILE_KIND_LABELS, type PickableFile } from "$lib/storage-transfers";
 
 	let { picker }: { picker: FilePicker<PickableFile> } = $props();
@@ -18,7 +20,7 @@
 			onchange={() => picker.toggleAll()}
 			class={CHECKBOX}
 		/>
-		Select all
+		{t("storage_files_select_all")}
 	</label>
 	<div class="ml-auto flex flex-wrap items-center gap-1">
 		{#each FILE_KINDS as kind (kind)}
@@ -26,7 +28,7 @@
 				{@const on = picker.kinds.includes(kind)}
 				<button type="button" aria-pressed={on} onclick={() => picker.toggleKind(kind)} class={pillClass(on)}>
 					{FILE_KIND_LABELS[kind]}
-					<span class="tabular-nums opacity-70">{picker.kindCounts[kind]}</span>
+					<span class="tabular-nums opacity-70">{formatNumber(picker.kindCounts[kind])}</span>
 				</button>
 			{/if}
 		{/each}

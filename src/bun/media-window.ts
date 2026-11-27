@@ -8,6 +8,7 @@
 // main page when it opened or closed, keeps its frame and its pin on this device, and closes it with the main window,
 // or when that window leaves the app's page (signing out). Electrobun is handed in (media-window-open.ts makes the real
 // window), so this runs in tests.
+import { t } from "./i18n";
 import { isAppPage } from "./navigation";
 import { windowChrome, type WindowChrome } from "./shell";
 import { displayOf, rectOf, type DisplayArea, type Rect } from "./window-frame";
@@ -23,6 +24,10 @@ export const MEDIA_CHANNEL = "media";
 export function mediaWindowTitleBar(platform: string): WindowChrome {
 	return windowChrome(platform);
 }
+
+/** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.2), in the
+ * language Bun speaks now (i18n.ts). */
+export const mediaWindowTitle = () => t("window_voice_controls");
 
 /** What the pop-out's page mirrors: the media controls' state, and nothing else the main window publishes. */
 export const mediaWindowMirrors: MirroredChannels = (channel) => channel === MEDIA_CHANNEL;
@@ -103,6 +108,8 @@ export interface MediaWindowHandle {
 	close(): void;
 	getFrame(): Rect;
 	setAlwaysOnTop(on: boolean): void;
+	/** Names the window anew, where the system shows its name. */
+	setTitle(title: string): void;
 	/** Sends its page a state to mirror. */
 	send(message: WindowStateMessage): void;
 	/** "ready" is its page able to take messages; "close" the window gone, however it went. */
@@ -191,6 +198,15 @@ export class MediaWindows {
 	/** The main window's page went to another address: off the app's page (signed out), the pop-out goes. */
 	mainNavigated(url: string) {
 		if (!isAppPage(url)) this.#close("the main window left the app's page");
+	}
+
+	/** The app's language changed (i18n.ts): the window is titled again, in it. One that is going keeps its title. */
+	retitle() {
+		try {
+			this.#window?.setTitle(mediaWindowTitle());
+		} catch (err) {
+			this.#log(`the title wasn't taken: ${err instanceof Error ? err.message : String(err)}`);
+		}
 	}
 
 	/** The main window closed: the pop-out closes with it. */

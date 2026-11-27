@@ -6,6 +6,7 @@
 	import { untrack } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
 	import {
 		activateStorage,
 		storageTransfers,
@@ -14,7 +15,6 @@
 	} from "$lib/stores/storage-transfers.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import {
-		countFiles,
 		takesAll,
 		targetRoom,
 		type PickableFile,
@@ -44,7 +44,7 @@
 		/** How the transfer takes them from the source. */
 		filter: TransferFilter;
 		/** Called once the transfer is created. */
-		onStarted?: (t: StorageTransfer) => void;
+		onStarted?: (transfer: StorageTransfer) => void;
 	} = $props();
 
 	const source = $derived(choices.find((c) => c.id === sourceId) ?? null);
@@ -62,14 +62,14 @@
 	$effect(() => {
 		if (!open) return;
 		untrack(() => {
-			targetId = (targets.find((t) => t.active) ?? targets[0])?.id ?? "";
+			targetId = (targets.find((choice) => choice.active) ?? targets[0])?.id ?? "";
 			keepSource = false;
 			makeActive = takesAll(filter);
 			error = null;
 		});
 	});
 
-	const target = $derived(targets.find((t) => t.id === targetId) ?? null);
+	const target = $derived(targets.find((choice) => choice.id === targetId) ?? null);
 	const room = $derived(target ? targetRoom(target, files) : null);
 	const canStart = $derived(source !== null && room !== null && room.files > 0 && room.fits);
 
@@ -93,7 +93,11 @@
 					await activateStorage(spaceId, to, choices);
 				} catch (err) {
 					toast(
-						`The files are moving, but ${to.name} couldn't be made active: ${getApiError(err, "unknown error")}`,
+						t("storage_move_activate_failed", {
+							to: to.isBucket ? "named" : "default",
+							name: to.name,
+							reason: getApiError(err, t("storage_move_activate_failed_unknown")),
+						}),
 						"error",
 					);
 				}
@@ -129,23 +133,31 @@
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
 						<Dialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]"
-							>Move {countFiles(files.length)}</Dialog.Title
+							>{t("storage_move_title", { count: files.length })}</Dialog.Title
 						>
 						<Dialog.Description class="text-duvet-ink2 mt-1 truncate text-[13px]">
-							From {source?.name ?? "this storage"} · {formatFileSize(totalBytes)}
+							{source
+								? t("storage_move_from", {
+										from: source.isBucket ? "named" : "default",
+										name: source.name,
+										size: formatFileSize(totalBytes),
+									})
+								: t("storage_move_from_unknown", { size: formatFileSize(totalBytes) })}
 						</Dialog.Description>
 					</div>
-					<Dialog.Close class={iconButtonClass()} aria-label="Close" disabled={starting}>
+					<Dialog.Close class={iconButtonClass()} aria-label={t("storage_close")} disabled={starting}>
 						<XIcon class="size-4" />
 					</Dialog.Close>
 				</div>
 
 				<div class="flex flex-col gap-4">
 					{#if targets.length === 0}
-						<p class="text-duvet-ink2 text-sm">There's no other storage to move these files to. Add a bucket first.</p>
+						<p class="text-duvet-ink2 text-sm">{t("storage_move_no_target")}</p>
 					{:else}
 						<div>
-							<label for="move-target" class="text-duvet-ink2 mb-1.5 block text-[13px] font-medium">To</label>
+							<label for="move-target" class="text-duvet-ink2 mb-1.5 block text-[13px] font-medium"
+								>{t("storage_move_to_label")}</label
+							>
 							<select
 								id="move-target"
 								bind:value={targetId}
@@ -153,32 +165,51 @@
 								class="{SELECT} h-[38px]! w-full max-w-none!"
 							>
 								{#each targets as choice (choice.id)}
-									<option value={choice.id}>{choice.name}{choice.active ? " (active)" : ""}</option>
+									<option value={choice.id}
+										>{choice.active ? t("storage_move_target_active", { name: choice.name }) : choice.name}</option
+									>
 								{/each}
 							</select>
 							{#if target && room}
 								<div class="mt-1.5 space-y-1 text-xs">
 									{#if room.files === 0}
 										<p class="text-duvet-danger">
-											None of these files is within {target.name}'s per-file limit of {formatFileSize(
-												target.fileLimit ?? 0,
-											)}.
+											{t("storage_move_none_fit", {
+												to: target.isBucket ? "named" : "default",
+												name: target.name,
+												limit: formatFileSize(target.fileLimit ?? 0),
+											})}
 										</p>
 									{:else if room.free === null}
-										<p class="text-duvet-ink2">{formatFileSize(room.bytes)} to move · no size limit</p>
+										<p class="text-duvet-ink2">
+											{t("storage_move_size_no_limit", { size: formatFileSize(room.bytes) })}
+										</p>
 									{:else if room.fits}
 										<p class="text-duvet-ink2">
-											{formatFileSize(room.bytes)} to move · {formatFileSize(room.free)} free
+											{t("storage_move_size_free", {
+												size: formatFileSize(room.bytes),
+												free: formatFileSize(room.free),
+											})}
 										</p>
 									{:else}
 										<p class="text-duvet-danger">
-											Doesn't fit: {formatFileSize(room.bytes)} to move, {formatFileSize(room.free)} free
+											{t("storage_move_size_too_big", {
+												size: formatFileSize(room.bytes),
+												free: formatFileSize(room.free),
+											})}
 										</p>
 									{/if}
 									{#if room.skipped > 0 && room.files > 0}
+										{@const limit = formatFileSize(target.fileLimit ?? 0)}
 										<p class="text-duvet-warn/90">
-											{countFiles(room.skipped)} over its per-file limit of {formatFileSize(target.fileLimit ?? 0)}
-											{room.skipped === 1 ? "stays" : "stay"} in {source?.name ?? "the source"}.
+											{source
+												? t("storage_move_skipped", {
+														from: source.isBucket ? "named" : "default",
+														count: room.skipped,
+														limit,
+														name: source.name,
+													})
+												: t("storage_move_skipped_unknown_source", { count: room.skipped, limit })}
 										</p>
 									{/if}
 								</div>
@@ -189,10 +220,8 @@
 							<label class="flex cursor-pointer items-start gap-2">
 								<input type="checkbox" bind:checked={keepSource} disabled={starting} class="{CHECKBOX} mt-0.5" />
 								<span class="text-duvet-ink text-xs">
-									Keep the originals in {source.name}
-									<span class="text-duvet-ink2 block"
-										>Duvet stops using them; they stay there until you delete them.</span
-									>
+									{t("storage_move_keep_originals", { name: source.name })}
+									<span class="text-duvet-ink2 block">{t("storage_move_keep_originals_note")}</span>
 								</span>
 							</label>
 						{/if}
@@ -201,15 +230,15 @@
 							<label class="flex cursor-pointer items-start gap-2">
 								<input type="checkbox" bind:checked={makeActive} disabled={starting} class="{CHECKBOX} mt-0.5" />
 								<span class="text-duvet-ink text-xs">
-									Make {target.name} active
-									<span class="text-duvet-ink2 block">New uploads go there.</span>
+									{t("storage_move_make_active", { to: target.isBucket ? "named" : "default", name: target.name })}
+									<span class="text-duvet-ink2 block">{t("storage_move_make_active_note")}</span>
 								</span>
 							</label>
 						{/if}
 
 						{#if source?.isBucket}
 							<p class="text-duvet-ink2 text-[11px]">
-								Each byte leaves {source.name} once: providers other than R2 may charge for that egress.
+								{t("storage_move_egress_note", { name: source.name })}
 							</p>
 						{/if}
 					{/if}
@@ -220,14 +249,14 @@
 				</div>
 
 				<div class="mt-1 flex justify-end gap-2">
-					<Dialog.Close class={buttonClass("quiet")} disabled={starting}>Cancel</Dialog.Close>
+					<Dialog.Close class={buttonClass("quiet")} disabled={starting}>{t("storage_cancel")}</Dialog.Close>
 					{#if targets.length > 0}
 						<button class="{buttonClass()} min-w-24" disabled={!canStart || starting} onclick={start}>
 							{#if starting}
 								<span class="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"></span>
-								Starting…
+								{t("storage_move_starting")}
 							{:else}
-								Move {countFiles(room?.files ?? 0)}
+								{t("storage_move_button", { count: room?.files ?? 0 })}
 							{/if}
 						</button>
 					{/if}

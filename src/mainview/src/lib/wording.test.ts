@@ -50,8 +50,12 @@ test("the UI says Space and room, not server and channel", () => {
 	expect(found).toEqual([]);
 });
 
+// The permissions' names are the app's words (#464): permissions.ts names them by key, en.json says them.
 test("the permissions say rooms", () => {
 	const permissions = readFileSync(join(src, "lib", "permissions.ts"), "utf8");
-	expect(permissions).toContain('name: "View Rooms"');
-	expect(permissions).toContain('name: "Manage Rooms"');
+	const en: Record<string, string> = JSON.parse(readFileSync(join(src, "..", "messages", "en.json"), "utf8"));
+	expect(permissions).toContain('Permission.ViewChannels, "perm_view_rooms"');
+	expect(permissions).toContain('Permission.ManageChannels, "perm_manage_rooms"');
+	expect(en.perm_view_rooms).toBe("View Rooms");
+	expect(en.perm_manage_rooms).toBe("Manage Rooms");
 });
