@@ -57,3 +57,11 @@ test("shows a language with no flag, the pseudo-language, by the language icon",
 test("shows Match system for a pick this build doesn't offer", () => {
 	expect(html({ value: "en-XA" })).toContain("Match system (English)");
 });
+
+// #562: the trigger keeps its width, and a longer language's Match system is cut there.
+test("has the language chosen whole in its name's tooltip", async () => {
+	const label = "Igual que el sistema (Português (Brasil))";
+	const found = await tags(LanguageSelect, props({ systemLabel: label }));
+	const name = found.find((tag) => tag.attributes.class?.split(/\s+/).includes("truncate"));
+	expect(name?.attributes.title).toBe(label);
+});

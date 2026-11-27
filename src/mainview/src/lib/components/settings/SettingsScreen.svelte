@@ -1882,25 +1882,26 @@
 			</div>
 		{/if}
 
-		<!-- Summary bar -->
-		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
-			<div class="text-duvet-ink2 text-[14px]">
-				{#if listedHere}
+		<!-- Summary bar: the count on a line of its own, then the location and the buttons at the right, the buttons
+		     together on one line, the location above them where a longer language leaves no room beside them (#562). -->
+		<div class="flex flex-col gap-2 px-2">
+			{#if listedHere}
+				<p class="text-duvet-ink2 text-[14px]">
 					<Rich key="settings_attachments_count" values={{ count: attachments.length }} tags={{ b: fileCount }} />
 					{#if attachmentsLocation !== "all"}
 						<span class="mx-1 opacity-60">·</span>
 						{formatFileSize(locationBytes)}
 					{/if}
-				{/if}
-			</div>
+				</p>
+			{/if}
 			<div class="flex flex-wrap items-center justify-end gap-2">
 				{#if buckets.length > 0 || attachmentsLocation !== "all"}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
+					<label class="text-duvet-ink2 flex min-w-0 items-center gap-2 text-[13px]">
 						{t("settings_attachments_location")}
 						<select
 							value={attachmentsLocation}
 							onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
-							class={SELECT}
+							class="{SELECT} min-w-0"
 						>
 							<option value="all">{t("settings_attachments_all")}</option>
 							<option value={DEFAULT_STORAGE}>{t("settings_storage_default")}</option>
@@ -1910,16 +1911,18 @@
 						</select>
 					</label>
 				{/if}
-				<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
-					<TrashIcon size={13} />
-					{t("settings_attachments_delete_selected")}
-				</Button>
-				{#if attachments.length > 0 && attachmentsLocation === "all"}
-					<Button variant="danger" size="sm" onclick={handleDeleteAll}>
+				<div class="flex shrink-0 items-center gap-2">
+					<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
 						<TrashIcon size={13} />
-						{t("settings_attachments_delete_all")}
+						{t("settings_attachments_delete_selected")}
 					</Button>
-				{/if}
+					{#if attachments.length > 0 && attachmentsLocation === "all"}
+						<Button variant="danger" size="sm" onclick={handleDeleteAll}>
+							<TrashIcon size={13} />
+							{t("settings_attachments_delete_all")}
+						</Button>
+					{/if}
+				</div>
 			</div>
 		</div>
 

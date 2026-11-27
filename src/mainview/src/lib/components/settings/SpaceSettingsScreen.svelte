@@ -2357,22 +2357,24 @@
 		{/if}
 	{:else if activeSection === "attachments"}
 		{@render transferCard()}
-		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
-			<div class="text-duvet-ink2 text-[14px]">
-				{#if spaceListedHere}
+		<!-- The count on a line of its own, the location and Delete all at the right, as Settings' Attachments has them
+		     (#562). -->
+		<div class="flex flex-col gap-2 px-2">
+			{#if spaceListedHere}
+				<p class="text-duvet-ink2 text-[14px]">
 					<Rich key="space_attachments_count" values={{ count: spaceAttachments.length }} tags={{ b: fileCount }} />
 					<span class="mx-1 opacity-60">&middot;</span>
 					{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
-				{/if}
-			</div>
-			<div class="flex items-center gap-2">
+				</p>
+			{/if}
+			<div class="flex flex-wrap items-center justify-end gap-2 empty:hidden">
 				{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
+					<label class="text-duvet-ink2 flex min-w-0 items-center gap-2 text-[13px]">
 						{t("space_attachments_location")}
 						<select
 							value={spaceAttachmentsLocation}
 							onchange={(e) => setSpaceAttachmentsLocation(e.currentTarget.value)}
-							class={SELECT}
+							class="{SELECT} min-w-0"
 						>
 							<option value="all">{t("space_attachments_location_all")}</option>
 							{#each spaceBuckets as b (b.id)}

@@ -70,11 +70,13 @@
 				</Dialog.Close>
 			</div>
 			{#if description}
-				<Dialog.Description class="text-duvet-ink2 -mt-1.5 text-[13px]">{description}</Dialog.Description>
+				<Dialog.Description class="text-duvet-ink2 -mt-1.5 text-[13px] hyphens-auto">{description}</Dialog.Description>
 			{/if}
 			{@render children()}
 			{#if foot}
-				<div class="mt-1 flex items-center gap-2 [&>:first-child]:mr-auto">
+				<!-- Buttons a longer language leaves no room for beside the others go to a line of their own, at the
+				     right (#562). -->
+				<div class="mt-1 flex flex-wrap items-center justify-end gap-2 [&>:first-child]:mr-auto">
 					{@render foot()}
 				</div>
 			{/if}

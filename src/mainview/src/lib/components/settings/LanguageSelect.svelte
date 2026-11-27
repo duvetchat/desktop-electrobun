@@ -62,9 +62,14 @@
 	</span>
 {/snippet}
 
-<!-- Each language's name is marked as that language, for the system to read it right. -->
-{#snippet name(item: { value: string; label: string })}
-	<span class="min-w-0 flex-1 truncate" lang={item.value === "system" ? undefined : item.value}>{item.label}</span>
+<!-- Each language's name is marked as that language, for the system to read it right. On the trigger, which keeps its
+     width, a longer language's Match system is cut: its tooltip has it whole (#562). -->
+{#snippet name(item: { value: string; label: string }, tip: boolean)}
+	<span
+		class="min-w-0 flex-1 truncate"
+		lang={item.value === "system" ? undefined : item.value}
+		title={tip ? item.label : undefined}>{item.label}</span
+	>
 {/snippet}
 
 <Select.Root type="single" {value} {onValueChange} {items} bind:open>
@@ -72,7 +77,7 @@
 	     button (bits-ui's own role) would take its name from the label alone, and the language chosen would go unread. -->
 	<Select.Trigger {id} role="combobox" class="{SELECT} relative flex w-56 items-center gap-2 text-left">
 		{@render mark(chosen.value)}
-		{@render name(chosen)}
+		{@render name(chosen, true)}
 		<ChevronDownIcon
 			size={16}
 			aria-hidden="true"
@@ -97,7 +102,7 @@
 							<Select.Item value={item.value} label={item.label} class={menuItemClass()}>
 								{#snippet children({ selected })}
 									{@render mark(item.value)}
-									{@render name(item)}
+									{@render name(item, false)}
 									{#if selected}<CheckIcon size={15} aria-hidden="true" class="text-duvet-accent-text shrink-0" />{/if}
 								{/snippet}
 							</Select.Item>

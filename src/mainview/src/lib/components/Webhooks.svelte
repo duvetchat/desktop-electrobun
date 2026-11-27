@@ -322,12 +322,12 @@
 			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
 			<div class="{calloutClass('warn')} flex-col gap-2! overflow-hidden">
 				<p class="font-semibold">{t("room_webhook_token_title")}</p>
-				<div class="flex items-center gap-2">
-					<code
-						class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 truncate rounded-md px-3 py-2 font-mono text-xs select-text"
-					>
-						{createdWebhookToken}
-					</code>
+				<!-- The token on a line of its own, the buttons together under it at the right: beside it, a longer
+				     language's buttons would leave it no room (#562). -->
+				<code class="bg-duvet-code-bg text-duvet-ink block truncate rounded-md px-3 py-2 font-mono text-xs select-text">
+					{createdWebhookToken}
+				</code>
+				<div class="flex items-center justify-end gap-2">
 					<Button
 						variant="secondary"
 						size="sm"
