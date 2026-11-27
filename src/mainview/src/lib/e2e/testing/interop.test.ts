@@ -25,6 +25,7 @@ import { pageStore, type EngineStore } from "../engine/store";
 import type { EngineEvent, EngineEvents } from "../events";
 import conventions from "./e2e-conventions.json";
 import { BunCoreHost } from "./host-bun";
+import { listedTo } from "./listed";
 import { useXHR } from "./xhr";
 
 interface Account {
@@ -214,8 +215,7 @@ async function deviceOf(who: Account, store: EngineStore = keptStore()) {
 			...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
 			store,
 			deviceName: deviceName(),
-			// The page draws what the API lists to this session.
-			shown: async (id) => (await routes.conversations()).find((conv) => conv.id === id) ?? null,
+			shown: listedTo(routes),
 			registered: (id) => {
 				registered.push(id);
 				socket.connect(id);

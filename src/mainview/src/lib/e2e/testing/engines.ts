@@ -119,15 +119,6 @@ export interface TestDevice {
 }
 
 /**
- * The conversation as a page draws it that lists what the API lists to its session, read anew each time, as READY's
- * list and the conversations' events keep the app's: the live suite's, against a real API.
- */
-export const listedTo =
-	(api: E2eApi): EngineParts["shown"] =>
-	async (id) =>
-		(await api.conversations()).find((conv) => conv.id === id) ?? null;
-
-/**
  * The conversation as a test's page draws it: as the fake lists it to `user` now, a test's lies included, as READY's
  * list and the conversations' events keep the app's, read without a request of its own, which a test counting the
  * engine's requests would see.

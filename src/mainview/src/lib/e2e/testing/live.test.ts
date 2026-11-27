@@ -16,7 +16,8 @@ import { deviceName } from "../client";
 import { E2EEngine, systemClock } from "../engine/engine";
 import { openSealed, sealedSize, shownFile, type ShownFile } from "../engine/files";
 import type { EngineEvent, EngineEvents } from "../events";
-import { listedTo, memoryStore } from "./engines";
+import { memoryStore } from "./engines";
+import { listedTo } from "./listed";
 import { BunCoreHost } from "./host-bun";
 import { useXHR } from "./xhr";
 
