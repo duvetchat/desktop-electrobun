@@ -124,6 +124,13 @@ const unanswered = () => new CoreError("unanswered", "no answer came yet: the ch
 const hasData = (entry: MlsEventEntry): entry is MlsEntry => typeof entry.data === "string";
 const same = (a: ConversationState | null, b: ConversationState | null) => JSON.stringify(a) === JSON.stringify(b);
 
+/** An entry as the core gets it: without the `expected` it came with, which only this device's own record sets. */
+function withoutExpected(entry: MlsEntry): MlsEntry {
+	if (!("expected" in entry)) return entry;
+	const { expected: _expected, ...own } = entry;
+	return own;
+}
+
 /** The refused generations the record keeps, by conversation: what doesn't read as one is none. */
 function keptRefusals(store: EngineStore): Map<string, number> {
 	const kept = store.read<unknown>(REFUSED_GENERATIONS);
@@ -790,14 +797,16 @@ export class Conversations {
 	}
 
 	/**
-	 * One apply, the users it asks for observed first, the welcomes of a conversation from before the cutover held to its
-	 * record (their `expected`, which the API never gives); what its results say is noted.
+	 * One apply, the users it asks for observed first, the welcomes of a conversation with a record held to it (their
+	 * `expected`, which only this device sets: one an entry came with is the API's, and goes, #575 M1); what its
+	 * results say is noted.
 	 */
 	async #apply(conv: Conversation, entries: MlsEntry[]): Promise<Applied> {
 		const record = legacyRecord(this.#parts.store, conv);
-		const given = record
-			? entries.map((entry) => (entry.kind === "welcome" ? { ...entry, expected: record } : entry))
-			: entries;
+		const given = entries.map((entry) => {
+			const own = withoutExpected(entry);
+			return record && own.kind === "welcome" ? { ...own, expected: record } : own;
+		});
 		const applied = await withIdentities(this.#parts, () =>
 			this.#parts.host.handle<Applied>({
 				...{ cmd: "apply", conversation_id: conv.id, entries: given, external_sender: this.#sender },

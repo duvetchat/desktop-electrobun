@@ -495,6 +495,33 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		},
 		SLOW,
 	);
+
+	// #575 (M1): `expected` is this device's own record of a conversation, never the API's word. One the server writes on
+	// a welcome holds nothing to it: a device without a record joins the group as founded.
+	test(
+		"an expected the API writes on a welcome holds the device to nothing",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			let deaf = false;
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo, { hears: (event) => !deaf || !event.type.startsWith("MLS_") });
+			// Bo's device reads the welcome from the queue, where the server writes an `expected` of its own on it.
+			fake.queueAs = (entry, _conversation, viewer) => {
+				if (viewer !== bo || entry.kind !== "welcome") return entry;
+				const lie = { ...entry, expected: { members: [bo, eve] } };
+				return lie;
+			};
+			deaf = true;
+			await a.engine.openConversation(conversation);
+			const again = await restarted(fake, b);
+			await sameGroup([a, again], conversation);
+			expect(again.engine.conversationState(conversation)).toBeNull();
+		},
+		SLOW,
+	);
 });
 
 describe.skipIf(!coreLibrary)("the server's deleted IDs delete nothing the client holds", () => {
