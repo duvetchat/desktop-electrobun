@@ -13,7 +13,8 @@ import { tags } from "../server-render";
 // The confirmation's store, a .svelte.ts module, uses $state, which only Svelte's compiler knows: here it's the value
 // itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { default: EncryptionGate } = await import("./EncryptionGate.svelte");
+const { default: EncryptionGate, askForNewKeys } = await import("./EncryptionGate.svelte");
+const { confirmStore } = await import("$lib/stores/confirm.svelte");
 
 const props = (state: EngineState, web = false, backup?: BackupShown) => ({
 	encryption: state,
@@ -24,6 +25,7 @@ const props = (state: EngineState, web = false, backup?: BackupShown) => ({
 	onLater: async () => {},
 	onStartOver: async () => {},
 	onChangeKeys: async () => {},
+	onAlsoRemoved: async () => ({ along: [], away: [] }),
 	onFinishWithout: async () => {},
 	setupActions: {
 		recover: async () => {},
@@ -116,8 +118,26 @@ describe("the encryption gate", () => {
 		expect(drawn(again)).toContain(en.e2e_keys_again);
 		expect(drawn(again)).toMatch(/<button [^>]*>\s*Change security keys\s*<\/button>/);
 		expect(source("EncryptionGate.svelte")).toContain(
-			'confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys)',
+			"const newKeys = () => askForNewKeys(onAlsoRemoved, (named) => onChangeKeys(named));",
 		);
+	});
+
+	// #575 (N-M6): the gate's change of keys is Settings' own question, naming what the new list drops beside what's
+	// asked, and the yes takes off exactly that.
+	test("its change of keys asks as Settings does, naming what the new list drops", async () => {
+		const GONE = "0193b7c1-0000-7000-8000-0000000000a4";
+		const changed: string[][] = [];
+		const asked = askForNewKeys(
+			async () => ({ along: [], away: [GONE] }),
+			async (named) => void changed.push(named),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const message = confirmStore.pending?.message ?? "";
+		expect(message).toContain(en.e2e_change_keys_confirm);
+		expect(message).toContain(`Duvet no longer lists the device whose ID starts with ${GONE.slice(0, 8)}.`);
+		await confirmStore.execute();
+		await asked;
+		expect(changed).toEqual([[GONE]]);
 	});
 
 	// #575 (M5): another server key than the one this device first saw is said, while it's served, when nothing else of

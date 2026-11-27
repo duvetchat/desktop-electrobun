@@ -1,6 +1,24 @@
 <script module lang="ts">
+	import { askToChangeKeys } from "$lib/components/settings/DevicesSettings.svelte";
+	import type { Drops } from "$lib/e2e/engine/devices";
 	import { t } from "$lib/i18n";
 	import { formatList, formatNumber } from "$lib/i18n/format";
+
+	/**
+	 * The gate's change of keys (#575, N-M6): Settings' own question, naming what the new list drops beside what's asked,
+	 * whose yes takes off exactly that. Drops that can't be read are none, and the list then refuses, in words.
+	 */
+	export async function askForNewKeys(
+		alsoRemoved: () => Promise<Drops>,
+		changeKeys: (named: string[]) => Promise<void>,
+	): Promise<void> {
+		const drops = await alsoRemoved().catch((error: unknown): Drops => {
+			console.error("[e2e] What the next list leaves out wasn't read:", error);
+			return { along: [], away: [] };
+		});
+		return askToChangeKeys(null, drops, changeKeys);
+	}
+
 	/**
 	 * What a change of keys that can't finish says, by why (duvetchat/e2e#49): another device's change kept a device it
 	 * takes off; devices the API no longer has hold it, by their IDs' start (their names went with them), which it goes
@@ -46,6 +64,7 @@
 		onLater,
 		onStartOver,
 		onChangeKeys,
+		onAlsoRemoved,
 		onFinishWithout,
 		setupActions,
 		approvalActions,
@@ -66,7 +85,9 @@
 		 * Change security keys: a change made before the app closed, its key shown again to be saved, or, offered after
 		 * one that went on without devices, a new one.
 		 */
-		onChangeKeys: () => Promise<void>;
+		onChangeKeys: (named?: string[]) => Promise<void>;
+		/** What a new list would leave out beside what's asked, which the question names (#575, N-M6). */
+		onAlsoRemoved: () => Promise<Drops>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off (e2e#49). */
 		onFinishWithout: () => Promise<void>;
 		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
@@ -107,9 +128,10 @@
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
-	// Starting over deletes the database: the person says yes to that first. So do new keys, which their contacts see.
+	// Starting over deletes the database: the person says yes to that first. So do new keys, which their contacts see, as
+	// Settings asks it, naming what the new list drops (#575, N-M6).
 	const confirmed = (label: string) => () => confirmAction(t("e2e_start_over_confirm"), label, onStartOver);
-	const newKeys = () => confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys);
+	const newKeys = () => askForNewKeys(onAlsoRemoved, (named) => onChangeKeys(named));
 
 	// The recovery key the person saves before anything goes up: a first device's, a change of keys', or starting over's.
 	const shownKey = $derived(

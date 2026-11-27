@@ -85,6 +85,7 @@
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
 	import {
+		alsoRemoved,
 		approvalActions,
 		changeKeys,
 		createDM,
@@ -1141,6 +1142,7 @@
 			onLater={uploadLater}
 			onStartOver={startOver}
 			onChangeKeys={changeKeys}
+			onAlsoRemoved={alsoRemoved}
 			onFinishWithout={finishKeysWithout}
 			{setupActions}
 			{approvalActions}
