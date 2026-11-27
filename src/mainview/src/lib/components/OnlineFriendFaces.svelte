@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Tooltip } from "bits-ui";
+	import { Gamepad2 as GameIcon, Music as MusicIcon } from "@lucide/svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { FOCUS_RING } from "$lib/components/ui/recipes";
@@ -7,10 +8,10 @@
 	import { t } from "$lib/i18n";
 	import type { MemberOnSidebar } from "$lib/types";
 
-	// The online friends whose faces the Now section shows: a stack that overlaps until the pointer or the keys reach
-	// it, then opens its gaps. Each face keeps the dot the Avatar draws for its presence; hovering or focusing it shows
-	// the same presence in a cloud above it, portalled out of the section's scroll so it can't be clipped. A "+N" sits
-	// after them when more friends are online.
+	// The online friends whose faces the Now section shows: a row that wraps onto the next when the column is full,
+	// instead of overlapping or taking a full row each. Each face keeps the dot the Avatar draws for its presence;
+	// hovering or focusing it shows the name, the presence and what the friend is doing in a cloud above it, portalled
+	// out of the section's scroll so it can't be clipped. A "+N" sits after them when more friends are online.
 	let {
 		friends,
 		more = 0,
@@ -26,10 +27,12 @@
 			name: string;
 			status: MemberOnSidebar["status"];
 			mobileOnly?: boolean;
+			/** What they're playing or listening to, shown under their presence in the bubble. */
+			activity?: { kind: "listening" | "playing"; text: string } | null;
 		}[];
 		more?: number;
 		size?: number;
-		/** The colour of the gap between two overlapped faces: what the row sits on. */
+		/** The colour of the halo around a face: what the row sits on. */
 		ring?: string;
 		class?: string;
 		onFriend: (id: string) => void;
@@ -45,54 +48,63 @@
 	}
 </script>
 
-<div class="flex shrink-0 items-center gap-1.5 {className}">
+<div
+	class="group/faces flex min-w-0 flex-wrap items-center -space-x-2 gap-y-1 transition-[margin] duration-150 focus-within:space-x-1 hover:space-x-1 motion-reduce:transition-none {className}"
+>
 	{#if friends.length > 0}
 		<Tooltip.Provider delayDuration={0} disableHoverableContent>
-			<div
-				class="group/faces flex items-center -space-x-2 transition-all duration-150 focus-within:space-x-1 hover:space-x-1 motion-reduce:transition-none"
-			>
-				{#each friends as friend (friend.id)}
-					<span class="shrink-0 transition-all duration-150 motion-reduce:transition-none">
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								{#snippet child({ props })}
-									<button
-										{...props}
-										type="button"
-										class="flex rounded-full ring-2 ring-[var(--face-ring)] transition-[box-shadow] duration-150 group-focus-within/faces:ring-0 group-hover/faces:ring-0 motion-reduce:transition-none {FOCUS_RING}"
-										style="--face-ring: {ring};"
-										aria-label={t("shell_now_message_friend", { name: friend.name })}
-										data-jump
-										onclick={() => onFriend(friend.id)}
-									>
-										<Avatar {size} status={friend.status} mobileOnly={friend.mobileOnly} {ring}>
-											<UserAvatar src={friend.src} name={friend.name} {size} />
-										</Avatar>
-									</button>
-								{/snippet}
-							</Tooltip.Trigger>
-							<Tooltip.Portal>
-								<Tooltip.Content side="top" sideOffset={12} collisionPadding={8} class="animate-tip-in z-[3000]">
-									<!-- The bubble's body and the tail that points it at the face: one silhouette under the drop shadow. -->
+			{#each friends as friend (friend.id)}
+				<span class="shrink-0 transition-[margin] duration-150 motion-reduce:transition-none">
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<button
+									{...props}
+									type="button"
+									class="flex rounded-full ring-2 ring-[var(--face-ring)] transition-[box-shadow] duration-150 group-focus-within/faces:ring-0 group-hover/faces:ring-0 motion-reduce:transition-none {FOCUS_RING}"
+									style="--face-ring: {ring};"
+									aria-label={friend.activity
+										? t("shell_now_message_friend_doing", {
+												kind: friend.activity.kind,
+												name: friend.name,
+												activity: friend.activity.text,
+											})
+										: t("shell_now_message_friend", { name: friend.name })}
+									data-jump
+									onclick={() => onFriend(friend.id)}
+								>
+									<Avatar {size} status={friend.status} mobileOnly={friend.mobileOnly} {ring}>
+										<UserAvatar src={friend.src} name={friend.name} {size} />
+									</Avatar>
+								</button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Portal>
+							<Tooltip.Content
+								side="top"
+								sideOffset={10}
+								collisionPadding={8}
+								class="animate-tip-in bg-duvet-pill text-duvet-ink shadow-duvet-float ring-duvet-line z-[3000] max-w-48 rounded-2xl px-3 py-1.5 text-center ring-1"
+							>
+								<span class="block max-w-44 truncate text-[12px] leading-tight font-semibold">{friend.name}</span>
+								<span class="text-duvet-ink2 mt-0.5 block text-[11px] leading-tight">{statusLabel(friend.status)}</span>
+								{#if friend.activity}
 									<span
-										class="relative block min-w-24 text-center"
-										style="filter: drop-shadow(0 0 1px var(--duvet-sb-edge)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));"
+										class="text-duvet-ink2 mt-1 flex max-w-44 items-center justify-center gap-1 text-[11px] leading-tight"
 									>
-										<span class="bg-duvet-card relative block rounded-2xl px-3 py-1.5">
-											<span class="block max-w-40 truncate text-[12px] leading-tight font-semibold">{friend.name}</span>
-											<span class="text-duvet-ink2 mt-0.5 block text-[11px] leading-tight"
-												>{statusLabel(friend.status)}</span
-											>
-										</span>
-										<!-- The tail that makes the cloud a speech bubble, pointing down at the face. -->
-										<span class="bg-duvet-card absolute -bottom-1 left-1/2 size-3 -translate-x-1/2 rotate-45"></span>
+										{#if friend.activity.kind === "playing"}<GameIcon
+												class="size-3 shrink-0"
+												aria-hidden="true"
+											/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
+										<span class="truncate" title={friend.activity.text}>{friend.activity.text}</span>
 									</span>
-								</Tooltip.Content>
-							</Tooltip.Portal>
-						</Tooltip.Root>
-					</span>
-				{/each}
-			</div>
+								{/if}
+								<Tooltip.Arrow class="text-duvet-pill" width={12} height={6} />
+							</Tooltip.Content>
+						</Tooltip.Portal>
+					</Tooltip.Root>
+				</span>
+			{/each}
 		</Tooltip.Provider>
 	{/if}
 	{#if more > 0}
