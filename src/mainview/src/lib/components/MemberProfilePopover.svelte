@@ -144,6 +144,7 @@
 	}
 
 	async function handleSendFriendRequest(userId: string) {
+		if (member.is_bot) return;
 		friendRequestState[userId] = "loading";
 		try {
 			await sendFriendRequest(userId);
@@ -253,7 +254,7 @@
 							</div>
 
 							<div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">
-								{#if $currentUser && member.id !== $currentUser.id}
+								{#if $currentUser && member.id !== $currentUser.id && !member.is_bot}
 									{@const reqState = friendRequestState[member.id] ?? "idle"}
 									{#if isFriend(member.id)}
 										<button

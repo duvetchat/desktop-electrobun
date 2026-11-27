@@ -28,6 +28,13 @@ test("the profile popover's status dot is a StatusDot of the member's status, at
 	);
 });
 
+// A bot or an app is nobody to befriend: its card has no friend request action at all.
+test("a bot's card has no friend request action, and sending one is refused", () => {
+	expect(popover).toContain("!member.is_bot");
+	expect(popover).toMatch(/\{#if \$currentUser && member\.id !== \$currentUser\.id && !member\.is_bot\}/);
+	expect(popover).toMatch(/function handleSendFriendRequest\(userId: string\) \{\s*if \(member\.is_bot\) return;/);
+});
+
 // For a member connected only from the mobile app, a phone takes the dot's place, as wide and in the same ring (#82).
 test("the profile popover draws a phone for a member only on mobile", async () => {
 	const dot = /<StatusDot\s[^>]*\/>/.exec(popover)?.[0] ?? "";
