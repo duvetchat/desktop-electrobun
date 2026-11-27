@@ -178,14 +178,14 @@ describe("a conversation's rows", () => {
 		const held = (id: string): ShownMessage | null =>
 			id === shared.id ? { ...shownRow(id), status: "ok", text: "shared" } : null;
 		// The one the device doesn't hold goes; the one it holds (shared with it), the call notice and the row since stay.
-		expect(drawnRows([early, shared, notice2, later], joined, held)).toEqual({
+		expect(drawnRows([early, shared, notice2, later], joined, holding(held))).toEqual({
 			rows: [shared, notice2, later],
 			beforeJoining: true,
 		});
 		// None from before: no notice.
-		expect(drawnRows([later], joined, held)).toEqual({ rows: [later], beforeJoining: false });
+		expect(drawnRows([later], joined, holding(held))).toEqual({ rows: [later], beforeJoining: false });
 		// Without the membership, nothing goes.
-		expect(drawnRows([early, later], undefined, held)).toEqual({ rows: [early, later], beforeJoining: false });
+		expect(drawnRows([early, later], undefined, holding(held))).toEqual({ rows: [early, later], beforeJoining: false });
 
 		// The notice shows once, above the chat.
 		const shown = drawn({ legacy: false, cutoverAt: null, beforeJoining: true });
@@ -236,9 +236,31 @@ describe("what a conversation draws", () => {
 		// A text row without its number draws nothing.
 		expect(
 			directMessageToMessage(row(ID, { seq: undefined, content: "plain" }), members, holding(held({}))),
-		).toMatchObject({
-			content: null,
-		});
+		).toBeNull();
+	});
+
+	// #575 (I1): an honest API serves a conversation only numbered messages and its notices. Any other row is no message
+	// a member sent: drawn nowhere, whatever it carries, and a sealed file is the core's alone.
+	test("a row neither numbered nor a notice draws nothing, from a page or from an event", () => {
+		const sealed = {
+			...{ id: ID, key: "a2V5", sha256: "c2hh", size: 3, name: "photo.png", said: "image/png" },
+			...{ url: "/attachments/a?sig=s", thumbnailUrl: null },
+		};
+		const file = {
+			...{ id: ID, message_id: ID, filename: "photo.png", content_type: "image/png", size_bytes: 3 },
+			...{ created_at: "2026-11-25T00:00:00Z", url: "/attachments/a?sig=s", sealed },
+		};
+		const served = row(ID, { seq: undefined, type: 1, attachments: [file] });
+		expect(drawnRows([served], undefined, holding(held({}))).rows).toEqual([]);
+		// Pins, threads, results and link cards draw a row through the mapper: none of it either.
+		expect(directMessageToMessage(served, members, holding(held({})))).toBeNull();
+		// The person's own being sent, whose typed text this client keeps, shows with its files' bars, never sealed ones.
+		const own = directMessageToMessage(served, members, holding(held({}), { [ID]: "" }));
+		expect(own?.attachments?.map((attachment) => attachment.sealed)).toEqual([undefined]);
+		// The server's notices show as they are, with no file of the API's.
+		const callNotice = row(ID, { seq: undefined, type: 3, attachments: [file] });
+		expect(drawnRows([callNotice], undefined, holding(held({}))).rows).toEqual([callNotice]);
+		expect(directMessageToMessage(callNotice, members, holding(held({})))?.attachments).toBeNull();
 	});
 
 	test("a row the engine hasn't applied yet is loading, neither empty nor waiting", () => {
@@ -286,9 +308,10 @@ describe("what a conversation draws", () => {
 		const types = [2, 3, 4, 7] as DirectMessage["type"][];
 		for (const type of types) {
 			const served = row(ID, { type, content: "words put in a mouth" });
-			expect(directMessageToMessage(served, members, holding(held({}))).content).toBeNull();
+			expect(directMessageToMessage(served, members, holding(held({})))?.content).toBeNull();
+			// Without its number, a notice draws none of it, and a row of a type no notice has draws nothing at all.
 			const noNumber = row(ID, { type, seq: undefined, content: "words" });
-			expect(directMessageToMessage(noNumber, members, holding(held({}))).content).toBeNull();
+			expect(directMessageToMessage(noNumber, members, holding(held({})))?.content ?? null).toBeNull();
 		}
 	});
 

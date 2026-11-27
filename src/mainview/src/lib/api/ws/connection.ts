@@ -153,6 +153,7 @@ import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
 import { deviceText, moveTyped } from "$lib/e2e/conversation-content.svelte";
+import { drawnRow } from "$lib/e2e/engine/content";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -1870,7 +1871,9 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			});
 			if (msg.author_id === get(currentUser)?.id) endOwnTyping(conversationId);
 			dmMessages.update((all) => {
-				// As a room's (MESSAGE_CREATE): only into a list there is, or one a view holds.
+				// As a room's (MESSAGE_CREATE): only into a list there is, or one a view holds. Never a row that's neither
+				// numbered nor a notice, which no member sent (#575).
+				if (!drawnRow(msg, () => undefined)) return all;
 				if (!all[conversationId] && !dmMessages.holds(conversationId)) return all;
 				const existing = all[conversationId] ?? [];
 				if (msg.nonce) {

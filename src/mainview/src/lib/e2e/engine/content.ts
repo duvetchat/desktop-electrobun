@@ -77,17 +77,31 @@ export async function heldBefore(host: CoreHost, conversationId: string, seq: nu
 	return messages.length > 0;
 }
 
+/** The server's notices, which a conversation draws by their own fields: a pin's (2), a call's (3), a share's (4). */
+const NOTICE_TYPES = new Set([2, 3, 4]);
+
 /**
- * The rows a conversation draws (Ruling 15): an encrypted row from before the user joined it (its ID below their
- * membership's) that this device doesn't hold goes, and the one notice above the chat says why (`beforeJoining`). A
- * notice of the server's, a row since, and one the device holds (shared with it) stay. Without the membership, all stay.
+ * Whether a conversation draws a row of the API's (#575): a message it numbered, a notice of the server's, or the
+ * person's own being sent, whose typed text this client keeps. Any other is no message a member sent: it draws
+ * nothing, whatever it carries.
  */
-export function drawnRows<T extends { id: string; seq?: number }>(
+export const drawnRow = (row: { id: string; seq?: number; type?: number }, typed: (id: string) => string | undefined) =>
+	row.seq !== undefined || NOTICE_TYPES.has(row.type ?? 0) || typed(row.id) !== undefined;
+
+/**
+ * The rows a conversation draws (Ruling 15): none that's neither numbered nor a notice but the person's own being sent
+ * (drawnRow); and an encrypted row from before the user joined it (its ID below their membership's) that this device
+ * doesn't hold goes, and the one notice above the chat says why (`beforeJoining`). A notice of the server's, a row
+ * since, and one the device holds (shared with it) stay. Without the membership, all those stay.
+ */
+export function drawnRows<T extends { id: string; seq?: number; type?: number }>(
 	rows: T[],
 	joinedAs: string | undefined,
-	held: (id: string) => Held,
+	content: Pick<MessageContent, "held" | "typed">,
 ): { rows: T[]; beforeJoining: boolean } {
-	if (!joinedAs) return { rows, beforeJoining: false };
-	const drawn = rows.filter((row) => row.seq === undefined || row.id > joinedAs || !!held(row.id));
-	return drawn.length === rows.length ? { rows, beforeJoining: false } : { rows: drawn, beforeJoining: true };
+	const sent = rows.filter((row) => drawnRow(row, (id) => content.typed(id)));
+	if (!joinedAs) return { rows: sent.length === rows.length ? rows : sent, beforeJoining: false };
+	const drawn = sent.filter((row) => row.seq === undefined || row.id > joinedAs || !!content.held(row.id));
+	if (drawn.length === rows.length) return { rows, beforeJoining: false };
+	return { rows: drawn, beforeJoining: drawn.length < sent.length };
 }

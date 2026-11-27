@@ -576,11 +576,28 @@ describe("a live message of a chat nobody loaded", () => {
 		const releaseRoom = stores.channelMessages.keep(room);
 		const releaseConv = stores.dmMessages.keep(conv);
 		deliver("MESSAGE_CREATE", { id: message(85), room_id: room, author_id: ALICE, content: "hi" });
-		deliver("DM_MESSAGE_CREATE", { id: message(86), conversation_id: conv, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_CREATE", { id: message(86), conversation_id: conv, author_id: ALICE, content: null, seq: 1 });
 		releaseRoom();
 		releaseConv();
 		expect(get(stores.channelMessages)[room]?.map((m) => m.id)).toEqual([message(85)]);
 		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([message(86)]);
+	});
+
+	// #575 (I1): a conversation's row that's neither numbered nor a notice is no message a member sent, whatever it
+	// carries: it isn't listed.
+	test("a conversation's row neither numbered nor a notice isn't listed", () => {
+		const conv = conversation(74);
+		const release = stores.dmMessages.keep(conv);
+		const sealed = { id: message(88), key: "a2V5", sha256: "c2hh", size: 3, name: "photo.png", said: "image/png" };
+		const file = {
+			...{ id: message(88), message_id: message(87), filename: "photo.png", content_type: "image/png", size_bytes: 3 },
+			...{ created_at: "", url: "/attachments/a", sealed: { ...sealed, url: "/attachments/a" } },
+		};
+		deliver("DM_MESSAGE_CREATE", {
+			...{ id: message(87), conversation_id: conv, author_id: ALICE, content: null, type: 1, attachments: [file] },
+		});
+		release();
+		expect(get(stores.dmMessages)[conv] ?? []).toEqual([]);
 	});
 });
 

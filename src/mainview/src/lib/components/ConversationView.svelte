@@ -417,7 +417,7 @@
 
 	// Map DirectMessage → Message for MessageList: an encrypted message's text, and its quote's, are what this device's
 	// own database holds of them, asked for as they show.
-	function toMessage(msg: DirectMessage): Message {
+	function toMessage(msg: DirectMessage): Message | null {
 		const quoted = msg.referenced_message?.message_id;
 		want(conversation.id, [...(msg.seq === undefined ? [] : [msg.id]), ...(quoted ? [quoted] : [])]);
 		return directMessageToMessage(msg, conversation.members, onDevice);
@@ -434,7 +434,7 @@
 			raw.filter((m) => m.seq !== undefined).map((m) => m.id),
 		);
 		const joined = conversation.members.find((m) => m.user_id === me?.id)?.id;
-		return drawnRows(raw, joined, onDevice.held);
+		return drawnRows(raw, joined, onDevice);
 	});
 	const beforeJoining = $derived(drawn.beforeJoining);
 
@@ -498,6 +498,8 @@
 				result.push(entry.message);
 			} else {
 				const mapped = toMessage(msg);
+				// A row the conversation doesn't draw (#575) isn't listed.
+				if (!mapped) continue;
 				messageCache.set(msg.id, { message: mapped, raw: msg, held, typed, quoted, through });
 				result.push(mapped);
 			}

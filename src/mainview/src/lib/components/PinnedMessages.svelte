@@ -40,7 +40,7 @@
 		conversation?: boolean;
 		members?: MemberOnSidebar[];
 		/** How a conversation's pins become messages. */
-		toDirectMessage?: (m: DirectMessage) => Message;
+		toDirectMessage?: (m: DirectMessage) => Message | null;
 	} = $props();
 
 	let open = $state(false);
@@ -50,7 +50,10 @@
 	// A conversation's pins as the API lists them: they become messages as they draw, so the text this device's
 	// database holds of each shows once it's read (toDirectMessage).
 	let conversationPins = $state.raw<DirectMessage[]>([]);
-	const pins = $derived(conversation && toDirectMessage ? conversationPins.map(toDirectMessage) : roomPins);
+	// A pin the conversation doesn't draw (#575) isn't listed.
+	const pins = $derived(
+		conversation && toDirectMessage ? conversationPins.flatMap((pin) => toDirectMessage(pin) ?? []) : roomPins,
+	);
 	let controller: AbortController | null = null;
 
 	// In a space, those with PinMessages in the room (its owner and Administrators have it); in a
