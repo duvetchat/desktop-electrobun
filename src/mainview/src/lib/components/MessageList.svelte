@@ -1407,11 +1407,15 @@
 					{/if}
 
 					{#if shape.newDay}
-						<!-- In its place in the list: it doesn't stick to the top -->
+						<!-- In its place in the list: it doesn't stick to the top. In flat rows it sits between two
+						     hairlines, as the unread divider; bubbles, more minimal, show the day alone. -->
 						<div
-							class="text-duvet-ink2 pointer-events-none mt-[18px] mb-2 flex justify-center text-[11.5px] leading-none font-semibold tracking-[0.01em] select-none"
+							data-day-separator
+							class="text-duvet-ink2 pointer-events-none mt-[18px] mb-2 flex items-center justify-center gap-3 text-[11.5px] leading-none font-semibold tracking-[0.01em] select-none"
 						>
-							{dayLabel(message.created_at, now)}
+							{#if flat}<div data-day-rule class="bg-duvet-line h-px flex-1"></div>{/if}
+							<span class="shrink-0 whitespace-nowrap">{dayLabel(message.created_at, now)}</span>
+							{#if flat}<div data-day-rule class="bg-duvet-line h-px flex-1"></div>{/if}
 						</div>
 					{/if}
 
