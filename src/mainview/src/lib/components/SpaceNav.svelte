@@ -779,7 +779,13 @@
 			<ProfileRow />
 		{/if}
 		<div class="relative">
-			<Segmented options={filterOptions} bind:value={sidebar.filter} label={t("shell_sidebar_filter")} class="w-full" />
+			<Segmented
+				options={filterOptions}
+				bind:value={sidebar.filter}
+				label={t("shell_sidebar_filter")}
+				align="start"
+				class="w-full"
+			/>
 			<!-- A dot marks the side that isn't listed while something there is unread. -->
 			{#if sidebar.filter === "spaces" && unreadChats}
 				<span
