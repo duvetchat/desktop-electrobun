@@ -87,6 +87,31 @@ afterEach(() => page.stopEngine());
 useXHR();
 
 describe.skipIf(!coreLibrary)("the page's engine", () => {
+	// #575 (M6): what the page's engine last showed goes with it as it stops: the state its sheets draw (a first device's
+	// recovery key among them), what each conversation said, the cutover's instant and the server key's notice. Every
+	// sign-out loads another page today; the day one doesn't, the next user's page shows none of it.
+	test(
+		"what the engine last showed goes as it stops",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			fake.cutoverAt = "2026-11-20T00:00:00Z";
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			const conversation = fake.addConversation({ type: "group", members: [bo, ana], owner: bo });
+			await readyOnDesktop(ana, testHost());
+			await page.openConversation(conversation);
+			await until(() => page.encryption.conversations[conversation]?.name === "wait_owner");
+			expect(page.encryption.cutoverAt).toBe(fake.cutoverAt);
+			await page.stopEngine();
+			expect(page.encryption.state).toEqual({ name: "starting" });
+			expect(page.encryption.conversations).toEqual({});
+			expect(page.encryption.cutoverAt).toBeNull();
+			expect(page.encryption.serverKeyChanged).toBe(false);
+		},
+		SLOW,
+	);
+
 	test(
 		"on the desktop, one engine on one host for the page, its core closed as the user signs out",
 		async () => {

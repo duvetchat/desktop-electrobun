@@ -634,6 +634,11 @@ export async function stopEngine(): Promise<void> {
 	engine = null;
 	started = false;
 	toOpen.clear();
+	// What the engine showed goes with it (#575, M6): a recovery key on screen, what each conversation said, the cutover.
+	encryption.state = { name: "starting" };
+	encryption.conversations = {};
+	encryption.cutoverAt = null;
+	encryption.serverKeyChanged = false;
 	encryption.offers = {};
 	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };
