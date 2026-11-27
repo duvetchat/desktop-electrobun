@@ -57,6 +57,17 @@ export function platformPrefix(
 	return `${channel}-${os}-${arch}`;
 }
 
+/** The build's tarball in release file names, as Electrobun names it: the app's, with its channel off stable, and a
+ *  Mac's is its .app's. */
+export function updateTarball(
+	channel: string,
+	platform: string = process.platform,
+	arch: string = process.arch,
+): string {
+	const app = channel === "stable" ? "Duvet" : `Duvet-${channel}`;
+	return `${platformPrefix(channel, platform, arch)}-${app}${platform === "darwin" ? ".app" : ""}.tar.zst`;
+}
+
 /** Whether Electrobun can apply an update in a folder on Windows: printable ASCII (space to `~`) but `%`, `&` and `^`. */
 export function updateBatCanName(folder: string): boolean {
 	return /^[ -~]*$/.test(folder) && !/[%&^]/.test(folder);

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import config from "../electrobun.config";
 import pkg from "../package.json";
 import { signManifest } from "../src/bun/update-manifest";
-import { platformPrefix } from "../src/bun/updates";
+import { platformPrefix, updateTarball } from "../src/bun/updates";
 
 const key = process.env.DESKTOP_UPDATE_SIGNING_KEY?.trim();
 if (!key) throw new Error("DESKTOP_UPDATE_SIGNING_KEY isn't set");
@@ -28,7 +28,7 @@ const [version, hash] = strings(await Bun.file(join(artifacts, `${prefix}-update
 if (!version || !hash) throw new Error("update.json has no version or hash");
 if (version !== pkg.version) throw new Error(`update.json says ${version}, package.json ${pkg.version}`);
 
-const tar = Bun.zstdDecompressSync(await Bun.file(join(artifacts, `${prefix}-Duvet.tar.zst`)).bytes());
+const tar = Bun.zstdDecompressSync(await Bun.file(join(artifacts, updateTarball("stable"))).bytes());
 const own = [...(await new Bun.Archive(tar).files())].find(([path]) => path.endsWith("Resources/version.json"))?.[1];
 if (!own) throw new Error("the tar has no Resources/version.json");
 const inside = strings(JSON.parse(await own.text()), "version", "hash", "channel", "baseUrl");

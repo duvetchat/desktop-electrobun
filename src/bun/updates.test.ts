@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import config from "../../electrobun.config";
+import {
+	getAppFileName,
+	getPlatformPrefix,
+	getTarballFileName,
+} from "../../node_modules/electrobun/dist/api/shared/naming";
 import { signManifest, type UpdateFacts } from "./update-manifest";
 import {
 	fileSha256,
@@ -9,6 +15,7 @@ import {
 	shellCanQuote,
 	updateBatCanName,
 	UpdateChecker,
+	updateTarball,
 	type UpdateOffer,
 	type UpdaterLike,
 } from "./updates";
@@ -234,6 +241,26 @@ describe("the app's own updates (#456)", () => {
 		expect(platformPrefix("stable", "win32", "x64")).toBe("stable-win-x64");
 		expect(platformPrefix("stable", "darwin", "arm64")).toBe("stable-macos-arm64");
 		expect(platformPrefix("canary", "linux", "x64")).toBe("canary-linux-x64");
+	});
+
+	// The tarball sign-update.ts hashes is the one Electrobun's build leaves in artifacts/ for this system.
+	test("the update's tar is named as Electrobun names it, on each system", async () => {
+		const systems = [
+			["win32", "win", "x64"],
+			["linux", "linux", "x64"],
+			["darwin", "macos", "arm64"],
+		] as const;
+		for (const [platform, os, arch] of systems) {
+			for (const channel of ["stable", "canary"]) {
+				const tarball = getTarballFileName(getAppFileName(config.app.name, channel), os);
+				expect(updateTarball(channel, platform, arch)).toBe(`${getPlatformPrefix(channel, os, arch)}-${tarball}`);
+			}
+		}
+		expect(updateTarball("stable", "linux", "x64")).toBe("stable-linux-x64-Duvet.tar.zst");
+		expect(updateTarball("stable", "win32", "x64")).toBe("stable-win-x64-Duvet.tar.zst");
+		expect(await Bun.file(join(import.meta.dir, "../../scripts/sign-update.ts")).text()).toContain(
+			'updateTarball("stable")',
+		);
 	});
 
 	test("a file's SHA-256 is read as it's stored", async () => {
