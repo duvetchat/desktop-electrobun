@@ -747,10 +747,10 @@ export class Sends {
 	 */
 	async #sendChange(change: Change, changes: Changes): Promise<number | null> {
 		const { conversation: id, message, kind } = change;
-		// An edit is new text: while a verified contact's changed key waits for the person's yes, or the group holds someone
-		// the conversation doesn't show (#574), it waits as an unanswered one does, its bytes as the core last made them,
-		// and the yes sends it (review, I2). A deletion carries no text.
-		if (kind === "edit" && ((await this.#hooks.held(id)).length || (await this.#groups.holdsOthers(id)))) {
+		// An edit is new text: while a verified contact's changed key waits for the person's yes it waits as an unanswered
+		// one does, its bytes as the core last made them, and the yes sends it (review, I2); a deletion carries no text.
+		// Either waits while the group holds someone the conversation doesn't show (#574): nothing more goes there.
+		if ((kind === "edit" && (await this.#hooks.held(id)).length) || (await this.#groups.holdsOthers(id))) {
 			return this.#backoff(changes);
 		}
 		let entry: MlsEntry;

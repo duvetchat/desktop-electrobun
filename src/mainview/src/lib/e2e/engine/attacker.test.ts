@@ -510,6 +510,42 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// Nothing more goes there: an edit and a deletion wait too, as a message does, while the group holds someone the
+	// conversation as drawn doesn't show.
+	test(
+		"an edit and a deletion wait while the group holds someone its page doesn't draw",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const changes: string[] = [];
+			useFake(fake, (request) => {
+				const change = request.method === "PATCH" || request.method === "DELETE";
+				if (change && /\/messages\/[^/]+$/.test(new URL(request.url).pathname)) changes.push(request.method);
+			});
+			let drawn: Conversation[] = [];
+			let hidden = false;
+			const shown = async (id: string) => {
+				const conv = drawn.find((one) => one.id === id) ?? null;
+				return conv && hidden ? { ...conv, members: conv.members.filter((m) => m.user_id !== eve) } : conv;
+			};
+			const b = await firstDevice(fake, bo, { shown });
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 2, name: "three", user_ids: [ana, bo] });
+			drawn = await b.api.conversations();
+			await b.engine.openConversation(id);
+			await sameGroup([b, e], id);
+			const [first, second] = [await send(b, id, "first"), await send(b, id, "second")];
+			// From now on Bo's page draws the group without Eve.
+			hidden = true;
+			await b.engine.editMessage(id, first.id, "edited");
+			await b.engine.deleteMessage(id, second.id);
+			await turnEnded(b);
+			expect(changes).toEqual([]);
+			expect(b.engine.conversationState(id)).toMatchObject({ name: "other_members" });
+		},
+		SLOW,
+	);
+
 	// The group's own list (#574): a device that joins by a welcome can't check who founded it. Whoever its core's group
 	// holds that the conversation doesn't (a user, a kind, an owner) is said before anything more goes there.
 	test(
