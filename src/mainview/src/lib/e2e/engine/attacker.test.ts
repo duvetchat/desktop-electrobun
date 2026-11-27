@@ -2350,11 +2350,12 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 	/**
 	 * A group of Ana (its owner), Bo and Cy, a device each in it. Bo's next session is told there's no group, and his
 	 * device lets it go, its record Ana, Bo and Cy, owner Ana: on a store that keeps no records when `lost`, as a close
-	 * between the core's forget and the app's own write leaves it. His engine stops; Ana restarts the group by hand,
-	 * without Cy, as its owner may, a key package of Bo's device in it, her engine stopped too; and the API lists the group
-	 * to Bo again. `record` is Bo's store as it was left.
+	 * between the core's forget and the app's own write leaves it; when `hidden`, one listing of his (a READY's) then
+	 * leaves the conversation out, as a server may. His engine stops; Ana restarts the group by hand, without Cy, as its
+	 * owner may, a key package of Bo's device in it, her engine stopped too; and the API lists the group to Bo again.
+	 * `record` is Bo's store as it was left.
 	 */
-	async function forgottenThenWithoutCy(lost: boolean) {
+	async function forgottenThenWithoutCy(lost: boolean, hidden = false) {
 		const fake = new FakeApi();
 		const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 		useFake(fake);
@@ -2366,11 +2367,21 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		await a.engine.openConversation(conversation);
 		await sameGroup([a, b, c], conversation);
 		let lying = true;
-		fake.conversationsAs = (view, viewer) =>
-			lying && viewer === bo && view.id === conversation ? { ...view, mls: null } : view;
+		let hiding = false;
+		fake.conversationsAs = (view, viewer) => {
+			if (viewer !== bo || view.id !== conversation) return view;
+			if (hiding) return null;
+			return lying ? { ...view, mls: null } : view;
+		};
 		const record = b.store;
 		b = await restarted(fake, b, lost ? { store: refusingStore(record, LEGACY_RECORDS) } : {});
 		expect(await groupOf(b, conversation)).toBeNull();
+		if (hidden) {
+			hiding = true;
+			b.connect(b.registered.at(-1) ?? null);
+			await turnEnded(b);
+			hiding = false;
+		}
 		await b.engine.stop();
 		await a.engine.stop();
 		await a.host.open(ana);
@@ -2417,6 +2428,25 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// A server that leaves the conversation out of one listing doesn't have the core let its record go (#594's review,
+	// I1): a record whose own write never landed is the core's alone, the next start takes it back, and the group the
+	// server makes meanwhile is refused.
+	test(
+		"a record kept in the core alone outlives a listing that leaves its conversation out",
+		async () => {
+			const { fake, bo, b: closed, record, conversation } = await forgottenThenWithoutCy(true, true);
+			expect(record.read(LEGACY_RECORDS)).toBeNull();
+			await closed.host.open(bo);
+			expect((await keptBy(closed)).map(({ conversation_id }) => conversation_id)).toEqual([conversation]);
+			const b = await restarted(fake, closed, { store: record });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
 	// The person's yes («Open with these members») lets the core's record go too, before the comeback it says yes to:
 	// a start before that comeback takes back nothing from before the yes, and asks nothing again.
 	test(
@@ -2451,10 +2481,10 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 	);
 
 	// When the API no longer lists the conversation for the user (it left, was taken out, or the API deleted it), the
-	// core's record of its forgotten group goes too: as the engine lets the conversation go, and at a listing that
-	// leaves out one nothing let go, as one deleted while the app was closed.
+	// core keeps the record of its forgotten group, as the engine keeps its own (#594's review, I1): the API's word lets
+	// neither go, not as the engine lets the conversation go, nor at a listing that leaves it out.
 	test(
-		"a forgotten group's record goes from the core once the API no longer lists its conversation",
+		"a forgotten group's record stays in the core once the API no longer lists its conversation",
 		async () => {
 			const fake = new FakeApi();
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
@@ -2469,7 +2499,7 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 				await sameGroup([a, b], conversation);
 			}
 			// Bo's next session is told neither has a group: his device lets both go. Its READY's listing ends first, so
-			// what lets the first one go below is the engine's hearing of it.
+			// what the step below holds is the engine's hearing of the removal.
 			fake.conversationsAs = (view, viewer) => (viewer === bo ? { ...view, mls: null } : view);
 			b = await restarted(fake, b);
 			await turnEnded(b);
@@ -2481,12 +2511,13 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 			fake.tell(bo, { type: "CONVERSATION_UPDATE", data: { id: left, name: null, owner_id: ana } });
 			await turnEnded(b);
 			expect(b.engine.conversationState(left)).toBeNull();
-			expect(await kept()).toEqual([deleted]);
+			expect(await kept()).toEqual([left, deleted].toSorted());
 			// The other is deleted while his app is closed: the next start's listing leaves it out.
 			await b.engine.stop();
 			fake.deleteConversation(deleted);
 			b = await restarted(fake, b);
-			expect(await keptBy(b)).toEqual([]);
+			await turnEnded(b);
+			expect(await kept()).toEqual([left, deleted].toSorted());
 		},
 		SLOW,
 	);
