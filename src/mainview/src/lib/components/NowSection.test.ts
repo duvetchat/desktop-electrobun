@@ -52,9 +52,9 @@ describe("the Now section", () => {
 			'toggleNow("allRooms")',
 		])
 			expect(now, part).toContain(part);
-		// Every row the jump marks label (keyboard.ts): a call, a room and a friend's row. The faces are in
+		// Every row the jump marks label (keyboard.ts): a call and a room. The friend faces are in
 		// OnlineFriendFaces, which marks its own.
-		expect(now.match(/\bdata-jump\b/g)).toHaveLength(3);
+		expect(now.match(/\bdata-jump\b/g)).toHaveLength(2);
 	});
 
 	// #464: the percent sign is the message's, so English writes 42% on every system (Intl's percent writes "42 %"
@@ -75,8 +75,17 @@ describe("the Now section", () => {
 		expect(now).not.toContain("shadow-duvet-press");
 		for (const part of ["bg-duvet-sb-card", "hover:bg-duvet-sb-hover", "ring-duvet-sb-ring", "--duvet-sb-edge"])
 			expect(now, part).toContain(part);
-		for (const primitive of ["ui/Avatar.svelte", "ui/Button.svelte", "ui/IconButton.svelte", "ui/SpaceIcon.svelte"])
+		for (const primitive of ["ui/Button.svelte", "ui/IconButton.svelte", "ui/SpaceIcon.svelte"])
 			expect(now, primitive).toContain(`$lib/components/${primitive}`);
+	});
+
+	// Every online friend is one face in the wrapping row. What they're doing rides in the face's bubble, so a song
+	// doesn't take a full row above the faces.
+	test("shows every online friend as a face, with presence and activity in its bubble", () => {
+		expect(now).not.toContain("friendsSplit");
+		expect(now).toContain("fitFaces(");
+		expect(now).toContain("activity: activityLine(activity)");
+		expect(now).toContain("<OnlineFriendFaces");
 	});
 
 	test("scrolls within its share of the column, which is never more than the rows leave it", () => {

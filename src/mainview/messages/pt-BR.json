@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Fechar guia",
 	"shell_close_tabs_left": "Fechar guias à esquerda",
 	"shell_close_tabs_right": "Fechar guias à direita",
+	"shell_collapse_all": "Recolher tudo",
+	"shell_collapsed_all": "Todos os Espaços recolhidos",
 	"shell_copy_image_failed": "Não foi possível copiar a imagem",
 	"shell_deafen": "Ensurdecer",
 	"shell_delete": "Excluir",

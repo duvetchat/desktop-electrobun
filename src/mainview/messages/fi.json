@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Sulje välilehti",
 	"shell_close_tabs_left": "Sulje välilehdet vasemmalla",
 	"shell_close_tabs_right": "Sulje välilehdet oikealla",
+	"shell_collapse_all": "Tiivistä kaikki",
+	"shell_collapsed_all": "Kaikki Spacet on tiivistetty",
 	"shell_copy_image_failed": "Kuvaa ei voitu kopioida",
 	"shell_deafen": "Mykistä äänet",
 	"shell_delete": "Poista",

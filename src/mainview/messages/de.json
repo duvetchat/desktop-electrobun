@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Tab schließen",
 	"shell_close_tabs_left": "Tabs auf der linken Seite schließen",
 	"shell_close_tabs_right": "Tabs rechts schließen",
+	"shell_collapse_all": "Alle einklappen",
+	"shell_collapsed_all": "Alle Spaces eingeklappt",
 	"shell_copy_image_failed": "Das Bild konnte nicht kopiert werden",
 	"shell_deafen": "Ton ausschalten",
 	"shell_delete": "Löschen",

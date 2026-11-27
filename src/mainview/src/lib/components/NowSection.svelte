@@ -4,9 +4,7 @@
 		Check as CheckIcon,
 		ChevronDown as ChevronDownIcon,
 		ChevronUp as ChevronUpIcon,
-		Gamepad2 as GameIcon,
 		MonitorUp as ScreenIcon,
-		Music as MusicIcon,
 		Phone as PhoneIcon,
 		Users as TeamIcon,
 		Video as CameraIcon,
@@ -28,7 +26,6 @@
 		capFaces,
 		callName,
 		fitFaces,
-		friendsNow,
 		joinableCalls,
 		liveIn,
 		NOW_FRIENDS,
@@ -63,7 +60,6 @@
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import OnlineFriendFaces from "$lib/components/OnlineFriendFaces.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
@@ -215,13 +211,16 @@
 			];
 		}),
 	);
-	const friendsSplit = $derived(
-		friendsNow(onlineFriends, (f) => {
-			const activity = shownActivities($userActivities[f.id])[0];
-			return activity ? activityLine(activity) : null;
-		}),
+	// Every online friend is a face. What they're doing rides in their bubble, so a song no longer takes a full row.
+	const friendFaces = $derived(
+		fitFaces(
+			onlineFriends.map((friend) => {
+				const activity = shownActivities($userActivities[friend.id])[0];
+				return activity ? { ...friend, activity: activityLine(activity) } : friend;
+			}),
+			NOW_FRIENDS,
+		),
 	);
-	const friendFaces = $derived(fitFaces(friendsSplit.rest, NOW_FRIENDS));
 
 	const asks = $derived(calls.length + requests.length + $pendingTeamInvites.length + transfers.length);
 	const anything = $derived(asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
@@ -468,39 +467,6 @@
 				)}
 			{/if}
 			{#if onlineFriends.length > 0 && !navPrefs.now.friendsFolded}
-				{#if friendsSplit.busy.length > 0}
-					<ul class="flex flex-col">
-						{#each friendsSplit.busy as { friend, activity } (friend.id)}
-							<li>
-								<button
-									type="button"
-									class="{row} h-11 gap-2.5 pr-2.5 pl-2"
-									aria-label={t("shell_now_message_friend_doing", {
-										name: friend.name,
-										kind: activity.kind === "playing" ? "playing" : "listening",
-										activity: activity.text,
-									})}
-									data-jump
-									onclick={() => onFriend(friend.id)}
-								>
-									<Avatar size={32} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
-										<UserAvatar src={friend.src} name={friend.name} size={32} />
-									</Avatar>
-									<span class="flex min-w-0 flex-1 flex-col gap-px">
-										<span class="text-duvet-ink truncate text-[13.5px] leading-tight font-medium">{friend.name}</span>
-										<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3]">
-											{#if activity.kind === "playing"}<GameIcon
-													class="size-3 shrink-0"
-													aria-hidden="true"
-												/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
-											<span class="truncate" title={activity.text}>{activity.text}</span>
-										</span>
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
 				{#if friendFaces.faces.length > 0 || friendFaces.more > 0}
 					<OnlineFriendFaces
 						friends={friendFaces.faces}

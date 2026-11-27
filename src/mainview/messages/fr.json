@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Fermer l’onglet",
 	"shell_close_tabs_left": "Fermer les onglets à gauche",
 	"shell_close_tabs_right": "Fermer les onglets à droite",
+	"shell_collapse_all": "Tout replier",
+	"shell_collapsed_all": "Tous les Espaces sont repliés",
 	"shell_copy_image_failed": "Impossible de copier l’image",
 	"shell_deafen": "Couper le son",
 	"shell_delete": "Supprimer",

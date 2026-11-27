@@ -7,9 +7,6 @@ export const NOW_ROOMS = 3;
 export const NOW_ROOM_FACES = 4;
 /** The places in the online friends' row: their faces, the last one a "+N" when they're more. */
 export const NOW_FRIENDS = 8;
-/** The online friends with a row of what they're doing; the others doing something are faces with the rest. */
-export const NOW_FRIEND_ROWS = 3;
-
 /** A face in a stack: a person, round, dimmed when they're away, ringed while they speak. */
 export type Face = { id: string; src: string | null; name: string; dim?: boolean; speaking?: boolean };
 
@@ -31,22 +28,6 @@ export function liveIn(people: readonly { screen_sharing?: boolean; camera?: boo
 	if (people.some((p) => p.screen_sharing)) return "screen";
 	if (people.some((p) => p.camera)) return "camera";
 	return null;
-}
-
-/** Online friends split for the column: the first `rows` doing something get a row with it, the rest a face. */
-export function friendsNow<F, A>(
-	online: readonly F[],
-	activityOf: (friend: F) => A | null,
-	rows = NOW_FRIEND_ROWS,
-): { busy: { friend: F; activity: A }[]; rest: F[] } {
-	const busy: { friend: F; activity: A }[] = [];
-	const rest: F[] = [];
-	for (const friend of online) {
-		const activity = busy.length < rows ? activityOf(friend) : null;
-		if (activity) busy.push({ friend, activity });
-		else rest.push(friend);
-	}
-	return { busy, rest };
 }
 
 /** The rooms with people in them, the busiest first, at most `max`; rooms as busy keep their order. */
