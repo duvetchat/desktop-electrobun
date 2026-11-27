@@ -388,6 +388,16 @@ describe("the two layouts", () => {
 		expect(html).toContain("radial-gradient(420px_80px_at_60px_50%");
 	});
 
+	test("a day's label sits between two hairlines in flat rows, and alone in bubbles", async () => {
+		// The talk is all one day: one label, over its oldest message.
+		expect(count(list({}), "data-day-separator")).toBe(1);
+		expect(list({})).not.toContain("data-day-rule");
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const html = list({});
+		expect(count(html, "data-day-separator")).toBe(1);
+		expect(count(html, "data-day-rule")).toBe(2);
+	});
+
 	test("the list reads the saved layout and the groups from their modules", () => {
 		const component = source("MessageList.svelte");
 		expect(component).toContain('const flat = $derived(messageLayout.value === "flat");');
