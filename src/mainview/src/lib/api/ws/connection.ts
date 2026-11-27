@@ -1876,7 +1876,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 				if (!drawnRow(msg, () => undefined)) return all;
 				if (!all[conversationId] && !dmMessages.holds(conversationId)) return all;
 				const existing = all[conversationId] ?? [];
-				if (msg.nonce) {
+				// A pending row is the person's own: only their own message takes its place, and its typed text (#575, M2).
+				if (msg.nonce && msg.author_id === get(currentUser)?.id) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
 						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).

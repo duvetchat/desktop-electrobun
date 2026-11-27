@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
-import type { Conversation } from "$lib/api/conversations";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
@@ -598,6 +598,29 @@ describe("a live message of a chat nobody loaded", () => {
 		});
 		release();
 		expect(get(stores.dmMessages)[conv] ?? []).toEqual([]);
+	});
+
+	// #575 (M2): a pending row is the person's own: a message with its nonce takes its place only when it's theirs too,
+	// so the text they typed never shows under someone else's name.
+	test("a conversation's pending row gives way only to the person's own message with its nonce", async () => {
+		const { contentOf, keepTyped } = await import("$lib/e2e/conversation-content.svelte");
+		ready({});
+		const conv = conversation(75);
+		const release = stores.dmMessages.keep(conv);
+		const nonce = "f3c1d7a2-0000-4c8d-9e0f-1a2b3c4d5e75";
+		keepTyped(conv, nonce, "my words");
+		const pending: DirectMessage = {
+			...{ id: nonce, conversation_id: conv, author_id: ME, content: null, type: MessageType.Text, nonce },
+			...{ created_at: "", updated_at: "" },
+		};
+		stores.dmMessages.update((all) => ({ ...all, [conv]: [pending] }));
+		deliver("DM_MESSAGE_CREATE", {
+			...{ id: message(89), conversation_id: conv, author_id: ALICE, content: null, type: 0, seq: 3, nonce },
+		});
+		release();
+		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([nonce, message(89)]);
+		expect(contentOf(conv).typed(message(89))).toBeUndefined();
+		expect(contentOf(conv).typed(nonce)).toBe("my words");
 	});
 });
 
