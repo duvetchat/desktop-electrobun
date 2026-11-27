@@ -918,8 +918,8 @@ export class Conversations {
 		if (held && held.generation >= (conv.mls?.generation ?? 0)) {
 			for (const kept of [this.#otherSender, this.#removed]) kept.delete(conv.id);
 			this.#joinsLost.delete(conv.id);
-			// In its group: a conversation made after the cutover changes by the group's own rules from here on (#574).
-			if (!conv.legacy) forgetRecord(this.#parts.store, conv.id);
+			// In its group: one the person made here changes by the group's own rules from here on (#574).
+			forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
 				this.#set(conv.id, (await this.#othersIn(conv, held, at.due)) ?? this.#goingOn(conv.id));

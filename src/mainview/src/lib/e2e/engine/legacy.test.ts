@@ -47,6 +47,42 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 		SLOW,
 	);
 
+	// #574: what the person made here is let go once this device holds its group; a record from before the cutover
+	// stays, whatever the API says of the conversation after (its `legacy`), as the Android app holds it.
+	test(
+		"a record from before the cutover stays once its group is held, though the API lists it as from after",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo], legacy: true });
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo);
+			// From now on the API lists the DM as made after the cutover.
+			fake.conversationsAs = (view) => ({ ...view, legacy: false });
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			await a.engine.openConversation(conversation);
+			expect(a.store.read<unknown>("legacy_records")).toEqual({ [conversation]: { members: [ana, bo] } });
+		},
+		SLOW,
+	);
+
+	test(
+		"the person's picks found the conversation they made, and go once this device holds its group",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo);
+			const { id } = await a.engine.createConversation({ type: 1, user_id: bo });
+			await sameGroup([a, b], id);
+			expect(a.store.read<Record<string, unknown>>("legacy_records")?.[id]).toBeUndefined();
+		},
+		SLOW,
+	);
+
 	// M4: a record whose storage refuses it (full, or refused) can't keep it: the session holds it all the same, so a
 	// later look at the conversation doesn't take the members of that moment for the ones first seen.
 	test(
