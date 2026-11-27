@@ -28,6 +28,8 @@ export const NOTICES = {
 	blocked_wait: "Waiting for {owner} to restart it.",
 	removed_device: "This device was removed from your account.",
 	locked: "Encrypted conversations are open in another Duvet window.",
+	// The mobile app's, while another engine of its holds the core (mobile#371): this app never shows it.
+	locked_phone: "Encrypted conversations are busy on this phone. Duvet tries again on its own.",
 	wait_owner: "Waiting for {owner} to open this group",
 	wait_rejoin: "You'll be back in this conversation when another member opens it.",
 	members_changed: "This conversation's members changed since you last saw it.",
