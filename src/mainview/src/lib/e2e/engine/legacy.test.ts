@@ -20,6 +20,7 @@ import {
 	keepMade,
 	legacyRecord,
 	recordMade,
+	takeBackForgotten,
 	type LegacyRecord,
 } from "./legacy";
 import type { EngineStore } from "./store";
@@ -313,6 +314,29 @@ describe("the record of a group this device let go (#553)", () => {
 		forgetRecord(again, "c");
 		forgetRecord(again, "d");
 		expect([legacyRecord(again, group(true)), legacyRecord(again, yes)]).toEqual([first, null]);
+	});
+
+	// #594: the core keeps the record too, and a start takes back each one it gives (forgotten) that this device keeps
+	// none of a forget of, as a close before its own write leaves it: by the forget's path, whose rules place it.
+	test("one the core gives back is kept as a forget's, where this device keeps none of a forget", () => {
+		const store = memoryStore();
+		takeBackForgotten(store, "c", forgotten);
+		expect(legacyRecord(store, group())).toEqual(forgotten);
+		// One it keeps already is its own.
+		takeBackForgotten(store, "c", { ...forgotten, members: ["ana"] });
+		expect(legacyRecord(store, group())).toEqual(forgotten);
+		// Never over the person's yes; over a record from before the cutover, which is back once the group is held.
+		const yes = { owner: "ana", members: ["ana", "bo", "eve"] };
+		const chosen = memoryStore();
+		keepChosen(chosen, "c", yes);
+		takeBackForgotten(chosen, "c", forgotten);
+		expect(legacyRecord(chosen, group())).toEqual(yes);
+		const before = memoryStore();
+		const first = legacyRecord(before, group(true, ["ana", "bo", "cy"]));
+		takeBackForgotten(before, "c", forgotten);
+		expect(legacyRecord(before, group(true))).toEqual(forgotten);
+		forgetRecord(before, "c");
+		expect(legacyRecord(before, group(true))).toEqual(first);
 	});
 
 	test("one the store kept reads exact only as true, and nothing else as a record", () => {

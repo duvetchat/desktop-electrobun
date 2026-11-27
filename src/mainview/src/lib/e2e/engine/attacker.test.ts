@@ -2335,4 +2335,85 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		},
 		SLOW,
 	);
+
+	// #594: the core keeps the record of each group it let go (its forgotten), until the device holds the conversation's
+	// group again or its client lets the record go (drop_forgotten).
+
+	/** The records the device's core keeps of the groups it let go. */
+	const keptBy = async (device: TestDevice) =>
+		(
+			await device.host.handle<{
+				records: { conversation_id: string; expected: { owner?: string; members: string[]; exact?: true } }[];
+			}>({ cmd: "forgotten" })
+		).records;
+
+	/**
+	 * A group of Ana (its owner), Bo and Cy, a device each in it. Bo's next session is told there's no group, and his
+	 * device lets it go, its record Ana, Bo and Cy, owner Ana: on a store that keeps no records when `lost`, as a close
+	 * between the core's forget and the app's own write leaves it. His engine stops; Ana restarts the group by hand,
+	 * without Cy, as its owner may, a key package of Bo's device in it, her engine stopped too; and the API lists the group
+	 * to Bo again. `record` is Bo's store as it was left.
+	 */
+	async function forgottenThenWithoutCy(lost: boolean) {
+		const fake = new FakeApi();
+		const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+		useFake(fake);
+		const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+		const a = await firstDevice(fake, ana);
+		let b = await firstDevice(fake, bo);
+		const c = await firstDevice(fake, cy);
+		await madeHere(a, conversation);
+		await a.engine.openConversation(conversation);
+		await sameGroup([a, b, c], conversation);
+		let lying = true;
+		fake.conversationsAs = (view, viewer) =>
+			lying && viewer === bo && view.id === conversation ? { ...view, mls: null } : view;
+		const record = b.store;
+		b = await restarted(fake, b, lost ? { store: refusingStore(record, LEGACY_RECORDS) } : {});
+		expect(await groupOf(b, conversation)).toBeNull();
+		await b.engine.stop();
+		await a.engine.stop();
+		await a.host.open(ana);
+		const key_packages: Record<string, string[]> = {};
+		for (const user of [ana, bo]) {
+			key_packages[user] = (await a.api.claimKeyPackages(user)).key_packages.map((kp) => kp.data);
+		}
+		const made = await a.host.handle<{
+			generation: number;
+			commit: string;
+			group_info: string;
+			initial_group_info: string;
+			welcome: string;
+		}>({ cmd: "reset_group", conversation_id: conversation, owner: ana, members: [ana, bo], key_packages });
+		const { generation, commit, group_info, initial_group_info, welcome } = made;
+		const taken = await a.api.commit(conversation, {
+			...{ generation, epoch: 0, commit, group_info, initial_group_info, welcome },
+		});
+		await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: taken.seq });
+		lying = false;
+		return { fake, ana, bo, cy, a, b, record, conversation };
+	}
+
+	// A close between the core's forget and the app's own write of the record left the core's copy alone: the next start
+	// takes it back before anything brings the group back, and what does is held to it, here the restart without Cy.
+	test(
+		"a record the core kept and the app lost holds what brings the group back after the next start",
+		async () => {
+			const { fake, ana, bo, cy, b: closed, record, conversation } = await forgottenThenWithoutCy(true);
+			expect(record.read(LEGACY_RECORDS)).toBeNull();
+			await closed.host.open(bo);
+			const kept = await keptBy(closed);
+			expect(kept.map(({ conversation_id }) => conversation_id)).toEqual([conversation]);
+			expect(kept[0]?.expected).toMatchObject({ owner: ana, exact: true });
+			expect(kept[0]?.expected.members.toSorted()).toEqual([ana, bo, cy].toSorted());
+			// Bo's app again, its record as the close left it.
+			const b = await restarted(fake, closed, { store: record });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(record.read<Record<string, unknown>>(LEGACY_RECORDS)?.[conversation]).toEqual(kept[0]?.expected);
+		},
+		SLOW,
+	);
 });

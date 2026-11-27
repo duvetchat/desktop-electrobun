@@ -5,9 +5,9 @@
 // conversation. For one the person made here, this user and those they picked, of the kind they asked for, as it's
 // made: it goes once this device holds its group, which changes only by its own rules from then on. For a group this
 // device let go, as the API holds none or another one (#553), the core's record of it (forget_group's, `exact`): kept as
-// the core gave it, in the place of what was kept, which is back once the device holds the group again. The session
-// holds what it made or let go, so a store that can't keep it (its storage full or refused) still holds the
-// conversation to it until the app closes.
+// the core gave it, in the place of what was kept, which is back once the device holds the group again; the core keeps
+// it too, and a start takes back one this record lost (#594). The session holds what it made or let go, so a store that
+// can't keep it (its storage full or refused) still holds the conversation to it until the app closes.
 import type { Conversation } from "$lib/api/conversations";
 import { sameUsers } from "./members";
 import type { EngineStore } from "./store";
@@ -154,6 +154,16 @@ export function keepForgotten(store: EngineStore, conversationId: string, record
 	if (kept && kept.chosen) return;
 	const under = afterHeld(kept);
 	keep(store, conversationId, { ...peopleAlone(record), exact: true, ...(under === undefined ? {} : { under }) });
+}
+
+/**
+ * The core's record of a group this device let go, as a start takes it back (forgotten, #594): kept as forget_group's
+ * answer is (keepForgotten), where this device keeps none of a forget of the conversation, as a close between the core's
+ * forget and the app's own write, or a store that refused it, leaves it. One it keeps is its own.
+ */
+export function takeBackForgotten(store: EngineStore, conversationId: string, record: LegacyRecord) {
+	const kept = records(store).get(conversationId);
+	if (!(kept && kept.exact)) keepForgotten(store, conversationId, record);
 }
 
 /**

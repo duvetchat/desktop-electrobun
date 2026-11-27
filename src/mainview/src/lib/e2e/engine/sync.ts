@@ -29,6 +29,7 @@ import {
 	legacyRecord,
 	peopleOf,
 	recordMade,
+	takeBackForgotten,
 	type LegacyRecord,
 } from "./legacy";
 import {
@@ -95,6 +96,11 @@ interface InFlight {
 /** What forget_group answers: the record of the group it let go, exact (#553). */
 interface Forgotten {
 	expected: LegacyRecord;
+}
+
+/** A record the core keeps of a group it let go, by its conversation (forgotten, #594). */
+interface KeptForgotten extends Forgotten {
+	conversation_id: string;
 }
 
 /** The group as the core holds it (its `group`). */
@@ -427,6 +433,18 @@ export class Conversations {
 	async commitDue(conversationId: string): Promise<void> {
 		const conv = this.#known.get(conversationId) ?? (await this.#fresh(conversationId));
 		if (conv && !this.#inFlight.has(conversationId)) await this.#own(conv, "commit_pending", "due");
+	}
+
+	/**
+	 * At a start, before anything can bring a group back (#594): each record the core keeps of a group it let go
+	 * (forgotten) that the engine keeps none of a forget of, as a close between the core's forget and the app's own write
+	 * leaves it, is taken back by the forget's path, whose rules place it among the records the engine keeps.
+	 */
+	async takeBack(): Promise<void> {
+		const { records } = await this.#parts.host.handle<{ records: KeptForgotten[] }>({ cmd: "forgotten" });
+		for (const { conversation_id, expected } of records) {
+			takeBackForgotten(this.#parts.store, conversation_id, expected);
+		}
 	}
 
 	/**

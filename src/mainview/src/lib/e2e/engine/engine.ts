@@ -1667,6 +1667,9 @@ export class E2EEngine {
 		const state = await this.#identity();
 		// Set up here before the app closed, its first list not up: it goes up now, or waits for the person's Finish.
 		if (state.name === "new_device" && (await this.#firstListWaits())) return this.#listThisDevice(false);
+		// The core's records of the groups it let go, taken back before the device is ready, so before anything can bring
+		// a group back (#594): a take-back that fails fails the start, which goes again.
+		if (state.name === "ready") await this.#groups.takeBack();
 		this.#set(state);
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
