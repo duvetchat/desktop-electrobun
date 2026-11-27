@@ -71,11 +71,13 @@ export default {
 			...secondWindowCopyRules(),
 
 			// The app's own macOS libraries, which it loads from Resources/app/native/: the Liquid Glass behind the main
-			// window (#374, src/bun/liquid-glass.ts) and the traffic lights' place in the title line (#406,
-			// src/bun/window-buttons.ts). scripts.preBuild compiles them before every build; on Windows and Linux it
-			// writes empty placeholders there, which the app never loads.
+			// window (#374, src/bun/liquid-glass.ts), the traffic lights' place in the title line (#406,
+			// src/bun/window-buttons.ts) and the recovery key's Copy (src/bun/secret-clipboard.ts). scripts.preBuild
+			// compiles them before every build; on Windows and Linux it writes empty placeholders there, which the app
+			// never loads.
 			"native/macos/build/libLiquidGlass.dylib": "native/libLiquidGlass.dylib",
 			"native/macos/build/libWindowButtons.dylib": "native/libWindowButtons.dylib",
+			"native/macos/build/libPasteboard.dylib": "native/libPasteboard.dylib",
 
 			// The end-to-end encryption core, which the app also loads from Resources/app/native/ (src/bun/e2e/library.ts):
 			// a Windows x64 build carries its DLL, a Linux x64 one its shared object, and a macOS one none, where the core is
