@@ -552,7 +552,10 @@ export function sendEncrypted(message: Outgoing, upload?: UploadOptions): Promis
 		});
 		return tabs.call<DirectMessage | null>("sendMessage", { ...message, drawn: drawnHere(message.conversation_id) });
 	}
-	return engine ? engine.sendMessage(message, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
+	// The page that leads carries its drawing too, on the web (T-M2): once it closes, the next leader holds what it left
+	// waiting to it, as another tab's. The desktop app's one page holds its own by what it draws then.
+	const own = tabs ? { ...message, drawn: drawnHere(message.conversation_id) } : message;
+	return engine ? engine.sendMessage(own, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
 }
 /** An edit of the person's message, which shows at once. */
 export const editEncrypted = (conversationId: string, messageId: string, text: string) =>

@@ -755,4 +755,58 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		},
 		SLOW,
 	);
+
+	// Last, as its web engine's device makes the page's storage last, which the page does once.
+	// T-M2: on the web the page that leads isn't the page the person reads after it closes: what it sends keeps its
+	// drawing with what waits, as another tab's does, which the next leader's delivery is held to (R-M1). The desktop
+	// app has one page, whose own drawing then holds it: it keeps none.
+	describe("what the page's engine sends keeps who wrote it", () => {
+		/** Ana's DM with Bo, whose first device is set up, drawn on the page; a message there whose request found no answer. */
+		async function waiting(fake: FakeApi, ana: string) {
+			const bo = fake.addUser();
+			await firstDevice(fake, bo);
+			const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+			await drawnOnPage();
+			fake.refuse({ method: "POST", path: `/api/users/@me/conversations/${dm}/messages` }, 500);
+			const nonce = crypto.randomUUID();
+			await rejection(page.sendEncrypted({ conversation_id: dm, nonce, text: "waits" }));
+			const kept: Record<string, Record<string, unknown>> = JSON.parse(
+				localStorage.getItem(`duvet.e2e.${ana}.pending_sends`) ?? "{}",
+			);
+			return { bo, kept: kept[nonce] };
+		}
+
+		test(
+			"on the web, the page that leads keeps its drawing with what it sends",
+			async () => {
+				const fake = new FakeApi();
+				useFake(fake);
+				const ana = signedIn(fake);
+				const [locks, hub] = [new FakeLocks(), new FakeHub()];
+				const web = platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: async () => testHost() });
+				await page.startEngine(ana, web);
+				await until(() => page.encryption.state.name === "first_device");
+				await page.makeIdentity();
+				await page.keySaved();
+				const { bo, kept } = await waiting(fake, ana);
+				expect(kept).toMatchObject({ drawn: { type: 1, owner_id: ana, members: [{ user_id: ana }, { user_id: bo }] } });
+				expect(kept).not.toHaveProperty("here");
+			},
+			SLOW,
+		);
+
+		test(
+			"on the desktop, the page keeps none: what it draws then holds it",
+			async () => {
+				const fake = new FakeApi();
+				useFake(fake);
+				const ana = signedIn(fake);
+				await readyOnDesktop(ana, testHost());
+				const { kept } = await waiting(fake, ana);
+				expect(kept).toMatchObject({ here: true });
+				expect(kept).not.toHaveProperty("drawn");
+			},
+			SLOW,
+		);
+	});
 });
