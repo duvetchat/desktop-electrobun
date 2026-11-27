@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -373,6 +373,21 @@ describe("what asks the person first, outside the page", () => {
 		show(null);
 		expect(boxes.at(-1)?.closed).toBe(true);
 		expect(() => nativeNotice({ platform: "linux" })({ title: "three", message: "3" })).not.toThrow();
+	});
+
+	// #557's re-review, RM4: the box is the new device's whole defense, and one that can't show would stop every new
+	// computer's approval with nothing in the log. Here user32 doesn't load, as a box that fails on Windows doesn't.
+	test.skipIf(process.platform === "win32")("a notice's box that can't show says why in the log", async () => {
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			nativeNotice({ platform: "win32" })({ title: "Set up this device (0000 1111 2222 3333)", message: "…" });
+			const said = () =>
+				logged.mock.calls.some(([line]) => String(line).includes("the notice's box couldn't be shown"));
+			for (let tries = 0; tries < 100 && !said(); tries++) await Bun.sleep(20);
+			expect(said()).toBe(true);
+		} finally {
+			logged.mockRestore();
+		}
 	});
 
 	// The real box, on Windows alone: it shows while Bun goes on (its loop below runs meanwhile), and closing takes it

@@ -136,8 +136,18 @@ function windowsNotice(notice: Notice): NoticeBox {
 		worker.terminate();
 		URL.revokeObjectURL(url);
 	};
-	worker.addEventListener("message", ended);
-	worker.addEventListener("error", ended);
+	// A box that can't show leaves the new device with nothing to compare (RM4): the log says why, as a confirmation's does.
+	worker.addEventListener("message", (event: MessageEvent<unknown>) => {
+		const { data } = event;
+		if (typeof data === "object" && data !== null && "failed" in data) {
+			console.error("[e2e] the notice's box couldn't be shown:", data.failed);
+		}
+		ended();
+	});
+	worker.addEventListener("error", (event: ErrorEvent) => {
+		console.error("[e2e] the notice's worker stopped:", event.message);
+		ended();
+	});
 	return {
 		close() {
 			const symbols = (user32 ??= openUser32());
@@ -155,10 +165,11 @@ function windowsNotice(notice: Notice): NoticeBox {
 
 /**
  * A notice's worker, run from its own source (windowsNotice), as core.ts runs the core's: every name it uses is in it,
- * or a global. It shows the box, then says it closed.
+ * or a global. It shows the box, then says it closed, or what failed: the library, or the box (MessageBoxW answers 0).
  */
 export function noticeWorker({ title, message }: Notice): void {
 	void (async () => {
+		let failed: string | null = null;
 		try {
 			const ffi = await import("bun:ffi");
 			const { ptr, i32, u32 } = ffi.FFIType;
@@ -171,9 +182,13 @@ export function noticeWorker({ title, message }: Notice): void {
 				MessageBoxW: { args: [ptr, ptr, ptr, u32], returns: i32 },
 			}).symbols;
 			// MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST: above the window, which stays usable.
-			MessageBoxW(null, utf16(message), utf16(title), 0x40 | 0x10000 | 0x40000);
+			if (MessageBoxW(null, utf16(message), utf16(title), 0x40 | 0x10000 | 0x40000) === 0) {
+				throw new Error("MessageBoxW failed");
+			}
+		} catch (error) {
+			failed = error instanceof Error ? error.message : String(error);
 		} finally {
-			postMessage("closed");
+			postMessage(failed === null ? "closed" : { failed });
 		}
 	})();
 }
