@@ -1,7 +1,7 @@
-// The servers of a local stack (PLAN-E2E-CLIENTES.md, Task 34; docs/e2e-on-windows.md): the fake S3 and mail server,
-// the API and the gateway, on the Postgres and Dragonfly the API's harness keeps up (its run.ts with E2E_KEEP=1),
-// started by the harness's own lib.ts as its clients' suites start them: its environment, its seeded accounts and its
-// E2E_MIN_CLIENTS, and nothing of a .env.
+// The servers of a local stack (PLAN-E2E-CLIENTES.md, Task 34; docs/e2e-on-windows.md, docs/e2e-on-linux.md): the fake
+// S3 and mail server, the API and the gateway, on the Postgres and Dragonfly the API's harness keeps up (its run.ts with
+// E2E_KEEP=1), started by the harness's own lib.ts as its clients' suites start them: its environment, its seeded
+// accounts and its E2E_MIN_CLIENTS with Linux added, and nothing of a .env.
 //
 //   bun scripts/local-stack.ts [command ...]
 //
@@ -14,6 +14,7 @@
 // in the temp folder).
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pkg from "../package.json";
 
 const API_PORT = 9876;
 const GATEWAY_ADDR = "127.0.0.1:8765";
@@ -45,10 +46,17 @@ async function answers(url: string): Promise<boolean> {
 	return false;
 }
 
+// The harness's minimums, and Linux at this checkout's version, which production names only once Linux is turned on
+// (PLAN-E2E-PLATAFORMAS.md, «Encender una plataforma»): its builds' encrypted conversations open here.
+const minimums = lib.minClientsWith({ "desktop-linux": pkg.version });
 lib.startFakes();
 // The copies of images messages name are served from the API itself.
-lib.startApi("local-api", { DUVET_API_APPLICATION_PORT: String(API_PORT), API_PUBLIC_URL: api });
-lib.startGateway("local-gateway", { ADDR: GATEWAY_ADDR });
+lib.startApi("local-api", {
+	DUVET_API_APPLICATION_PORT: String(API_PORT),
+	API_PUBLIC_URL: api,
+	E2E_MIN_CLIENTS: minimums,
+});
+lib.startGateway("local-gateway", { ADDR: GATEWAY_ADDR, E2E_MIN_CLIENTS: minimums });
 const up = {
 	fakes: await lib.fakesUp(),
 	api: await answers(`${api}/health`),

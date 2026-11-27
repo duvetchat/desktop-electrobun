@@ -1,16 +1,18 @@
 name: Release
 
-# The desktop's builds for Windows, on GitHub's Windows runner: Electrobun builds only for the system it runs on, and the
-# organisation's own runners are Linux.
-#   - A tag v<package.json's version> on main publishes that version (#456): the stable build, signed and published to
-#     the rolling desktop-stable release of the public duvetchat/releases, where the app's updater and
-#     duvet.chat/download look. Any other tag stops before the build.
+# The desktop's builds, on GitHub's runners: Electrobun builds only for the system it runs on.
+#   - A tag v<package.json's version> on main publishes that version (#456): each system's stable build, signed and
+#     published to the rolling desktop-stable release of the public duvetchat/releases, where the app's updater and
+#     duvet.chat/download look. The windows job publishes stable-win-x64-*, the linux job stable-linux-x64-* (#590), with
+#     the same steps; each signed manifest names its platform, so none serves another system, and one system's job
+#     failing leaves the other's release as it goes. Any other tag stops before the build.
 #   - By hand (workflow_dispatch), the test channel (PLAN-E2E-CLIENTES.md, Task 34 and Ruling 9): the canary build of
-#     the branch it's given, pointed at the API it's given (lib/common/common.ts's targets; `local` is a stack on the
-#     same computer, at localhost:9876 and localhost:8765, as docs/e2e-on-windows.md brings it up), whose installer goes
-#     into a prerelease of this repository with the job's own token. It signs no update and never reaches
-#     desktop-stable: a canary doesn't update itself (src/bun/updates.ts).
-# Before either builds, the core's DLL it ships is checked against native/core/SOURCE.json.
+#     the branch it's given, on the system it's given (Windows, Linux or macOS, unsigned), pointed at the API it's given
+#     (lib/common/common.ts's targets; `local` is a stack on the same computer, at localhost:9876 and localhost:8765, as
+#     docs/e2e-on-windows.md and docs/e2e-on-linux.md bring it up), whose installer goes into a prerelease of this
+#     repository with the job's own token. It signs no update and never reaches desktop-stable: a canary doesn't update
+#     itself (src/bun/updates.ts).
+# Before either builds, the core's library it ships is checked against native/core/SOURCE.json.
 on:
   push:
     tags: ["v*"]
@@ -20,6 +22,11 @@ on:
         description: The branch, tag or commit to build (empty, the one the workflow runs from)
         required: false
         default: ""
+      system:
+        description: The system to build for
+        type: choice
+        options: [windows, linux, macos]
+        default: windows
       target:
         description: The API and gateway the build talks to
         type: choice
@@ -83,9 +90,55 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
 
+  # The windows job's steps, on Linux x64 (#590): src/bun/release-workflow.test.ts holds the two jobs to the same ones.
+  # A Linux build carries the core, which no frame may reach before RM1 (#588), so a tag publishes one only once the
+  # repository's RELEASE_LINUX variable says Linux is on (PLAN-E2E-PLATAFORMAS.md's turning on).
+  linux:
+    if: github.event_name == 'push' && vars.RELEASE_LINUX == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Only the tag of package.json's version, on main
+        shell: bash
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v$version" ]; then
+            echo "::error::$GITHUB_REF isn't v$version, package.json's version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::v$version isn't on main"
+            exit 1
+          fi
+      # The shared object the build copies into the app, as the windows job checks its DLL.
+      - name: The core's artifacts, as native/core/SOURCE.json records them
+        run: bun test ./src/bun/core-artifacts.test.ts
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      # stable-linux-x64-Duvet.tar.zst (the update), -Duvet-Setup.tar.gz (the installer) and -update.json.
+      - run: bun run build:stable
+      - name: Sign the update
+        run: bun scripts/sign-update.ts
+        env:
+          DESKTOP_UPDATE_SIGNING_KEY: ${{ secrets.DESKTOP_UPDATE_SIGNING_KEY }}
+      - name: Publish to duvetchat/releases
+        run: bun scripts/publish-release.ts
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+
   test-channel:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: windows-latest
+    runs-on: ${{ inputs.system == 'linux' && 'ubuntu-24.04' || inputs.system == 'macos' && 'macos-latest' || 'windows-latest' }}
     timeout-minutes: 30
     # Its token makes this repository's prerelease, and nothing else: it gets no secret of the stable channel's.
     permissions:
@@ -116,14 +169,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILT: ${{ inputs.ref || github.ref_name }}
+          SYSTEM: ${{ inputs.system }}
           TARGET: ${{ inputs.target }}
         run: |
           sha=$(git rev-parse HEAD)
           tag="test-$GITHUB_RUN_NUMBER"
-          files=(artifacts/canary-win-x64-*Setup*.zip artifacts/canary-win-x64-update.json)
+          ls -l artifacts
+          case "$SYSTEM" in
+            linux)
+              files=(artifacts/canary-linux-x64-*Setup*.tar.gz artifacts/canary-linux-x64-update.json)
+              how="Extract the tar.gz and run its installer: it installs over the canary this computer has, keeping its"
+              how="$how data folder (~/.local/share/com.duvet.desktop/canary)." ;;
+            macos)
+              files=(artifacts/canary-macos-arm64-*.dmg artifacts/canary-macos-arm64-update.json)
+              how="Open the dmg and drag the app into Applications. It's unsigned: macOS opens it only once it's allowed"
+              how="$how in System Settings, Privacy & Security." ;;
+            *)
+              files=(artifacts/canary-win-x64-*Setup*.zip artifacts/canary-win-x64-update.json)
+              how="Extract the zip and run Duvet-Setup-canary.exe: it installs over the canary this computer has, keeping"
+              how="$how its data folder." ;;
+          esac
           ls -l "${files[@]}"
           notes="The canary build of $BUILT at $sha, unsigned, talking to the $TARGET target's API and gateway"
-          notes="$notes (local: localhost:9876 and localhost:8765). Extract the zip and run Duvet-Setup-canary.exe:"
-          notes="$notes it installs over the canary this computer has, keeping its data folder. It never updates itself."
+          notes="$notes (local: localhost:9876 and localhost:8765). $how It never updates itself."
           gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$sha" \
-            --title "Test build $GITHUB_RUN_NUMBER: $BUILT (${sha:0:7}, $TARGET)" --notes "$notes"
+            --title "Test build $GITHUB_RUN_NUMBER: $BUILT (${sha:0:7}, $SYSTEM, $TARGET)" --notes "$notes"
