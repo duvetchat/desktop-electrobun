@@ -12,7 +12,16 @@ import {
 	until,
 	useFake,
 } from "../testing/engines";
-import { LEGACY_RECORDS } from "./legacy";
+import {
+	LEGACY_RECORDS,
+	forgetRecord,
+	keepChosen,
+	keepForgotten,
+	keepMade,
+	legacyRecord,
+	recordMade,
+	type LegacyRecord,
+} from "./legacy";
 
 // A conversation from before the cutover (PLAN-E2E-CLIENTES.md, «Entrar a un grupo», its record; Ruling 14): its members
 // as this device first saw them, which its group must have, until the person says the members of today are fine.
@@ -203,4 +212,96 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 		},
 		SLOW,
 	);
+});
+
+describe("the record of a group this device let go (#553)", () => {
+	// forget_group's record (the core's `exact`): what brings the group back has exactly its users and owner. Kept as the
+	// core gave it, where the creator's is kept (legacy_records), and gone once the device holds the group again.
+	const member = (id: string) => ({
+		id: `m-${id}`,
+		conversation_id: "c",
+		user_id: id,
+		created_at: "",
+		updated_at: "",
+		user: { id, username: id, alias: null, avatar: null, banner: null },
+	});
+	const group = (legacy = false, users = ["ana", "bo"]): Conversation => ({
+		id: "c",
+		type: 2,
+		name: null,
+		owner_id: "ana",
+		created_at: "",
+		updated_at: "",
+		deleted_at: null,
+		members: users.map(member),
+		legacy,
+		mls: null,
+	});
+	const forgotten: LegacyRecord = { owner: "ana", members: ["ana", "bo"], exact: true };
+
+	test("kept as the core gave it, exact, it founds as it is and goes once the group is held", () => {
+		const store = memoryStore();
+		keepForgotten(store, "c", forgotten);
+		expect(legacyRecord(store, group())).toEqual(forgotten);
+		expect(store.read<unknown>(LEGACY_RECORDS)).toEqual({ c: forgotten });
+		expect(recordMade(store, "c")).toBe(true);
+		forgetRecord(store, "c");
+		expect(legacyRecord(store, group())).toBeNull();
+		expect(store.read(LEGACY_RECORDS)).toBeNull();
+	});
+
+	test("it takes the place of a record from before the cutover, which is back once the group is held", () => {
+		const store = memoryStore();
+		const first = legacyRecord(store, group(true, ["ana", "bo", "cy"]));
+		expect(first).toEqual({ owner: "ana", members: ["ana", "bo", "cy"] });
+		keepForgotten(store, "c", forgotten);
+		expect(legacyRecord(store, group(true))).toEqual(forgotten);
+		forgetRecord(store, "c");
+		expect(legacyRecord(store, group(true))).toEqual(first);
+		// A second forget before the group is held again takes its place, and gives back the same.
+		keepForgotten(store, "c", forgotten);
+		keepForgotten(store, "c", { ...forgotten, members: ["ana"] });
+		forgetRecord(store, "c");
+		expect(legacyRecord(store, group(true))).toEqual(first);
+	});
+
+	test("it takes the place of the creator's picks, and a yes let go stays let go", () => {
+		const made = memoryStore();
+		keepMade(made, "c", { owner: "ana", members: ["ana", "bo"] });
+		keepForgotten(made, "c", forgotten);
+		expect(legacyRecord(made, group())).toEqual(forgotten);
+		forgetRecord(made, "c");
+		expect(legacyRecord(made, group())).toBeNull();
+		// The person's yes was let go as its group was held: none is made again from a listing, nor after a forget.
+		const letGo = memoryStore();
+		keepChosen(letGo, "c", { owner: "ana", members: ["ana", "bo"] });
+		forgetRecord(letGo, "c");
+		keepForgotten(letGo, "c", forgotten);
+		forgetRecord(letGo, "c");
+		expect(legacyRecord(letGo, group(true))).toBeNull();
+	});
+
+	test("the person's yes stands over a forget, and a yes after one takes its place", () => {
+		const yes = { owner: "ana", members: ["ana", "bo", "eve"] };
+		const before = memoryStore();
+		keepChosen(before, "c", yes);
+		keepForgotten(before, "c", forgotten);
+		expect(legacyRecord(before, group())).toEqual(yes);
+		const after = memoryStore();
+		keepForgotten(after, "c", forgotten);
+		keepChosen(after, "c", yes);
+		expect(legacyRecord(after, group())).toEqual(yes);
+		forgetRecord(after, "c");
+		expect(legacyRecord(after, group(true))).toBeNull();
+	});
+
+	test("one the store kept reads exact only as true, and nothing else as a record", () => {
+		const store = memoryStore();
+		store.write(LEGACY_RECORDS, {
+			c: { owner: "ana", members: ["ana", "bo"], exact: "yes" },
+			d: { members: ["ana", 7], exact: true },
+		});
+		expect(legacyRecord(store, group())).toEqual({ owner: "ana", members: ["ana", "bo"] });
+		expect(legacyRecord(store, { ...group(), id: "d" })).toBeNull();
+	});
 });

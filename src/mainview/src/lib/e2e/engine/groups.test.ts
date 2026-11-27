@@ -17,8 +17,10 @@ import {
 	turnEnded,
 	until,
 	useFake,
+	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
+import { LEGACY_RECORDS } from "./legacy";
 
 // Joining and making a conversation's group (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»), and a blocked group's restart:
 // who makes a group, and how the others come into it.
@@ -303,7 +305,7 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 
 	// C1: a group's creation whose request never reached the API, then the app closed: the API lists no group, and the
 	// core still holds the creation. It's dropped and made again, and no open claims key packages for a creation that
-	// can't go.
+	// can't go. Dropped as unanswered, never let go as a group the API doesn't hold (#553): nothing of it is a record.
 	test(
 		"a group's creation cut before its answer is made again after a restart",
 		async () => {
@@ -318,7 +320,8 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 
 			// Started again, and opened twice, as its view would: the group is made once more, and only for that is
 			// anything claimed, one key package of each member's.
-			const again = await restarted(fake, a);
+			const told: string[] = [];
+			const again = await restarted(fake, a, { host: watchedHost(a.host, told) });
 			await again.engine.openConversation(conversation);
 			await again.engine.openConversation(conversation);
 			const listed = (await again.api.conversations()).find((conv) => conv.id === conversation);
@@ -328,6 +331,9 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			});
 			await sameGroup([again, b], conversation);
 			expect(again.engine.conversationState(conversation)).toBeNull();
+			expect(told).toContain("commit_result");
+			expect(told).not.toContain("forget_group");
+			expect(again.store.read(LEGACY_RECORDS)).toBeNull();
 		},
 		SLOW,
 	);

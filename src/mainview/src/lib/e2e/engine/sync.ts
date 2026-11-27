@@ -4,9 +4,11 @@
 // where the core is, 50 entries an apply. A device out of the group comes in by its welcome (from where the core is, or
 // from its leaf's number, `joined_seq`) or an external commit, and makes the group where it may (again, where its own
 // creation never reached the API); its commits go through commits.ts, their bytes kept until an answer comes, the
-// members routes' too (members.ts: an addition, a removal) and a member's leave. A conversation gone, or its user out of
-// it, is let go. The engine runs this work in its turn, one conversation at a time: this class keeps what's between
-// turns, the entries heard, the commits whose requests go on, and what each conversation says to the person.
+// members routes' too (members.ts: an addition, a removal) and a member's leave. A group the API doesn't hold, as it
+// lists none or holds another one at the device's generation, is let go for the API's (#553: forget_group, its record
+// kept, which whatever brings the group back is held to). A conversation gone, or its user out of it, is let go. The
+// engine runs this work in its turn, one conversation at a time: this class keeps what's between turns, the entries
+// heard, the commits whose requests go on, and what each conversation says to the person.
 import { FetchError } from "$lib/api/api";
 import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
 import type { Commit, CommitTaken, QueuePage } from "$lib/api/e2e";
@@ -19,7 +21,16 @@ import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
 import { observeUsers, withIdentities } from "./identity";
-import { forgetRecord, isRecord, keepChosen, legacyRecord, peopleOf, recordMade, type LegacyRecord } from "./legacy";
+import {
+	forgetRecord,
+	isRecord,
+	keepChosen,
+	keepForgotten,
+	legacyRecord,
+	peopleOf,
+	recordMade,
+	type LegacyRecord,
+} from "./legacy";
 import {
 	addition,
 	checkAddition,
@@ -79,6 +90,11 @@ interface InFlight {
 	cancel: (() => void) | null;
 	send?: (commit: Commit) => Promise<CommitTaken>;
 	user?: string;
+}
+
+/** What forget_group answers: the record of the group it let go, exact (#553). */
+interface Forgotten {
+	expected: LegacyRecord;
 }
 
 /** The group as the core holds it (its `group`). */
@@ -257,6 +273,11 @@ export class Conversations {
 	/** Groups under an external sender other than the pinned one: this device never goes in (Ruling 32). */
 	readonly #otherSender = new Set<string>();
 	/**
+	 * Conversations whose queue brought a welcome to another group at the generation this device holds (another_group,
+	 * #553): what's applied stops there, and the device lets its own go for the API's.
+	 */
+	readonly #another = new Set<string>();
+	/**
 	 * Restarts the core refused (a successor's, without a statement it needs), or whose commit the API's validator did
 	 * (#550), by conversation, with the queue's last number then: Restart is off until a newer entry comes (task 22's
 	 * review, M8).
@@ -344,7 +365,7 @@ export class Conversations {
 		for (const kept of [this.#known, this.#heard, this.#joinsLost, this.#through, this.#accepted, this.#deviceless]) {
 			kept.clear();
 		}
-		for (const kept of [this.#settling, this.#removed, this.#otherSender]) kept.clear();
+		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#another]) kept.clear();
 		this.#cantRestart.clear();
 		this.#refused.clear();
 		this.#keepRefusals();
@@ -428,7 +449,7 @@ export class Conversations {
 		if (!conv?.mls) conv = await this.#fresh(conversationId);
 		if (!conv) return;
 		if (conv.mls) return this.sync(conv.id);
-		if (!mayMake(conv, this.#parts.user)) return this.#set(conv.id, this.#waiting(conv));
+		if (!mayMake(conv, this.#parts.user)) return this.#groupless(conv);
 		if (!this.#inFlight.has(conv.id)) await this.#make(conv);
 	}
 
@@ -687,13 +708,20 @@ export class Conversations {
 	}
 
 	/**
-	 * A conversation the API lists without a group: it waits for whoever makes it, unless this device's core holds a
-	 * creation of its own that never reached the API, whose request went with the app, which is made again (#make).
+	 * A conversation the API lists without a group: it waits for whoever makes it. What this device's core holds of it
+	 * isn't the API's (#553). Where this user may make it, #make deals with it and makes the group again (`make`); anyone
+	 * else, and the turn that follows a commit's answer, lets go of a group the core confirmed, so the founding made again
+	 * brings this device in. A creation of its own still waiting for its answer is #make's; its row alone waits.
 	 */
-	async #groupless(conv: Conversation) {
+	async #groupless(conv: Conversation, make = true) {
 		this.#set(conv.id, this.#waiting(conv));
-		if (!mayMake(conv, this.#parts.user) || this.#inFlight.has(conv.id)) return;
-		if (await this.#group(conv.id)) await this.#make(conv);
+		if (this.#inFlight.has(conv.id)) return;
+		const held = await this.#holding(conv.id);
+		if (!held) return;
+		const maker = mayMake(conv, this.#parts.user);
+		if (maker && make) return this.#make(conv);
+		if (held === "group") await this.#forget(conv.id, !maker);
+		else if (maker) this.#set(conv.id, { name: "wait_rejoin" });
 	}
 
 	/**
@@ -702,18 +730,35 @@ export class Conversations {
 	 * whether to go on with those listed (`accept`). A creation of this device's that the core still holds never reached
 	 * the API (its request cut, then the app closed): the core is told no answer came, which drops a creation whole,
 	 * before anything is claimed, and the group is made again. Were the old request to land after all, this creation
-	 * loses its 409, and the device joins by external commit.
+	 * loses its 409, and the device joins by external commit. Any other group the core holds there the API doesn't (#553:
+	 * a founding it answered for and never kept, a group it lost): let go, and made again held to its record, which the
+	 * API's listing must have. Its row alone: nothing is made before the API's group passes the epoch it saw.
 	 */
 	async #make(conv: Conversation) {
-		const founding = await this.#founding(conv);
+		let founding = await this.#founding(conv);
 		// Not drawn yet: nothing is made until it is.
 		if (!founding) return;
 		if (founding === "differs" || !isRecord(conv, founding)) {
 			return this.#membersChanged(conv, conv.mls?.generation ?? 0);
 		}
-		if (await this.#group(conv.id)) {
-			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
+		let held = await this.#holding(conv.id);
+		if (held === "group") {
+			await this.#parts.host
+				.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false })
+				.catch((error: unknown) => {
+					// Nothing of its own waits there: a group the core confirmed, let go below.
+					if (!(error instanceof CoreError && error.code === "not_found")) throw error;
+				});
+			held = await this.#holding(conv.id);
 		}
+		if (held === "group" && (await this.#forget(conv.id, true))) {
+			founding = legacyRecord(this.#parts.store, conv) ?? founding;
+			if (!isRecord(conv, founding)) return this.#membersChanged(conv, 0);
+			held = null;
+		}
+		// Its row alone (it left, was taken out, or the API refused its external commit): create_group is `exists` until
+		// the API's group, which another member makes, passes the epoch it saw.
+		if (held === "row") return this.#set(conv.id, { name: "wait_rejoin" });
 		let commit: Commit;
 		try {
 			commit = await makeGroup(this.#parts, conv, this.#sender, founding);
@@ -755,7 +800,8 @@ export class Conversations {
 		const conv = given.mls ? given : await this.#fresh(given.id);
 		if (!conv) return this.#drop(given.id);
 		const { id, mls } = conv;
-		if (!mls) return this.#set(id, this.#waiting(conv));
+		// Without a group on the API: after a commit's answer too, so a founding it never kept is let go at once.
+		if (!mls) return this.#groupless(conv, false);
 		// A commit of this device's waits for its answer: what's heard waits for it too.
 		if (this.#inFlight.has(id)) return;
 		const heard = [...(this.#heard.get(id)?.values() ?? [])].sort((a, b) => a.seq - b.seq);
@@ -768,8 +814,9 @@ export class Conversations {
 			heard.some((entry) => !hasData(entry)) ||
 			this.#settling.has(id) ||
 			mls.last_seq > (at.through ?? 0);
-		// Out of the group (no number to read from), #after reads its welcome or joins.
-		const whole = behind && from !== null;
+		// Out of the group (no number to read from), #after reads its welcome or joins; so it does once another group's
+		// welcome came (#553), whose own the device lets go.
+		const whole = behind && from !== null && !this.#another.has(id);
 		if (whole) {
 			const done = await this.#readQueue(conv, from);
 			// The queue doesn't go back that far (410): this device joins again, its database as it is (13).
@@ -805,7 +852,8 @@ export class Conversations {
 			}
 			at = { through: applied.applied_through, gap: null, due: applied.commit_due };
 			start += APPLY_MOST;
-			if (start >= entries.length) return at;
+			// Another group's welcome (#553): nothing more of the API's goes to the device's own.
+			if (start >= entries.length || this.#another.has(conv.id)) return at;
 		}
 	}
 
@@ -843,6 +891,8 @@ export class Conversations {
 		for (const { kind, result, rule, seq } of applied.results) {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);
+			// The API's group at this generation isn't the one this device holds (#553).
+			if (refused && rule === "another_group") this.#another.add(conv.id);
 			if (refused && MEMBERS_REFUSED.has(rule ?? "")) {
 				this.#refuse(conv.id, generations.get(seq) ?? conv.mls?.generation ?? 0);
 			}
@@ -870,6 +920,7 @@ export class Conversations {
 				Object.assign(conv.mls, { generation, epoch, last_seq, floor_seq });
 			}
 			const at = await this.#applyAll(conv, page.entries);
+			if (this.#another.has(conv.id)) return at;
 			if (at.gap !== null) {
 				// The core needs what comes before this page: from there, as long as that's before where this read began.
 				if (at.gap - 1 >= from) throw new Error(`the queue of ${conv.id} skips entry ${at.gap}`);
@@ -902,6 +953,48 @@ export class Conversations {
 		this.#settling.delete(id);
 	}
 
+	/**
+	 * What the core holds of the conversation's group: the group, its row alone (it left, was taken out, or the API
+	 * refused its external commit: `not_found` `membership`), or nothing.
+	 */
+	async #holding(id: string): Promise<"group" | "row" | null> {
+		try {
+			await this.#parts.host.handle({ cmd: "group", conversation_id: id });
+			return "group";
+		} catch (error) {
+			if (!(error instanceof CoreError && error.code === "not_found")) throw error;
+			return error.what === "membership" ? "row" : null;
+		}
+	}
+
+	/**
+	 * Lets go of the group the core holds of a conversation whose API holds none, or another one at its generation (#553:
+	 * forget_group), its block too, and keeps its record (keepForgotten), which whatever brings the group back is held
+	 * to. What waited to be sent there goes stale, for the sends to make again. A commit of this device's kept there
+	 * (staged after a refusal, or its bytes gone with the app) never entered a group the API doesn't hold: `drop` tells
+	 * the core so, which drops it; without it, nothing goes while one waits. Whether the group went: not where the core
+	 * holds none, nor its row alone, which waits for the API's group to pass its epoch.
+	 */
+	async #forget(id: string, drop: boolean): Promise<boolean> {
+		const { host } = this.#parts;
+		const forget = () => host.handle<Forgotten>({ cmd: "forget_group", conversation_id: id });
+		let forgotten: Forgotten;
+		try {
+			forgotten = await forget().catch(async (error: unknown) => {
+				if (!drop || !(error instanceof CoreError && error.code === "pending_commit")) throw error;
+				await host.handle({ cmd: "commit_result", conversation_id: id, accepted: false, invalid: true });
+				return forget();
+			});
+		} catch (error) {
+			const waits = error instanceof CoreError && (error.code === "not_found" || error.code === "pending_commit");
+			if (waits) return false;
+			throw error;
+		}
+		this.#settling.delete(id);
+		keepForgotten(this.#parts.store, id, forgotten.expected);
+		return true;
+	}
+
 	/** The group as the core holds it, or null without one. */
 	async #group(id: string): Promise<Held | null> {
 		try {
@@ -921,6 +1014,9 @@ export class Conversations {
 	 * commit of its lost, by when that welcome is stale. Else an external commit.
 	 */
 	async #after(given: Conversation, at: Where, read: boolean): Promise<void> {
+		// Another member's group at this device's generation (#553): its own goes, and it comes in by an external commit,
+		// held to the record, as the welcome its key package opened is spent.
+		if (this.#another.delete(given.id) && (await this.#forget(given.id, true))) return this.#join(given);
 		let conv = given;
 		const held = await this.#group(conv.id);
 		if (held) this.#behind(conv.id, held.generation);
@@ -1222,7 +1318,11 @@ export class Conversations {
 				return;
 			}
 			if (!(error instanceof CoreError && error.code === "rule_violation")) throw error;
-			if (error.rule === "stale_group_info") return;
+			// A group info behind the epoch its row saw (#553): it waits for another member's commit to pass it.
+			if (error.rule === "stale_group_info") {
+				if ((await this.#holding(id)) === "row") this.#set(id, { name: "wait_rejoin" });
+				return;
+			}
 			if (error.rule === "member_list_mismatch") return this.#membersChanged(conv, info.generation);
 			if (error.rule === "external_sender_mismatch") this.#otherSender.add(id);
 			const final = error.rule === "external_sender_mismatch" || error.rule === "group_blocked";
@@ -1383,7 +1483,7 @@ export class Conversations {
 		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost, this.#through]) {
 			kept.delete(id);
 		}
-		for (const kept of [this.#settling, this.#removed, this.#otherSender]) kept.delete(id);
+		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#another]) kept.delete(id);
 		this.#cantRestart.delete(id);
 		this.#unrefuse(id);
 		this.#accepted.delete(id);
