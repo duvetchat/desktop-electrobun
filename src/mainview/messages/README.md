@@ -15,6 +15,10 @@ Every word the app shows comes from here, through `t()` (`$lib/i18n`). `en.json`
 3. **Add a note in `descriptions.json`** when the English alone doesn't say what it means: where it shows, what fills each placeholder, and whether the word is a verb or a noun. Start it with `[short]` when it sits in a fixed width (a button, a tab, a menu item, a column).
 4. **Keep the tests on English:** `t()` gives English in the tests. A test that reads a component's source looks for the key; a test of what's drawn reads the English.
 
+### A translation longer than its English
+
+A `[short]` message's translation more than 1.4 times as long as its English (counting what it shows, and English of four characters or more) fails `src/lib/i18n.test.ts`, which lists it (#562). Look at it in the app where it's narrowest: the sidebar at its narrowest (232 px), Settings in a window at the main window's minimum, a split pane. Then either shorten it, or add the line the test printed to `src/lib/i18n/long-labels.json`, in alphabetical order, with the words that fit. A change to those words is looked at again. The file began with every such translation there was when the check came in.
+
 ### One sentence, one key
 
 Never build a sentence out of pieces: other languages reorder, inflect and agree. For example, `"Kick " + name + " from " + space + "?"` becomes one key, `"Kick {name} from {space}?"`.
