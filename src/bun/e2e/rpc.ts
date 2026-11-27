@@ -74,6 +74,7 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 	"refresh",
 	"join_external",
 	"reset_group",
+	"forget_group",
 	"group",
 	"apply",
 	"encrypt",

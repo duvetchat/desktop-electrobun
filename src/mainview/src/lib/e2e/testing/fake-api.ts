@@ -848,6 +848,18 @@ export class FakeApi {
 		conv.floor = floor;
 	}
 
+	/**
+	 * The API holds no group of the conversation any more, as a database restored from before its founding would: its
+	 * group, queue and messages go, its numbers start over, and it's listed without a group (#553).
+	 */
+	loseGroup(conversationId: string) {
+		const conv = this.#conversations.get(conversationId);
+		if (!conv) throw new Error(`no conversation ${conversationId}`);
+		Object.assign(conv, { group: null, seq: 0, floor: 1, entries: [], messages: [], deleted: new Set() });
+		Object.assign(conv, { leaves: new Map(), commits: new Map(), leavers: new Map(), proposed: new Set() });
+		conv.departures = new Map();
+	}
+
 	/** The conversation is deleted, as the API deletes one: no list has it, and its routes answer 404. */
 	deleteConversation(conversationId: string) {
 		if (!this.#conversations.delete(conversationId)) throw new Error(`no conversation ${conversationId}`);

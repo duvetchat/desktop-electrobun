@@ -5,12 +5,14 @@ import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { Identity } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import { MAX_FILE_NAME } from "../conventions";
+import { CoreError } from "../errors";
 import { FakeApi, type GatewayEvent } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import type { CoreHost } from "../host";
 import {
 	answeringHost,
 	approvedDevice,
+	commitByHand,
 	filesOn,
 	firstDevice,
 	groupOf,
@@ -29,10 +31,11 @@ import {
 	turnEnded,
 	until,
 	useFake,
+	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
 import { useXHR } from "../testing/xhr";
-import { keepMade } from "./legacy";
+import { LEGACY_RECORDS, keepMade } from "./legacy";
 import { PENDING_SENDS, type EngineStore } from "./store";
 
 // Step 5: the server as an attacker, against the desktop's and the web's engine (PLAN-E2E-CLIENTES.md, «Lo que el paso
@@ -1330,6 +1333,39 @@ describe.skipIf(!coreLibrary)("what goes is made for the group that was compared
 		},
 		SLOW,
 	);
+
+	// The comparison after the bytes (`differs`): the look passed, and the page stopped drawing Eve while Bo's device made
+	// the message's bytes, of the group that holds her. The look ran before; the bytes are of the group now: only the
+	// comparison after them holds the message, as nothing more goes where the group holds someone the page doesn't draw.
+	test(
+		"someone the page stops drawing once the bytes are made holds them, though the look before passed",
+		async () => {
+			let hidden = false;
+			const { fake, bo, e, a, conversation } = await evesGroup(() => hidden);
+			// A core that, once armed, hides Eve from Bo's page right after it makes bytes again under a nonce it has: the
+			// delivery's, after the look.
+			let armed = false;
+			const made = new Set<string>();
+			const core = testHost();
+			const host = answeringHost(core, (command) => {
+				if (command.cmd !== "encrypt" || !armed) return undefined;
+				const nonce = String(command.nonce);
+				if (!made.has(nonce)) return void made.add(nonce);
+				armed = false;
+				return core.handle({ ...command, cmd: "encrypt" }).then((bytes) => {
+					hidden = true;
+					return bytes;
+				});
+			});
+			const b = await firstDevice(fake, bo, { host });
+			await sameGroup([e, a, b], conversation);
+			armed = true;
+			expect(await rejection(send(b, conversation, "for Ana"))).toMatchObject({ code: "other_members" });
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([]);
+			expect(b.engine.conversationState(conversation)).toMatchObject({ name: "other_members" });
+		},
+		SLOW,
+	);
 });
 
 describe.skipIf(!coreLibrary)("the server's deleted IDs delete nothing the client holds", () => {
@@ -1468,14 +1504,10 @@ describe.skipIf(!coreLibrary)("a 2xx that stored nothing loses nothing", () => {
 
 	// The API's own answers from here on, with nothing kept and no event sent (forget).
 	//
-	// desktop-electrobun#553, skipped until the core can let go of a group (the design is in step 5's fixes, desktop
-	// batch 4's report). The API's queue is the truth: a device whose group the API doesn't hold leaves its own and
+	// #553: the API's queue is the truth. A device whose group the API doesn't hold leaves its own (forget_group) and
 	// takes the API's, made again where the API has none, and what its person typed goes in the group it ends in. The
-	// core holds on to its own: create_group answers exists, commit_result {accepted: false} not_found (nothing waits),
-	// and reset_group founds generation 1, which an API without a group refuses (409, no group yet). Nor does it take
-	// another member's group at the generation it holds: the queue's welcome is ignored there, its key package spent,
-	// and join_external takes the API's group only from the epoch its own reached (stale_group_info below it).
-	test.skip(
+	// rule's other cases are in «a group the API doesn't hold is let go for the API's».
+	test(
 		"a group the API answered for and never kept is made again, and what its maker typed goes in the group they end in",
 		async () => {
 			const fake = new FakeApi();
@@ -1562,6 +1594,407 @@ describe.skipIf(!coreLibrary)("a 2xx that stored nothing loses nothing", () => {
 			expect(sent?.id).toBe(answered.id);
 			expect(await textOn(a, conversation, answered.id)).toBe("never kept");
 			expect((await a.engine.pendingMessages(conversation)).map((one) => one.nonce)).toEqual([]);
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the API's", () => {
+	// #553 (the design in step 5's fixes, desktop batch 4's report; the core's forget_group, duvetchat/e2e#55): the API's
+	// queue is the truth. A device whose group the API doesn't hold, as it lists none or holds another one at the
+	// device's generation, lets its own go, its record kept exact, and takes the API's: made again where the API has none
+	// and its person may make it, by the owner's welcome otherwise, or by an external commit into another member's. The
+	// record holds whatever brings the group back to exactly its users and owner. What waited to be sent in the group let
+	// go goes again under a new nonce, in the group the device ends in.
+	const commits = (conversation: string) => ({
+		method: "POST",
+		path: `/api/users/@me/conversations/${conversation}/mls/commits`,
+	});
+	const LIST = { method: "GET", path: "/api/users/@me/conversations" };
+	const isCommit = (request: Request, conversation: string) =>
+		said(request) === `POST /api/users/@me/conversations/${conversation}/mls/commits`;
+
+	/** The texts of the messages the device's core holds, bound to the API's: what it reads there. */
+	async function textsOn(device: TestDevice, conversation: string): Promise<string[]> {
+		const { messages } = await device.host.handle<{ messages: { message_id: string | null; text: string | null }[] }>({
+			cmd: "messages",
+			conversation_id: conversation,
+			limit: 100,
+		});
+		return messages.flatMap(({ message_id, text }) => (message_id && text ? [text] : []));
+	}
+
+	/** Whom the fake was asked for key packages of, as each claim goes. */
+	function claims(fake: FakeApi, seen?: (request: Request) => void) {
+		const claimed: string[] = [];
+		useFake(fake, (request) => {
+			const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+			if (claim?.[1]) claimed.push(claim[1]);
+			seen?.(request);
+		});
+		return claimed;
+	}
+
+	/**
+	 * Ana's and Bo's DM, a device each, and Ana's founding of its group, which the API answers for and keeps nothing of
+	 * (forget). With `stopBefore`, the list after its answer is refused, and her device stops before it lists again: it
+	 * holds the group it founded, as its own.
+	 */
+	async function foundingForgotten(stopBefore = false) {
+		const fake = new FakeApi();
+		const [ana, bo] = [fake.addUser(), fake.addUser()];
+		let refuseList = stopBefore;
+		const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+		const claimed = claims(fake, (request) => {
+			if (!refuseList || !isCommit(request, conversation)) return;
+			refuseList = false;
+			fake.refuse(LIST, 500);
+		});
+		const b = await firstDevice(fake, bo);
+		const a = await firstDevice(fake, ana);
+		fake.forget(commits(conversation));
+		await a.engine.openConversation(conversation).catch(() => {});
+		if (stopBefore) await a.engine.stop();
+		return { fake, ana, bo, a, b, conversation, claimed };
+	}
+
+	// No group on the API: a group it held and lost (a database restored from before its founding). Ana's message, made
+	// for it, never reached the API. Her next session makes the group again at generation 0, epoch 1, its numbers those
+	// of the one let go: what waited there is stale all the same (the core's outbox), and goes under a new nonce.
+	test(
+		"a group the API no longer holds is made again, and what waited in it goes there under a new nonce",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			// Bo's device is away until the end: it hears nothing of the group the API loses.
+			const b = await firstDevice(fake, bo);
+			await b.engine.stop();
+			let a = await firstDevice(fake, ana);
+			await a.engine.openConversation(conversation);
+			const lost = (await groupOf(a, conversation))!;
+			fake.cutRequest({ method: "POST", path: messagesPath(conversation) });
+			const nonce = crypto.randomUUID();
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "cut" }));
+			fake.loseGroup(conversation);
+			a = await restarted(fake, a);
+			const made = (await groupOf(a, conversation))!;
+			expect(made).toMatchObject({ generation: 0, epoch: lost.epoch, blocked: false });
+			expect(made.authenticator).not.toBe(lost.authenticator);
+			// What waited goes with the start's resend, before the next message.
+			await turnEnded(a);
+			await send(a, conversation, "next");
+			const back = await restarted(fake, b);
+			await sameGroup([a, back], conversation);
+			await until(async () => (await textsOn(back, conversation)).toSorted().join() === "cut,next", {
+				what: "both of Ana's messages on Bo's device",
+			});
+			const { messages } = await a.host.handle<{ messages: { nonce?: string; text: string | null }[] }>({
+				...{ cmd: "messages", conversation_id: conversation, limit: 100 },
+			});
+			const cut = messages.find((message) => message.text === "cut");
+			expect(cut?.nonce).toBeTruthy();
+			expect(cut?.nonce).not.toBe(nonce);
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// Another member's group: Ana's device holds the group it founded, which the API never kept, and Bo then makes the
+	// API's, its welcome to her device in the queue. The welcome is another_group: her device lets its own go and comes
+	// in by an external commit, held to the record.
+	test(
+		"another member's group at the generation the device holds is taken by an external commit, its own let go",
+		async () => {
+			const { fake, ana, a, b, conversation } = await foundingForgotten(true);
+			await a.host.open(ana);
+			const own = (await groupOf(a, conversation))!;
+			await b.engine.openConversation(conversation);
+			const again = await restarted(fake, a);
+			const held = await sameGroup([again, b], conversation);
+			expect(held.authenticator).not.toBe(own.authenticator);
+			expect(await madeAt(b, conversation, ana, ["commit"])).toEqual([{ kind: "commit", generation: 0, epoch: 1 }]);
+			const hello = await send(again, conversation, "hello");
+			await until(async () => (await textOn(b, conversation, hello.id)) === "hello", { what: "Ana's message on Bo's" });
+			expect(again.engine.conversationState(conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
+	// Its epoch's variant: Ana's own group moved past the API's epoch, by a renewal the API answered for with a 201 it
+	// made up. A group info of an epoch below her own is stale_group_info while she holds her group: once she lets it go,
+	// join_external takes the API's.
+	test(
+		"another member's group behind the epoch the device's own reached is taken all the same, its own let go",
+		async () => {
+			const { fake, ana, a, b, conversation } = await foundingForgotten(true);
+			await a.host.open(ana);
+			fake.refuse(commits(conversation), 201, { seq: 2, generation: 0, epoch: 2 });
+			await commitByHand(a, conversation);
+			expect((await groupOf(a, conversation))!.epoch).toBe(2);
+			await b.engine.openConversation(conversation);
+			expect((await groupOf(b, conversation))!.epoch).toBe(1);
+			const again = await restarted(fake, a);
+			await sameGroup([again, b], conversation);
+			const hello = await send(again, conversation, "hello");
+			await until(async () => (await textOn(b, conversation, hello.id)) === "hello", { what: "Ana's message on Bo's" });
+		},
+		SLOW,
+	);
+
+	// Who may not make the group: a member of a group the API lost lets it go and waits for its owner, and the owner's
+	// founding made again brings their device in by its welcome, held to the record.
+	test(
+		"a member of a group the API no longer holds lets it go and waits, and the owner's founding brings it in",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			let a = await firstDevice(fake, ana);
+			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			const lost = await sameGroup([a, b], conversation);
+			await a.engine.stop();
+			fake.loseGroup(conversation);
+			b = await restarted(fake, b);
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(b.engine.conversationState(conversation)).toEqual({ name: "wait_owner", owner: ana });
+			a = await restarted(fake, a);
+			const made = await sameGroup([a, b], conversation);
+			expect(made.authenticator).not.toBe(lost.authenticator);
+			// Bo's device came in by the owner's welcome: no commit of his own is in the queue.
+			expect(await madeAt(a, conversation, bo, ["commit"])).toEqual([]);
+			await until(() => b.engine.conversationState(conversation) === null, { what: "Bo's notice gone" });
+		},
+		SLOW,
+	);
+
+	// The record holds the users: a DM listed with someone else once its group is let go founds nothing with them, and
+	// asks the person first, as the founding of a group with members other than its record's does.
+	test(
+		"a DM the API lists with someone else once its group is let go founds nothing with them, and says so",
+		async () => {
+			const { fake, ana, bo, a, conversation, claimed } = await foundingForgotten();
+			const eve = fake.addUser();
+			await firstDevice(fake, eve);
+			fake.befriend(ana, eve);
+			fake.conversationsAs = (view, viewer) =>
+				viewer === ana && view.id === conversation
+					? { ...view, members: view.members.map((m) => (m.user_id === bo ? { ...m, user_id: eve } : m)) }
+					: view;
+			const before = claimed.length;
+			expect(await rejection(send(a, conversation, "for Bo"))).toMatchObject({ code: "blocked" });
+			expect(a.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(claimed.slice(before)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// The record holds the users at the epoch it was let go: a group info of an epoch before a member's removal, which
+	// that member can read, is refused to a device that let its group go.
+	test(
+		"an old epoch's group info served to a device that let its group go is refused for the member removed since",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			const a = await firstDevice(fake, ana);
+			let b = await firstDevice(fake, bo);
+			const c = await firstDevice(fake, cy);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			const withCy = await b.api.groupInfo(conversation);
+			await a.engine.removeMember(conversation, cy);
+			await sameGroup([a, b], conversation);
+			// Bo's next session is told the group is none: his device lets it go.
+			let lying = true;
+			fake.conversationsAs = (view, viewer) =>
+				lying && viewer === bo && view.id === conversation ? { ...view, mls: null } : view;
+			b = await restarted(fake, b);
+			expect(await groupOf(b, conversation)).toBeNull();
+			// Then the group again, with the group info of the epoch that held Cy.
+			lying = false;
+			const groupInfo = { method: "GET", path: `/api/users/@me/conversations/${conversation}/mls/group-info` };
+			fake.refuse(groupInfo, 200, withCy, {}, Infinity);
+			await b.engine.openConversation(conversation);
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the epoch that held Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
+	// The core forgets a blocked group like any other, and its block with it. The listing that adds Eve founds nothing
+	// with her; once it doesn't, the group made again holds the record's users alone, unblocked.
+	test(
+		"a blocked group the API no longer holds is let go, block and all, and the one made again holds its record's users",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed = claims(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			let a = await firstDevice(fake, ana);
+			let b = await firstDevice(fake, bo);
+			await firstDevice(fake, eve);
+			fake.befriend(ana, eve);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			const made = await sameGroup([a, b], conversation);
+			// A commit no device can process, as groups.test.ts' blockedGroup makes one: Ana's renewal, one byte of its
+			// signature changed, sent under Bo's session.
+			await a.engine.stop();
+			await a.host.open(ana);
+			const refresh = await a.host.handle<{ commit: string; group_info: string }>({
+				...{ cmd: "refresh", conversation_id: conversation },
+			});
+			const bytes = base64Bytes(refresh.commit);
+			bytes[bytes.length - 1]! ^= 0xff;
+			const { generation, epoch } = made;
+			await b.api.commit(conversation, {
+				generation,
+				epoch,
+				commit: bytesBase64(bytes),
+				group_info: refresh.group_info,
+			});
+			await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: false, invalid: true });
+			a = await restarted(fake, a);
+			await until(async () => (await groupOf(a, conversation))?.blocked === true, { what: "Ana's group blocked" });
+			fake.loseGroup(conversation);
+			fake.addMembers(conversation, [eve]);
+			a = await restarted(fake, a);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(a.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
+			expect(claimed).not.toContain(eve);
+			fake.dropMembers(conversation, [eve]);
+			b = await restarted(fake, b);
+			await a.engine.openConversation(conversation);
+			const again = await sameGroup([a, b], conversation);
+			expect(again.blocked).toBe(false);
+			expect(again.members.map((member) => member.user_id).sort()).toEqual([ana, bo].sort());
+		},
+		SLOW,
+	);
+
+	// The record is exact (the core's `exact`), and a client that dropped it would hold the group made again to the
+	// looser rule of a record from before the cutover: kept as the core gave it, across a restart.
+	test(
+		"the record of a group let go outlives a restart, exact, and the group made again is held to it",
+		async () => {
+			const { fake, ana, bo, a, b, conversation } = await foundingForgotten();
+			expect(await groupOf(a, conversation)).toBeNull();
+			const kept = a.store.read<Record<string, { members: string[]; exact?: boolean }>>(LEGACY_RECORDS);
+			expect(kept?.[conversation]?.exact).toBe(true);
+			expect(kept?.[conversation]?.members.toSorted()).toEqual([ana, bo].toSorted());
+			const expected: unknown[] = [];
+			const host = answeringHost(a.host, (command) => {
+				if (command.cmd === "create_group") expected.push(command.expected);
+				return undefined;
+			});
+			const again = await restarted(fake, a, { host });
+			// Her next open makes it again, held to the record as the store kept it.
+			await again.engine.openConversation(conversation);
+			await b.engine.openConversation(conversation);
+			await sameGroup([again, b], conversation);
+			expect(expected).toEqual([kept?.[conversation]]);
+			// Held again, the record goes.
+			expect(again.store.read(LEGACY_RECORDS)).toBeNull();
+		},
+		SLOW,
+	);
+
+	// A row without its group (an external commit the API refused): the device can't let it go nor found one, and waits
+	// for the API's group to pass the epoch it saw. Here the API then loses its group, and Bo founds it again, behind
+	// that epoch until his next commit. What waited to be sent stays, and goes once Ana's device is back in.
+	test(
+		"a row without its group waits for the API's group to pass its epoch, and what waited goes then",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const claimed = claims(fake);
+			let b = await firstDevice(fake, bo);
+			let a = await firstDevice(fake, ana);
+			await b.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			fake.cutRequest({ method: "POST", path: messagesPath(conversation) });
+			await rejection(
+				a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "typed" }),
+			);
+			// Bo's renewal takes the group to epoch 2; then an external commit of Ana's there, which the API refused.
+			await b.engine.stop();
+			await b.host.open(bo);
+			await commitByHand(b, conversation);
+			await until(async () => (await groupOf(a, conversation))?.epoch === 2, { what: "Ana's device at epoch 2" });
+			await a.engine.stop();
+			await a.host.open(ana);
+			const { group_info } = await a.api.groupInfo(conversation);
+			await a.host.handle({ cmd: "join_external", conversation_id: conversation, generation: 0, group_info });
+			await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: false, invalid: true });
+			fake.loseGroup(conversation);
+			const told: string[] = [];
+			const before = claimed.length;
+			a = await restarted(fake, a, { host: watchedHost(a.host, told) });
+			await a.engine.openConversation(conversation);
+			await turnEnded(a);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "wait_rejoin" });
+			expect(told).not.toContain("create_group");
+			expect(claimed.slice(before)).toEqual([]);
+			expect((await a.engine.pendingMessages(conversation)).map((message) => message.text)).toEqual(["typed"]);
+			// Bo founds the group again, at epoch 1: Ana's device still waits.
+			b = await restarted(fake, b);
+			await b.engine.openConversation(conversation);
+			await turnEnded(a);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "wait_rejoin" });
+			// His next commit takes it to epoch 2, which Ana's device saw: it comes in, and what waited goes.
+			await b.engine.stop();
+			await b.host.open(bo);
+			await commitByHand(b, conversation);
+			b = await restarted(fake, b);
+			await sameGroup([a, b], conversation);
+			await send(a, conversation, "next");
+			await until(async () => (await textsOn(b, conversation)).toSorted().join() === "next,typed", {
+				what: "both of Ana's messages on Bo's device",
+			});
+		},
+		SLOW,
+	);
+
+	// duplicate_device (duvetchat/e2e#57): a join the core refuses for a second leaf under one device ID is a rule's
+	// refusal like any other: the members observed, one more try, and the device waits for another member's commit.
+	test(
+		"a join refused for a second leaf under one device ID waits for another member's commit, as any rule's",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const b = await firstDevice(fake, bo);
+			// Bo founds the group before Ana has a device: hers comes in by an external commit.
+			await b.engine.openConversation(conversation);
+			let joins = 0;
+			const host = answeringHost(testHost(), (command) => {
+				if (command.cmd !== "join_external") return undefined;
+				joins++;
+				return Promise.reject(
+					new CoreError("rule_violation", "two leaves of one device", { rule: "duplicate_device" }),
+				);
+			});
+			const a = await firstDevice(fake, ana, { host });
+			await turnEnded(a);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "wait_rejoin" });
+			// Each try is one more after the members are observed.
+			expect(joins).toBeGreaterThanOrEqual(2);
+			expect(joins % 2).toBe(0);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(fake.decryptFailures).toEqual([]);
 		},
 		SLOW,
 	);
