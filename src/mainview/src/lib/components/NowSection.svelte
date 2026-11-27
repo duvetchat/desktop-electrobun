@@ -61,12 +61,13 @@
 	import { userStatusToString, type Guild } from "$lib/types";
 	import { joinConversationCall } from "$lib/voice";
 	import FaceStack from "$lib/components/FaceStack.svelte";
+	import OnlineFriendFaces from "$lib/components/OnlineFriendFaces.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
-	import { FOCUS_RING, FOCUS_RING_INSET } from "$lib/components/ui/recipes";
+	import { FOCUS_RING_INSET } from "$lib/components/ui/recipes";
 
 	// What's going on now, in the sidebar between its rows and its bottom block (#357): what asks the user something
 	// (a call they can join, a friend request, a team invite), the files they're moving, the voice rooms with people in
@@ -226,7 +227,6 @@
 	const anything = $derived(asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
 
 	const rowFocus = FOCUS_RING_INSET;
-	const roundFocus = FOCUS_RING;
 	// The sidebar's recipes (SpaceNav.svelte, DMSidebar.svelte; DESIGN-MAP.md S-05 to S-07): a row lights on hover, a
 	// card is the call panel's, and an icon that isn't a person sits on a rounded square.
 	const row = `hover:bg-duvet-sb-hover flex w-full items-center rounded-[10px] text-left transition-colors duration-[120ms] motion-reduce:transition-none ${rowFocus}`;
@@ -502,37 +502,15 @@
 					</ul>
 				{/if}
 				{#if friendFaces.faces.length > 0 || friendFaces.more > 0}
-					<ul class="flex shrink-0 items-center gap-1.5 px-2 pt-1 pb-0.5">
-						{#each friendFaces.faces as friend (friend.id)}
-							<li class="flex shrink-0">
-								<button
-									type="button"
-									class="flex rounded-full {roundFocus}"
-									aria-label={t("shell_now_message_friend", { name: friend.name })}
-									title={friend.name}
-									data-jump
-									onclick={() => onFriend(friend.id)}
-								>
-									<Avatar size={26} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
-										<UserAvatar src={friend.src} name={friend.name} size={26} />
-									</Avatar>
-								</button>
-							</li>
-						{/each}
-						{#if friendFaces.more > 0}
-							<li class="flex shrink-0">
-								<button
-									type="button"
-									class="bg-duvet-secondary-fill text-duvet-ink2 hover:text-duvet-ink flex size-[26px] items-center justify-center rounded-full text-[10.5px] font-bold tabular-nums transition-colors duration-[120ms] motion-reduce:transition-none {roundFocus}"
-									aria-label={t("shell_now_more_friends", { count: friendFaces.more })}
-									title={t("shell_now_more_online", { count: friendFaces.more })}
-									onclick={onFriendsSelect}
-								>
-									+{formatNumber(friendFaces.more)}
-								</button>
-							</li>
-						{/if}
-					</ul>
+					<OnlineFriendFaces
+						friends={friendFaces.faces}
+						more={friendFaces.more}
+						size={26}
+						ring="var(--duvet-sb-ring)"
+						class="px-2 pt-1 pb-0.5"
+						{onFriend}
+						onMore={onFriendsSelect}
+					/>
 				{/if}
 			{/if}
 		</div>

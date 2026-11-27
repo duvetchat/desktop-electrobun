@@ -26,7 +26,7 @@
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
-	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import { emojiSuggestions, type PickerGroup } from "$lib/space-emojis";
 	import { emojiUsed } from "$lib/recent-emoji";
 	import {
@@ -36,17 +36,7 @@
 		type CommandEntry,
 	} from "$lib/commands";
 	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
-	import {
-		breakLine,
-		caretAt,
-		enterKey,
-		lineBreaksHtml,
-		mentionAfter,
-		quoteAfter,
-		rawOf,
-		rawOffsetOf,
-	} from "$lib/message-box";
-	import { escapeHtml } from "$lib/markdown";
+	import { breakLine, caretAt, enterKey, mentionAfter, quoteAfter, rawOf, rawOffsetOf } from "$lib/message-box";
 	import { formatDuration } from "$lib/utils/time";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -59,6 +49,7 @@
 		SpaceSticker,
 	} from "$lib/types";
 	import { roomNames, selectedMicId } from "$lib/stores.svelte";
+	import { richTextHtml } from "$lib/message-rich";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
 	import { messageTooLarge } from "$lib/api/messages";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -435,37 +426,17 @@
 		return ce ? `${ceHost}/attachments/${ce.attachment_id}` : "";
 	}
 
-	// A member's or a room's chip, as buildHtml writes it into the box: its classes are in this file, so the build has them.
-	const MENTION_CHIP =
-		"inline cursor-default rounded px-1 py-px font-medium select-all bg-duvet-accent-tint text-duvet-accent-text";
-
-	// Names are whatever their owners chose, "<" and quotes included, so they go in escaped.
+	// The box's HTML, as the composer and the inline editor both draw it: chips for mentions and rooms, pictures for
+	// custom and Unicode emoji, and the raw tokens those stand for when it is read back.
 	function buildHtml(text: string): string {
-		if (!text) return "";
-		const html = text
-			.replace(/&/g, "&amp;")
-			.replace(/</g, "&lt;")
-			.replace(/>/g, "&gt;")
-			.replace(
-				/&lt;@([a-f0-9-]+)&gt;/g,
-				(_, id) =>
-					`<span class="${MENTION_CHIP}" contenteditable="false" data-mention="${id}">@${escapeHtml(resolveMentionName(id))}</span>`,
-			)
-			.replace(
-				/&lt;#([a-f0-9-]+)&gt;/g,
-				(_, id) =>
-					`<span class="${MENTION_CHIP}" contenteditable="false" data-room="${id}">${escapeHtml(roomMentionText(id))}</span>`,
-			)
-			.replace(/&lt;:([a-f0-9-]+):&gt;/g, (_, id) => {
+		return richTextHtml(text, {
+			mentionText: (id) => `@${resolveMentionName(id)}`,
+			roomText: (id) => roomMentionText(id),
+			customEmoji: (id) => {
 				const url = resolveCustomEmojiUrl(id);
-				if (!url) return `&lt;:${id}:&gt;`;
-				return `<img class="emoji-img custom-emoji-chip" src="${url}" alt=":${escapeHtml(resolveCustomEmojiName(id))}:" data-cemoji="${id}" draggable="false" contenteditable="false">`;
-			})
-			.replace(
-				EMOJI_REGEX,
-				(e) => `<span class="emoji-img" style="--tw:url('${toTwemojiUrl(e)}')" aria-label="${e}">${e}</span>`,
-			);
-		return lineBreaksHtml(html);
+				return url ? { name: resolveCustomEmojiName(id), url } : null;
+			},
+		});
 	}
 
 	// ── DOM helpers ─────────────────────────────────────────────────────────────

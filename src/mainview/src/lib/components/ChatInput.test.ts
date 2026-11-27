@@ -123,7 +123,7 @@ describe("Shift+Enter starts a new line", () => {
 
 	test("the box's text, its last line and its caret go through lib/message-box.ts", () => {
 		expect(input).toMatch(/function getRaw\(el: HTMLElement\): string \{\s*return rawOf\(el\);/);
-		expect(input).toContain("return lineBreaksHtml(html);");
+		expect(input).toContain("return richTextHtml(text");
 		expect(input).toContain("const place = caretAt<Node>(inputEl, target);");
 		expect(input).toContain("return rawOffsetOf(inputEl, container, offset);");
 		// A line break alone is text: the placeholder goes, as for a space.

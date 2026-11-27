@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
@@ -1528,6 +1528,12 @@
 		{#if editingMessageId === message.id}
 			<InlineMessageEditor
 				content={message.content ?? ""}
+				{mentionMap}
+				{customEmojiMap}
+				{members}
+				rooms={space ? mentionableRooms(space) : []}
+				{emojiGroups}
+				spaceId={spaceId || null}
 				onSave={(text) => onSaveEdit?.(message.id, text)}
 				onCancel={() => (editingMessageId = null)}
 			/>

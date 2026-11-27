@@ -437,11 +437,30 @@ describe("editing a message", () => {
 	});
 
 	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
-		expect(editor).toContain("<textarea");
+		expect(editor).toContain('contenteditable="true"');
 		expect(editor).toContain('{t("chat_edit_save")}');
 		expect(editor).toContain('label={t("chat_edit_cancel")}');
 		expect(editor).toContain('event.key === "Escape"');
 		expect(editor).toContain("event.metaKey || event.ctrlKey");
+	});
+
+	test("it draws the message's mentions, rooms and emoji, and saves the raw text they stand for", () => {
+		expect(editor).toContain("richTextHtml(");
+		expect(editor).toContain("rawOf(editor)");
+		expect(editor).toContain("mentionMap[id]");
+		expect(editor).toContain("$roomNames[id]");
+		expect(editor).toContain("customEmojiMap[id]");
+		expect(list).toMatch(/<InlineMessageEditor[\s\S]*?\{mentionMap\}[\s\S]*?\{customEmojiMap\}/);
+	});
+
+	test("it suggests the people, rooms and emoji the composer suggests", () => {
+		expect(editor).toContain("emojiSuggestions");
+		expect(editor).toContain('t("chat_mention_suggestions")');
+		expect(editor).toContain('t("chat_room_suggestions")');
+		expect(editor).toContain('t("chat_emoji_suggestions")');
+		expect(editor).toContain('event.key === "ArrowDown"');
+		expect(editor).toContain("applySuggestion");
+		expect(list).toContain("mentionableRooms(space)");
 	});
 
 	test("the chat saves it there, not in the message box", () => {
