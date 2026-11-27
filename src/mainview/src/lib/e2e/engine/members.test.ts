@@ -610,6 +610,71 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 		SLOW,
 	);
 
+	// #550 (step 5's engines review, Minor 4): a restart the API's validator refuses (422) is said as one the core
+	// refuses, and Restart is off until a new entry comes, as on Android: no tap claims every member's key packages again
+	// for a refusal that wouldn't change.
+	test(
+		"a restart the API refuses says so, and isn't offered again before a new entry",
+		async () => {
+			const { fake, requests, ana, a, c, conversation } = await blockedGroup();
+			const mine = () => {
+				const said = a.engine.conversationState(conversation);
+				return said?.name === "blocked" && said.restart === "mine";
+			};
+			expect(mine()).toBe(true);
+			fake.refuse({ method: "POST", path: commitsOf(conversation) }, 422, { error: "commit refused" });
+			const claims = () => requests.filter((request) => request.endsWith("/key-packages/claim")).length;
+			const before = claims();
+			expect(await rejection(a.engine.restartGroup(conversation))).toMatchObject({
+				code: "rule_violation",
+				rule: "restart_refused",
+			});
+			expect(claims()).toBeGreaterThan(before);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "blocked", restart: "none", owner: ana });
+			const tried = claims();
+			expect(await a.engine.restartGroup(conversation)).toEqual([]);
+			expect(claims()).toBe(tried);
+			// A new entry: Cy leaves, and Restart is Ana's to try again.
+			await c.engine.leaveConversation(conversation);
+			await until(mine);
+		},
+		SLOW,
+	);
+
+	// #550 (step 5's engines review, Minor 6): the API hands a group on to its next owner as its owner leaves, and says so
+	// with CONVERSATION_UPDATE: the engine lists the conversation again then, so what it says goes by the new owner at
+	// once, a group's making and a blocked group's restart, not at the conversation's next turn.
+	test(
+		"an owner who leaves hands the group's making and its restart to the next owner at once",
+		async () => {
+			// A group no one made yet: its members wait for Ana, until she leaves and it's Bo's to make.
+			const { fake } = setUp();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+			for (const device of [b, c]) await device.engine.openConversation(conversation);
+			expect(c.engine.conversationState(conversation)).toEqual({ name: "wait_owner", owner: ana });
+			await a.engine.leaveConversation(conversation);
+			await until(() => {
+				const said = c.engine.conversationState(conversation);
+				return said?.name === "wait_owner" && said.owner === bo;
+			});
+			expect(b.engine.conversationState(conversation)).toBeNull();
+			await Promise.all([a, b, c].map((device) => device.engine.stop()));
+
+			// A blocked group: Bo hears only that its owner is his now, and Restart is his.
+			const blocked = await blockedGroup();
+			blocked.fake.holdEvents();
+			await blocked.a.engine.leaveConversation(blocked.conversation);
+			blocked.fake.releaseEvents({ only: (event) => event.type === "CONVERSATION_UPDATE" });
+			await until(() => {
+				const said = blocked.b.engine.conversationState(blocked.conversation);
+				return said?.name === "blocked" && said.restart === "mine";
+			});
+		},
+		SLOW,
+	);
+
 	// #46's client rule: a restart's welcome the core refuses leaves the device out of the next generation, which it joins
 	// only on its person's yes, never by an external commit of its own.
 	test(

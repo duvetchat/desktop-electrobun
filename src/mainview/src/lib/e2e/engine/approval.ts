@@ -11,8 +11,10 @@
 // accepted, so one that came before is kept, and taken after it. Then it goes on as with the recovery key (recover.ts'
 // putFirstList). The approving device changes no list and no key until that device's list is up (task 24's review, M2),
 // and asks of no other new device meanwhile (task 27's review, M5).
+import { FetchError } from "$lib/api/api";
 import type { InboxMessage } from "$lib/api/e2e";
 import { base64Bytes } from "$lib/activity-thumbnail";
+import { retryAfterMs } from "$lib/emoji-retry";
 import { commitmentDevice, listDevices } from "../cbor";
 import { approvalFingerprint, approvalFrameMessage, readApprovalFrame, type ApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
@@ -62,6 +64,15 @@ export const ATTEMPT_MS = 10 * 60_000;
 const QR_MS = 9 * 60_000;
 /** What a later round may get past: a cut call, the database, another instance (inbox.ts' rule). */
 const AGAIN = new Set(["internal", "storage", "locked"]);
+/** The longest a send inside the person's act waits for a moment's refusal (a 429's Retry-After), once (#550). */
+const MOMENT_MS = 5_000;
+
+/** The wait a 429 asks for, when it's a moment's: none for any other answer, or for a longer wait. */
+function momentAsked(error: unknown): number | null {
+	if (!(error instanceof FetchError) || error.response?.status !== 429) return null;
+	const wait = retryAfterMs(error.response.headers.get("Retry-After"), Date.now());
+	return wait !== undefined && wait <= MOMENT_MS ? wait : null;
+}
 
 interface Attempt {
 	way: "qr" | "code";
@@ -211,7 +222,8 @@ export class Approvals {
 	/**
 	 * The code's way, an attempt of its own: its commitment, with this device's name, to each listed device of the
 	 * user's, and its fingerprint shown, which the approving device's screen shows too. None that can approve, or none
-	 * that got it, is said (`not_found` `approver`).
+	 * that got it, is said (`not_found` `approver`); a send the API refuses for longer than a moment stops it, said as
+	 * the rate limit it is (#550).
 	 */
 	async useCode(): Promise<void> {
 		const { api, host, deviceName } = this.#parts;
@@ -223,10 +235,17 @@ export class Approvals {
 		const frame = approvalFrameMessage({ duvet: "approval", step: "commitment", data: commitment, name: deviceName });
 		let sent = 0;
 		for (const { id } of others) {
-			await api.sendToDevice(id, frame).then(
-				() => sent++,
-				(error: unknown) => console.warn("[e2e] A device of the user's wasn't asked to approve this one:", error),
-			);
+			try {
+				await this.#sendFrame(id, frame);
+				sent++;
+			} catch (error) {
+				// Refused past a moment's wait: never a device left out without a word, nor no approver said for it.
+				if (error instanceof FetchError && error.response?.status === 429) {
+					await this.begin();
+					throw error;
+				}
+				console.warn("[e2e] A device of the user's wasn't asked to approve this one:", error);
+			}
 		}
 		if (sent === 0) {
 			// Its approval_begin replaced the QR's attempt: a new QR, as the one on screen would open nothing (review M3).
@@ -269,7 +288,7 @@ export class Approvals {
 		this.#refuseWhileHeld(device);
 		const asked = this.#asked;
 		if (asked?.device !== device || asked.message !== question || asked.step !== "asked") return;
-		const { api, host, store } = this.#parts;
+		const { host, store } = this.#parts;
 		const frame = this.#commitmentOf(asked);
 		if (!frame) return this.#end(asked, "over");
 		if (this.#replacedAttempt(asked)) return;
@@ -291,12 +310,28 @@ export class Approvals {
 			}
 			throw error;
 		}
-		await api.sendToDevice(device, approvalFrameMessage({ duvet: "approval", step: "offer", data: offer }));
+		await this.#sendFrame(device, approvalFrameMessage({ duvet: "approval", step: "offer", data: offer }));
 		asked.step = "offered";
 		asked.unfinished = false;
 		asked.stop();
 		asked.stop = this.#after(ATTEMPT_MS, () => (this.#asked === asked ? this.#end(asked, "over") : undefined));
 		this.#changed();
+	}
+
+	/**
+	 * A frame to a device's inbox, inside the person's act: refused for a moment (a 429 whose Retry-After asks a few
+	 * seconds at most), it waits that long, once, and the same bytes go again (#550). Any other refusal, a longer wait, or
+	 * a second refusal is thrown, as the act's turn holds the person's other acts.
+	 */
+	async #sendFrame(device: string, frame: string): Promise<void> {
+		try {
+			await this.#parts.api.sendToDevice(device, frame);
+		} catch (error) {
+			const wait = momentAsked(error);
+			if (wait === null) throw error;
+			await new Promise<void>((resolve) => this.#parts.clock.later(wait, resolve));
+			await this.#parts.api.sendToDevice(device, frame);
+		}
 	}
 
 	/** The commitment the question is about, as the record keeps it. */

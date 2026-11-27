@@ -18,7 +18,7 @@ const PAGE = 100;
 /** The most messages the record keeps of each kind. */
 const KEPT = 20;
 /** What a later round may get past: a cut call, the database, another instance; five rounds a message at most. */
-const AGAIN = new Set(["internal", "storage", "locked"]);
+export const AGAIN = new Set(["internal", "storage", "locked"]);
 const MOST_TRIES = 5;
 
 /** The messages the record keeps under `key`. */
@@ -151,6 +151,11 @@ export async function takeInbox(
 	let after: string | undefined;
 	for (;;) {
 		const page = await api.inbox(after);
+		// A page that doesn't go past where this read began (the API's after is exclusive, its IDs in order) would come
+		// again as it is, for good: the round ends, and the next reads the inbox again, as a queue page that doesn't move
+		// ends its turn (sync.ts; #555).
+		const last = page.at(-1)?.id;
+		if (after !== undefined && !(last !== undefined && last > after)) return rotated;
 		let handled: string | undefined;
 		for (const message of page) {
 			if (!(await handle(message))) break;

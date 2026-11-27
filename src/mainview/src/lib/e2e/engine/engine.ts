@@ -1329,6 +1329,10 @@ export class E2EEngine {
 			case "HISTORY_SHARE_CREATE":
 				this.#received.heard(event.data);
 				break;
+			case "CONVERSATION_UPDATE":
+				// Its owner handed on (they left): what the conversation says goes by the new one at once (#550).
+				this.#soon(() => this.#whenReady(() => this.#groups.changed(event.data.id)));
+				break;
 			case "DM_MESSAGE_CREATE":
 				// The person's message made again goes under a new nonce, which only the engine knows it by.
 				this.#sends.heard(event.data);
