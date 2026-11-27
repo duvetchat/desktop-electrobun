@@ -1334,6 +1334,38 @@ describe.skipIf(!coreLibrary)("what goes is made for the group that was compared
 		SLOW,
 	);
 
+	// The comparison after the bytes (`differs`): the look passed, and the page stopped drawing Eve while Bo's device made
+	// the message's bytes, of the group that holds her. The look ran before; the bytes are of the group now: only the
+	// comparison after them holds the message, as nothing more goes where the group holds someone the page doesn't draw.
+	test(
+		"someone the page stops drawing once the bytes are made holds them, though the look before passed",
+		async () => {
+			let hidden = false;
+			const { fake, bo, e, a, conversation } = await evesGroup(() => hidden);
+			// A core that, once armed, hides Eve from Bo's page right after it makes bytes again under a nonce it has: the
+			// delivery's, after the look.
+			let armed = false;
+			const made = new Set<string>();
+			const core = testHost();
+			const host = answeringHost(core, (command) => {
+				if (command.cmd !== "encrypt" || !armed) return undefined;
+				const nonce = String(command.nonce);
+				if (!made.has(nonce)) return void made.add(nonce);
+				armed = false;
+				return core.handle({ ...command, cmd: "encrypt" }).then((bytes) => {
+					hidden = true;
+					return bytes;
+				});
+			});
+			const b = await firstDevice(fake, bo, { host });
+			await sameGroup([e, a, b], conversation);
+			armed = true;
+			expect(await rejection(send(b, conversation, "for Ana"))).toMatchObject({ code: "other_members" });
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([]);
+			expect(b.engine.conversationState(conversation)).toMatchObject({ name: "other_members" });
+		},
+		SLOW,
+	);
 });
 
 describe.skipIf(!coreLibrary)("the server's deleted IDs delete nothing the client holds", () => {
