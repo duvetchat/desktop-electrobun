@@ -29,7 +29,6 @@ import {
 	legacyRecord,
 	peopleOf,
 	recordMade,
-	takeBackForgotten,
 	type LegacyRecord,
 } from "./legacy";
 import {
@@ -437,14 +436,14 @@ export class Conversations {
 
 	/**
 	 * At a start, before anything can bring a group back (#594): each record the core keeps of a group it let go
-	 * (forgotten) that the engine keeps none of a forget of, as a close between the core's forget and the app's own write
-	 * leaves it, is taken back by the forget's path, whose rules place it among the records the engine keeps.
+	 * (forgotten), as a close between the core's forget and the app's own write leaves it, is taken back by the forget's
+	 * path (keepForgotten), whose rules place it among the records the engine keeps. Over an older forget's the engine
+	 * kept too: the core's is always the newest, as a forget needs the group held and holding it again lets the core's
+	 * go (#594's review, M1).
 	 */
 	async takeBack(): Promise<void> {
 		const { records } = await this.#parts.host.handle<{ records: KeptForgotten[] }>({ cmd: "forgotten" });
-		for (const { conversation_id, expected } of records) {
-			takeBackForgotten(this.#parts.store, conversation_id, expected);
-		}
+		for (const { conversation_id, expected } of records) keepForgotten(this.#parts.store, conversation_id, expected);
 	}
 
 	/**

@@ -2428,6 +2428,30 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// The core's record is always the newest (a forget needs the group held, and holding it again lets the core's go):
+	// one it gives back takes the place of an older forget's the app kept, as a second forget whose own write was lost
+	// leaves them (#594's review, M1), and what brings the group back is held to the newer one.
+	test(
+		"a record the core gives back takes the place of an older forget's the app kept",
+		async () => {
+			const { fake, ana, bo, cy, b: closed, record, conversation } = await forgottenThenWithoutCy(false);
+			await closed.host.open(bo);
+			const kept = await keptBy(closed);
+			expect(kept[0]?.expected.members.toSorted()).toEqual([ana, bo, cy].toSorted());
+			// The app's record is an earlier forget's, from before Cy was in the group: the restart without Cy has its people.
+			record.write(LEGACY_RECORDS, { [conversation]: { owner: ana, members: [ana, bo], exact: true } });
+			// Bo's app again, with no session copy of the record (a store object of its own over the same record).
+			const store: EngineStore = { read: (key) => record.read(key), write: (key, value) => record.write(key, value) };
+			const b = await restarted(fake, closed, { store });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(record.read<Record<string, unknown>>(LEGACY_RECORDS)?.[conversation]).toEqual(kept[0]?.expected);
+		},
+		SLOW,
+	);
+
 	// A server that leaves the conversation out of one listing doesn't have the core let its record go (#594's review,
 	// I1): a record whose own write never landed is the core's alone, the next start takes it back, and the group the
 	// server makes meanwhile is refused.
