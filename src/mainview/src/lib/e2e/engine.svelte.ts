@@ -650,6 +650,7 @@ type Tap =
 	| "keySaved"
 	| "uploadLater"
 	| "startOver"
+	| "tryAgain"
 	| "beginApproval"
 	| "useCode"
 	| "endApproval"
@@ -673,6 +674,8 @@ export const makeIdentity = () => tap("makeIdentity");
 export const keySaved = () => tap("keySaved");
 export const uploadLater = () => tap("uploadLater");
 export const startOver = () => tap("startOver");
+/** A keyring that didn't open, opened again now (PLAN-E2E-PLATAFORMAS.md, Task 4): the desktop's, which has no tabs. */
+export const tryAgain = () => tap("tryAgain");
 
 /** A new device's setup (Task 26): with the recovery key, by another device's approval, or by starting over. */
 export const setupActions = {

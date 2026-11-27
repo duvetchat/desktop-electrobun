@@ -34,6 +34,10 @@ export const NOTICES = {
 	// when Linux has none, and the key is in a file beside the database (decision 19). The mobile app never shows it.
 	key_in_file:
 		"This computer has no system keyring, so the key to your encrypted conversations is kept in a file that only your user can read.",
+	// Where a keyring didn't open (a locked Secret Service, a Keychain that refused), with its button.
+	keyring_failed:
+		"Duvet couldn't open your encrypted conversations. If your system's keyring is locked, unlock it and try again.",
+	try_again: "Try again",
 	// The API serves another external sender than the one this device pinned (Ruling 32, #575 M5): said while it's served.
 	server_key_changed:
 		"Duvet's server key isn't the one this device first saw. This device keeps the first one, so a conversation that uses the new one won't open here.",

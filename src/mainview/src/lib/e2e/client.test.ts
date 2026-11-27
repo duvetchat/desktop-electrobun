@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ShellInputs } from "$lib/platform";
-import { deviceName, deviceOf, duvetClient, keepDevice, keepUser, lastUser } from "./client";
+import { deviceName, deviceOf, duvetClient, keepDevice, keepUser, lastUser, lockableKeyring } from "./client";
 
 // What the app tells the API (X-Duvet-Client) and the gateway (an identify's client) it is: <platform>/<version>, which
 // the API reads as its ParseClient does (duvet-api's internal/domain/e2e) and holds to E2E_MIN_CLIENTS (PLAN-E2E-API.md,
@@ -45,6 +45,17 @@ describe("the client the app says it is", () => {
 	});
 
 	// The dev server draws another system's chrome on request (?shell=mac): the app it runs is still a browser's.
+	// PLAN-E2E-PLATAFORMAS.md, Task 4: the keyring a person can lock, where one that didn't open is said with Try again:
+	// Linux's Secret Service and macOS's Keychain. Windows' Credential Manager opens with the session.
+	test("a keyring a person can lock is the desktop app's on Linux and macOS", () => {
+		expect(lockableKeyring(inputs({ inElectrobun: true, injected: shell("linux") }))).toBe(true);
+		expect(lockableKeyring(inputs({ inElectrobun: true, injected: shell("darwin") }))).toBe(true);
+		expect(lockableKeyring(inputs({ inElectrobun: true, injected: shell("win32") }))).toBe(false);
+		expect(lockableKeyring(inputs({ userAgent: "X11; Linux x86_64" }))).toBe(false);
+		// Nor the dev server's preview of another system, which a browser runs.
+		expect(lockableKeyring(inputs({ preview: "mac" }))).toBe(false);
+	});
+
 	test("is never the dev server's preview of another system", () => {
 		expect(duvetClient(inputs({ preview: "mac" }))).toBe(`web/${version}`);
 		expect(duvetClient(inputs({ preview: "windows" }))).toBe(`web/${version}`);

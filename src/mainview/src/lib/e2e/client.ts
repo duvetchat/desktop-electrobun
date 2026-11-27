@@ -14,6 +14,16 @@ export function duvetClient(inputs: ShellInputs = readShellInputs()): string {
 	return `${PLATFORMS[shellFor({ ...inputs, preview: null }).chrome]}/${VITE_APP_VERSION}`;
 }
 
+/**
+ * The desktop app on Linux or macOS, whose database key is in a keyring a person can lock (the Secret Service, the
+ * Keychain), so one that didn't open is said, with Try again (PLAN-E2E-PLATAFORMAS.md, Task 4). Windows' Credential
+ * Manager opens with the session, and the web keeps its own key.
+ */
+export function lockableKeyring(inputs: ShellInputs = readShellInputs()): boolean {
+	const { chrome } = shellFor({ ...inputs, preview: null });
+	return chrome === "linux" || chrome === "mac";
+}
+
 const SYSTEMS: Record<Os, string> = { windows: "Windows", mac: "macOS", linux: "Linux", ios: "iOS", other: "" };
 // The browser by its user agent's own mark, the ones built on Chrome's before Chrome's.
 const BROWSERS: [RegExp, string][] = [

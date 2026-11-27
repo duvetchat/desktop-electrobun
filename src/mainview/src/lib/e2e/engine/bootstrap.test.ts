@@ -317,6 +317,44 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 		SLOW,
 	);
 
+	// PLAN-E2E-PLATAFORMAS.md, Task 4 (Review Focus 4): a keyring that didn't open (a locked Secret Service, a Keychain
+	// that refused) is the core's `storage`: a failure another open may get past, never a lost key. It goes again by
+	// itself, and the person's Try again opens it now.
+	test(
+		"a keyring that didn't open says so, and Try again opens it now",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			let [refusals, opens] = [1, 0];
+			const host = new Proxy(testHost(), {
+				get(target, name) {
+					if (name === "open") {
+						return async (userId: string) => {
+							opens++;
+							return refusals-- > 0 ? { state: "failed", reason: "storage" } : target.open(userId);
+						};
+					}
+					const value = Reflect.get(target, name);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			const a = testDevice(fake, ana, { host });
+			await a.engine.start();
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false, storage: true });
+			// Now, before the time its next try waits for.
+			await a.engine.tryAgain();
+			expect(a.engine.state).toEqual({ name: "first_device", recoveryKey: null, finishing: false });
+			expect(opens).toBe(2);
+			// That next try was called off, and with nothing waiting to go again, Try again opens nothing.
+			a.clock.advance(10 * MINUTE);
+			await a.engine.tryAgain();
+			expect(opens).toBe(2);
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
 	// M10: what tells a running device it was taken away, when nothing else did first.
 	test(
 		"a device taken away while it runs hears so",

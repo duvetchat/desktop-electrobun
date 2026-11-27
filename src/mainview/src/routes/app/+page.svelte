@@ -96,8 +96,10 @@
 		setupActions,
 		startEngine,
 		startOver,
+		tryAgain,
 		uploadLater,
 	} from "$lib/e2e/engine.svelte";
+	import { lockableKeyring } from "$lib/e2e/client";
 	import type { Channel, PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -1144,6 +1146,8 @@
 			onChangeKeys={changeKeys}
 			onAlsoRemoved={alsoRemoved}
 			onFinishWithout={finishKeysWithout}
+			lockableKeyring={lockableKeyring()}
+			onTryAgain={tryAgain}
 			{setupActions}
 			{approvalActions}
 		/>

@@ -170,6 +170,7 @@
 	"e2e_key_changed_close": "Close",
 	"e2e_key_changed_verified": "You had verified {name}. Check their security number before you send.",
 	"e2e_key_in_file": "This computer has no system keyring, so the key to your encrypted conversations is kept in a file that only your user can read.",
+	"e2e_keyring_failed": "Duvet couldn't open your encrypted conversations. If your system's keyring is locked, unlock it and try again.",
 	"e2e_keys_again": "A device that left your account may still hold your security keys: change them once more, so it can't read what's sent from now on.",
 	"e2e_leave_elsewhere": "This device can't leave this group yet. Leave from another of your devices.",
 	"e2e_leave_failed": "Couldn't leave the group",

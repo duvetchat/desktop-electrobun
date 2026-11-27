@@ -27,6 +27,9 @@ const props = (state: EngineState, web = false, backup?: BackupShown) => ({
 	onChangeKeys: async () => {},
 	onAlsoRemoved: async () => ({ along: [], away: [] }),
 	onFinishWithout: async () => {},
+	// Windows' and the web's: no keyring a person locks.
+	lockableKeyring: false,
+	onTryAgain: async () => {},
 	setupActions: {
 		recover: async () => {},
 		beginApproval: async () => {},
@@ -146,6 +149,38 @@ describe("the encryption gate", () => {
 		const shown = render(EncryptionGate, { props: { ...props({ name: "ready" }), serverKeyChanged: true } });
 		expect(shown.body).toContain(NOTICES.server_key_changed);
 		expect(drawn({ name: "ready" }).trim()).toBe("");
+	});
+
+	// PLAN-E2E-PLATAFORMAS.md, Task 4 (Review Focus 4): where a person can lock the system's keyring (the desktop app on
+	// Linux and macOS), one that didn't open says so, and Try again opens it now: never the lost database's way out.
+	test("a keyring that didn't open offers to try again", async () => {
+		const state: EngineState = { name: "failed", lostKey: false, storage: true };
+		const html = render(EncryptionGate, { props: { ...props(state), lockableKeyring: true } }).body.replace(
+			/<!--[^]*?-->/g,
+			"",
+		);
+		expect(html).toContain(NOTICES.keyring_failed);
+		expect(html).toMatch(/<button [^>]*>\s*Try again\s*<\/button>/);
+		expect(html).not.toContain(NOTICES.delete_device);
+		expect(source("EncryptionGate.svelte")).toContain('label: t("e2e_try_again"), run: onTryAgain');
+		// Windows' Credential Manager and the web's key say what they said, and the engine tries again by itself.
+		for (const web of [false, true]) {
+			expect(drawn(state, web)).toContain(en.e2e_failed);
+			expect((await buttons(state, web)).map((button) => button.attributes["aria-label"])).toEqual(["Dismiss"]);
+		}
+		// The page says where a keyring can be locked, and its Try again is the engine's.
+		const page = source("../../../routes/app/+page.svelte");
+		expect(page).toContain("lockableKeyring={lockableKeyring()}");
+		expect(page).toContain("onTryAgain={tryAgain}");
+	});
+
+	test("a database no key opens still offers to delete it", () => {
+		const lost = render(EncryptionGate, {
+			props: { ...props({ name: "failed", lostKey: true }), lockableKeyring: true },
+		}).body;
+		expect(lost).toContain(en.e2e_lost_key);
+		expect(lost).toContain(NOTICES.delete_device);
+		expect(lost).not.toContain(NOTICES.keyring_failed);
 	});
 
 	test("says it in the notices' words", () => {

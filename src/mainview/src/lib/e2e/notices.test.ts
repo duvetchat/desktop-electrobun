@@ -96,10 +96,14 @@ describe("the notices", () => {
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
 
-	test("where the key is kept says the table's words", () => {
+	test("where the key is kept, and a keyring that didn't open, say the table's words", () => {
 		// The desktop's, the one app whose key is in the system's keyring (PLAN-E2E-PLATAFORMAS.md, «Avisos nuevos»):
-		// Settings says when Linux has none, and the key is in a file (decision 19).
-		const words: [keyof typeof en, NoticeKey][] = [["e2e_key_in_file", "key_in_file"]];
+		// Settings says when Linux has none, and the key is in a file (decision 19); the bar says when one didn't open.
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_key_in_file", "key_in_file"],
+			["e2e_keyring_failed", "keyring_failed"],
+			["e2e_try_again", "try_again"],
+		];
 		for (const [key, table] of words) {
 			expect(NOTICES[table]).toEqual(expect.any(String));
 			expect(en[key]).toBe(NOTICES[table]);
