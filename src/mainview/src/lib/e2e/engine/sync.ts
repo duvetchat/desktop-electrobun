@@ -1000,17 +1000,20 @@ export class Conversations {
 	 * Before anything more goes to the conversation (#574): whether its core's group holds a user, a kind or an owner the
 	 * conversation as its page draws it doesn't, or the page doesn't draw it (N-C1), which the conversation then says
 	 * (`other_members`). The core's group and the page's drawing alone, never the engine's listing, which may leave the
-	 * conversation out. Never waived for a removal that waits: what's sent is made only once it's committed (the core's
-	 * ready_to_send). False without a group. A look before bytes are made, never after them (R-C1): its read can move the
-	 * group, after which `differs` is the one comparison.
+	 * conversation out. Never waived for a removal that waits: one that's due is committed here, as a member's device
+	 * would, after the read (Android's rule), and what's sent is made only once it's committed (the core's
+	 * ready_to_send). False without a group. A look before bytes are made, never after them (R-C1): its read and its
+	 * commit can move the group, after which `differs` is the one comparison.
 	 */
 	async holdsOthers(conversationId: string, carried?: Drawn | null): Promise<boolean> {
 		let held = await this.#group(conversationId);
 		if (!held) return false;
 		let others = await this.#othersIn(conversationId, held, false, carried);
-		// What differs may be a commit the queue has that this device hasn't read (N-M9): read whole, then held again.
+		// What differs may be a commit the queue has that this device hasn't read (N-M9), or a removal that's due: read
+		// whole, the due commit made, then held again.
 		if (others) {
 			await this.sync(conversationId, true);
+			await this.commitDue(conversationId);
 			held = await this.#group(conversationId);
 			others = held && (await this.#othersIn(conversationId, held, false, carried));
 		}

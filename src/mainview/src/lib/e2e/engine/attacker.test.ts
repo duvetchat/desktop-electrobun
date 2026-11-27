@@ -1030,6 +1030,41 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// The twins' rule, Android's: a removal that's due is committed inside the look, as a member's device would commit it.
+	// A message that waited meanwhile goes at its next try, without a Retry, its bytes made after that commit.
+	test(
+		"a message that waits while a removal is due goes at a READY, its look committing the removal",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			// Bo's message waits, its request unanswered. Cy leaves; the devices' clocks stand still, so her removal is due.
+			fake.refuse({ method: "POST", path: messagesPath(conversation) }, 500);
+			await rejection(send(b, conversation, "after Cy left"));
+			await c.engine.leaveConversation(conversation);
+			await turnEnded(b);
+			expect(await heldUsers(b, conversation)).toContain(cy);
+			// A READY sends what waits: its look commits the removal first.
+			b.connect(b.registered.at(-1) ?? null);
+			await until(async () => (await madeAt(a, conversation, bo, ["message"])).length === 1, {
+				ms: 20_000,
+				what: "the waiting message going at the READY",
+			});
+			const after = (await groupOf(b, conversation))!;
+			expect(after.members.map((member) => member.user_id)).not.toContain(cy);
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([
+				{ kind: "message", generation: after.generation, epoch: after.epoch },
+			]);
+			expect(await b.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
 	// N-M9: an honest removal the page draws before its commit reached this device. The queue is read whole before the
 	// group is said to differ: what's sent goes, to the group as it is once the commit is in, and nothing is said.
 	test(
