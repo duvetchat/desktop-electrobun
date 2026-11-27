@@ -11,6 +11,7 @@
 		onValueChange = undefined,
 		label,
 		size = "md",
+		align = "center",
 		disabled = false,
 		class: className = "",
 	}: {
@@ -26,6 +27,8 @@
 		/** What the options choose between, for a screen reader. */
 		label: string;
 		size?: "md" | "sm";
+		/** "start" pins each icon near its option's left edge and centres the words in the room left beside it. */
+		align?: "center" | "start";
 		disabled?: boolean;
 		class?: string;
 	} = $props();
@@ -48,6 +51,9 @@
 	const SCROLLS = "group-hover/segment:animate-marquee group-focus-visible/segment:animate-marquee";
 	// The padding that gives way, with the 2 px that stay: 12 px a side, or 10 when small.
 	const gutter = $derived(size === "sm" ? "w-2" : "w-2.5");
+	// With the icon pinned left, the words take the column's spare room, centred in it, from their own width up, so
+	// the spacers still give way first.
+	const wordsAlign = $derived(align === "start" ? "flex-auto text-center" : "");
 
 	function marquee(key: Value) {
 		return (box: HTMLElement) => {
@@ -92,18 +98,18 @@
 		>
 			<!-- The option's padding, past the 2 px that stay: as wide as ever where there's room (a control as wide as
 			     its words is no narrower), and the first to give way in a tight column, before the words. -->
-			<span class="{gutter} min-w-0 shrink-[1000]" aria-hidden="true"></span>
+			<span class="{align === 'start' ? 'w-1' : gutter} min-w-0 shrink-[1000]" aria-hidden="true"></span>
 			<!-- The icon never shrinks (#426): the words give way to it. -->
 			{#if option.icon}<option.icon size={14} class="mr-[5px] shrink-0" />{/if}
 			<!-- The words' window, as wide as the column leaves them, its line tall enough to keep their descenders; the
 			     words in it on one line, whole. -->
 			<span
 				{@attach marquee(option.value)}
-				class="min-w-0 overflow-hidden leading-normal {clipped[option.value] ? CLIPPED : ''}"
+				class="min-w-0 overflow-hidden leading-normal {wordsAlign} {clipped[option.value] ? CLIPPED : ''}"
 			>
 				<span class="inline-block {clipped[option.value] ? SCROLLS : ''}">{option.label}</span>
 			</span>
-			<span class="{gutter} min-w-0 shrink-[1000]" aria-hidden="true"></span>
+			<span class="{align === 'start' ? 'w-1' : gutter} min-w-0 shrink-[1000]" aria-hidden="true"></span>
 		</RadioGroup.Item>
 	{/each}
 </RadioGroup.Root>

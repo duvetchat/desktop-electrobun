@@ -422,7 +422,7 @@
 					<Users class="size-4" />
 				</span>
 				<div class="flex flex-col">
-					<h2 class="text-duvet-ink font-serif text-[16.5px] leading-[1.15] font-medium tracking-[-0.012em]">
+					<h2 class="text-duvet-ink text-[16.5px] leading-[1.15] font-semibold tracking-[-0.012em]">
 						{t("people_friends_title")}
 					</h2>
 					<span class="text-duvet-ink2 text-[11.5px] leading-[1.3]"
