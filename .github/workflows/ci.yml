@@ -49,6 +49,28 @@ jobs:
         working-directory: src/mainview
       # The Bun process's own: the Spotify reader's parsing.
       - run: bun test src/bun
+      # The core's key in a Secret Service, as a Linux desktop keeps it (src/bun/e2e/core.test.ts): gnome-keyring on a
+      # session bus of the step's own, unlocked with a password of its own. The run above has no bus, where the key goes
+      # to a file beside the database.
+      - name: bun test, with a Secret Service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends dbus gnome-keyring
+          dbus-run-session -- sh -c 'printf test | gnome-keyring-daemon --unlock --components=secrets && bun test src/bun/e2e/core.test.ts'
+        env:
+          DUVET_E2E_SECRET_SERVICE: "1"
+      # The core inside the packaged Linux build (src/bun/e2e/library.ts): Electrobun's dev build, which needs no page,
+      # then the library its copy rule put in Resources/app/native/, loaded by the build's own Bun with no screen.
+      - name: The core in the Linux build
+        run: |
+          bun run electrobun build --env=dev
+          app=build/dev-linux-x64/Duvet-dev
+          "$app/bin/bun" -e '
+            const { dlopen, FFIType } = await import("bun:ffi");
+            const library = process.argv.at(-1);
+            const { symbols } = dlopen(library, { duvet_e2e_version: { args: [], returns: FFIType.cstring } });
+            console.log(`The build loads the core ${symbols.duvet_e2e_version()} from ${library}`);
+          ' "$PWD/$app/Resources/app/native/libduvet_e2e_ffi.so"
       # The web's E2E core in a browser (scripts/web-e2e.ts): the Chrome this runner has, else Chrome for Testing in its
       # tool cache. Without one that runs here (none installs, or it lacks a system library), the step says so in a
       # warning and the tests are skipped.

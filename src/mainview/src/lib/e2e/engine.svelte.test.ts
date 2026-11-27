@@ -211,6 +211,32 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		SLOW,
 	);
 
+	// PLAN-E2E-PLATAFORMAS.md, Task 4: where the core keeps the database's key, as its open said, which Settings → Devices
+	// says when it's a file (a Linux session without a Secret Service); it goes with the engine, as the rest does (M6).
+	test(
+		"the page shows where the key is kept, and forgets it as the engine stops",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const inFile = new Proxy(testHost(), {
+				get(target, name) {
+					if (name === "open")
+						return async (userId: string) => ({ ...(await target.open(userId)), keyStorage: "file" });
+					const value = Reflect.get(target, name);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			expect(page.encryption.keyStorage).toBeNull();
+			await page.startEngine(ana, platform({ desktop: true, desktopHost: async () => inFile }));
+			expect(page.encryption.state.name).toBe("first_device");
+			expect(page.encryption.keyStorage).toBe("file");
+			await page.stopEngine();
+			expect(page.encryption.keyStorage).toBeNull();
+		},
+		SLOW,
+	);
+
 	test(
 		"on the desktop, one engine on one host for the page, its core closed as the user signs out",
 		async () => {

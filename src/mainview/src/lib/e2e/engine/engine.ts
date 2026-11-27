@@ -144,7 +144,9 @@ export interface EngineParts {
  * devices the API no longer has that hold it, which it goes on without on the person's yes; `relisted`, another device's
  * change kept a device it takes off (duvetchat/e2e#49). `keysAgain`: a change that went on without devices went up, and
  * another one is offered, as one of them may still hold the keys. What the encrypted backup shows (Task 32) is apart
- * from it: backup() and onBackup(). `failed` with `lostKey` is a database its key no longer opens.
+ * from it: backup() and onBackup(). `failed` with `lostKey` is a database its key no longer opens; with `storage`, the
+ * core's storage failed, its keyring or its disk (a locked Secret Service, a Keychain that refused): another open may
+ * get past it, which the person's Try again makes now (PLAN-E2E-PLATAFORMAS.md, Task 4).
  */
 export type EngineState =
 	| { name: "starting" }
@@ -159,7 +161,7 @@ export type EngineState =
 	| { name: "removed" }
 	| { name: "locked" }
 	| { name: "unsupported" }
-	| { name: "failed"; lostKey: boolean }
+	| { name: "failed"; lostKey: boolean; storage?: true }
 	| { name: "update"; minimum: string | null };
 
 const DAY = 24 * 3600 * 1000;
@@ -211,6 +213,11 @@ export class E2EEngine {
 	 * views say so while it's served (#575, M5), as a group under the new one won't open here.
 	 */
 	serverKeyChanged = false;
+	/**
+	 * Where the core keeps this device's database key, as its last open that went through said: a file where Linux has no
+	 * Secret Service, which Settings says (PLAN-E2E-PLATAFORMAS.md, Task 4); null before one did.
+	 */
+	keyStorage: HostOpened["keyStorage"] | null = null;
 	readonly #parts: EngineParts;
 	readonly #listeners = new Set<(state: EngineState) => void>();
 	/** The flow under way: each one waits for the one before. */
@@ -1190,6 +1197,19 @@ export class E2EEngine {
 	}
 
 	/**
+	 * The person's Try again, after a start that failed and goes again by itself (a keyring that didn't open): it goes
+	 * now, as a new gateway session's READY makes it go. With no start waiting to go again, it does nothing.
+	 */
+	tryAgain(): Promise<void> {
+		return this.#queue(async () => {
+			if (!this.#retry) return;
+			this.#retry();
+			this.#retry = null;
+			await this.#boot();
+		});
+	}
+
+	/**
 	 * Whether this device is still its user's first: the API serves no identity, or its own (an upload cut before its
 	 * answer). Another's served, the user was set up elsewhere, and a key made here would open nothing: the device
 	 * becomes a new one, by starting over when it made an identity the core can't undo (Ruling 26).
@@ -1598,6 +1618,7 @@ export class E2EEngine {
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);
+			this.keyStorage = opened.keyStorage ?? null;
 			this.#keysAgain = parts.store.read(KEYS_AGAIN) === true;
 			this.#relisted = parts.store.read(RELISTED) === true;
 			const { status, keys } = await ownDevice(parts);
@@ -1701,7 +1722,8 @@ export class E2EEngine {
 	#closed(opened: HostOpened) {
 		if (opened.state === "unsupported") return this.#set({ name: "unsupported" });
 		const lostKey = opened.state === "failed" && opened.reason === "bad_key";
-		this.#set(opened.state === "locked" ? { name: "locked" } : { name: "failed", lostKey });
+		const storage = opened.state === "failed" && opened.reason === "storage" ? { storage: true as const } : {};
+		this.#set(opened.state === "locked" ? { name: "locked" } : { name: "failed", lostKey, ...storage });
 		if (!lostKey) this.#later();
 	}
 

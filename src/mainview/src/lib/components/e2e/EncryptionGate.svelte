@@ -66,6 +66,8 @@
 		onChangeKeys,
 		onAlsoRemoved,
 		onFinishWithout,
+		lockableKeyring,
+		onTryAgain,
 		setupActions,
 		approvalActions,
 	}: {
@@ -90,6 +92,13 @@
 		onAlsoRemoved: () => Promise<Drops>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off (e2e#49). */
 		onFinishWithout: () => Promise<void>;
+		/**
+		 * The app's database key is in a keyring a person can lock: the desktop app's on Linux and macOS (client.ts'
+		 * lockableKeyring). One that didn't open is said with Try again there (PLAN-E2E-PLATAFORMAS.md, Task 4).
+		 */
+		lockableKeyring: boolean;
+		/** Opens the core again now, after a keyring that didn't open. */
+		onTryAgain: () => Promise<void>;
 		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
 		setupActions: {
 			recover(recoveryKey: string): Promise<void>;
@@ -214,8 +223,13 @@
 			case "unsupported":
 				return { text: web ? t("e2e_unsupported_browser") : t("e2e_no_e2e_here") };
 			case "failed":
-				return encryption.lostKey
-					? { text: t("e2e_lost_key"), label: t("e2e_delete_device"), run: confirmed(t("e2e_delete_device")) }
+				if (encryption.lostKey) {
+					return { text: t("e2e_lost_key"), label: t("e2e_delete_device"), run: confirmed(t("e2e_delete_device")) };
+				}
+				// A keyring that didn't open, where a person may have locked it: unlocking it lets the next open through,
+				// which Try again makes now. Elsewhere the engine goes again by itself, as from any failure that passes.
+				return encryption.storage && lockableKeyring
+					? { text: t("e2e_keyring_failed"), label: t("e2e_try_again"), run: onTryAgain }
 					: { text: t("e2e_failed") };
 			default:
 				return null;

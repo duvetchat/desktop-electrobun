@@ -4,6 +4,7 @@
 	import { CoreError } from "$lib/e2e/errors";
 	import { onlyDevice, type Drops } from "$lib/e2e/engine/devices";
 	import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
+	import type { HostOpened } from "$lib/e2e/host";
 	import { t } from "$lib/i18n";
 	import { formatDate, formatList, formatNumber } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
@@ -13,7 +14,12 @@
 	 * the page that mounts Settings as a sheet hands it in, and a window of its own has none (nor its devices).
 	 */
 	export interface DevicesEngine {
-		readonly encryption: { readonly state: EngineState; readonly backup: BackupShown };
+		readonly encryption: {
+			readonly state: EngineState;
+			readonly backup: BackupShown;
+			/** Where the core keeps the database's key, as its open said. */
+			readonly keyStorage: HostOpened["keyStorage"] | null;
+		};
 		/** `named`: what the list leaves out beside the device that the person was shown, which alone goes (#575). */
 		removeDevice(deviceId: string, changeKeys: boolean, named: string[]): Promise<void>;
 		changeKeys(named?: string[]): Promise<void>;
@@ -165,6 +171,7 @@
 		backup = { state: "uploading" },
 		web,
 		storageKept = null,
+		keyStorage = null,
 		now = Date.now(),
 		onReload,
 		onRemove,
@@ -184,6 +191,11 @@
 		web: boolean;
 		/** Whether the browser agreed to keep this device's data (navigator.storage.persisted), null untold. */
 		storageKept?: boolean | null;
+		/**
+		 * Where the core keeps the database's key, as its open said: a file where Linux has no Secret Service (decision 19),
+		 * which the person is told (PLAN-E2E-PLATAFORMAS.md, Task 4).
+		 */
+		keyStorage?: HostOpened["keyStorage"] | null;
 		now?: number;
 		onReload: () => void;
 		/** `named`: what the list leaves out beside the device that the person was shown (#575). */
@@ -258,6 +270,9 @@
 	<p class={calloutClass("info")}>{web ? t("e2e_unsupported_browser") : t("e2e_no_e2e_here")}</p>
 {:else}
 	<p class={NOTE}>{t("e2e_devices_lead")}</p>
+	{#if keyStorage === "file"}
+		<p class={calloutClass("info")}>{t("e2e_key_in_file")}</p>
+	{/if}
 	{#if web && storageKept === false}
 		<div class="{calloutClass('warn')} items-center">
 			<WarningIcon size={18} class="shrink-0" aria-hidden="true" />

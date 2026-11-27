@@ -1652,6 +1652,7 @@
 			backup={engine.encryption.backup}
 			web={!desktopApp}
 			{storageKept}
+			keyStorage={engine.encryption.keyStorage}
 			onReload={() => void loadDevices()}
 			onRemove={async (deviceId, keys, named) => {
 				await engine.removeDevice(deviceId, keys, named);

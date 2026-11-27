@@ -163,6 +163,7 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		encryption.state = state;
 		encryption.cutoverAt = made.cutoverAt;
 		encryption.serverKeyChanged = made.serverKeyChanged;
+		encryption.keyStorage = made.keyStorage;
 		// The user's other tabs show it too: a new device's setup moves on here, in the tab that leads.
 		tabs?.stateChanged();
 		// Ready, the rows the views asked for before may be there now.
@@ -649,6 +650,7 @@ type Tap =
 	| "keySaved"
 	| "uploadLater"
 	| "startOver"
+	| "tryAgain"
 	| "beginApproval"
 	| "useCode"
 	| "endApproval"
@@ -672,6 +674,8 @@ export const makeIdentity = () => tap("makeIdentity");
 export const keySaved = () => tap("keySaved");
 export const uploadLater = () => tap("uploadLater");
 export const startOver = () => tap("startOver");
+/** A keyring that didn't open, opened again now (PLAN-E2E-PLATAFORMAS.md, Task 4): the desktop's, which has no tabs. */
+export const tryAgain = () => tap("tryAgain");
 
 /** A new device's setup (Task 26): with the recovery key, by another device's approval, or by starting over. */
 export const setupActions = {
@@ -706,6 +710,7 @@ export async function stopEngine(): Promise<void> {
 	encryption.conversations = {};
 	encryption.cutoverAt = null;
 	encryption.serverKeyChanged = false;
+	encryption.keyStorage = null;
 	encryption.offers = {};
 	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };

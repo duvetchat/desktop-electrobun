@@ -118,6 +118,17 @@ describe("Settings' devices", () => {
 		expect(drawn({ web: false, storageKept: false })).not.toContain(en.e2e_storage_not_kept);
 	});
 
+	// PLAN-E2E-PLATAFORMAS.md, Task 4 (decision 19, Review Focus 3): a Linux session without a Secret Service keeps the key
+	// in a file beside the database, which the person is told; a keyring, or a key the page gives, says nothing.
+	test("a key kept in a file says so", () => {
+		expect(drawn({ keyStorage: "file" })).toContain(NOTICES.key_in_file);
+		expect(drawn({ keyStorage: "file", encryption: { name: "new_device" } })).toContain(NOTICES.key_in_file);
+		for (const keyStorage of ["keyring", "provided", null]) {
+			expect(drawn({ keyStorage })).not.toContain(NOTICES.key_in_file);
+		}
+		expect(drawn({ keyStorage: "file", encryption: { name: "unsupported" } })).not.toContain(NOTICES.key_in_file);
+	});
+
 	test("say when they're loading, and when they couldn't be read, with Try again", () => {
 		expect(drawn({ devices: null })).toContain(en.e2e_devices_loading);
 		const failed = drawn({ devices: null, failed: true });
