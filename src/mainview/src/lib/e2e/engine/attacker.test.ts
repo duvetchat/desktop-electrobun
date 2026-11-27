@@ -2482,6 +2482,39 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// While a start whose take-back failed waits to go again, the inbox doesn't make the device ready: a rotation's transfer
+	// another device of the user sends is taken, and the state waits for the start that goes again, after its take-back
+	// (#594's review fixes, concern 4 of their report).
+	test(
+		"a rotation's transfer doesn't make ready a start whose take-back failed",
+		async () => {
+			const fake = new FakeApi();
+			const bo = fake.addUser();
+			useFake(fake);
+			const first = await firstDevice(fake, bo);
+			const second = await approvedDevice(fake, first);
+			const log: string[] = [];
+			let refusing = true;
+			const host = watchedHost(first.host, log, (cmd) =>
+				refusing && cmd === "forgotten" ? new Error("the core didn't answer") : null,
+			);
+			const b = await restarted(fake, first, { host });
+			await turnEnded(b);
+			expect(b.engine.state.name).toBe("starting");
+			// The second device's change of keys: its transfer goes to the first device's inbox once the new key is saved.
+			await second.engine.changeKeys();
+			await second.engine.keySaved();
+			await until(() => log.includes("receive_direct"), { what: "Bo's first device taking the rotation's transfer" });
+			await turnEnded(b);
+			expect(b.states.map((state) => state.name)).not.toContain("ready");
+			// The start goes again at the next READY, takes the records back, and only then is the device ready.
+			refusing = false;
+			b.connect(b.registered.at(-1) ?? null);
+			await until(() => b.engine.state.name === "ready", { what: "Bo's first device ready after its start" });
+		},
+		SLOW,
+	);
+
 	// A server that leaves the conversation out of one listing doesn't have the core let its record go (#594's review,
 	// I1): a record whose own write never landed is the core's alone, the next start takes it back, and the group the
 	// server makes meanwhile is refused.

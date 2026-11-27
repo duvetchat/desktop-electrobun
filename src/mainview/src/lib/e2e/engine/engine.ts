@@ -1498,7 +1498,9 @@ export class E2EEngine {
 	 * the approval frames it kept, for this device's role (approval.ts).
 	 */
 	async #inbox(): Promise<void> {
-		if (await this.#takeInbox()) this.#set(await this.#identity());
+		// While a start that failed waits to go again (its take-back of the core's records among what failed), the state is
+		// that start's to set: a rotation's transfer taken meanwhile doesn't make the device ready without the take-back.
+		if ((await this.#takeInbox()) && this.#retry === null) this.#set(await this.#identity());
 		await this.#takeApprovals();
 		await this.#releaseHold();
 	}
