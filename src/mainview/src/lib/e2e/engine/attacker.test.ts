@@ -1743,6 +1743,46 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// The welcome another_group answers is spent as the core applies it: the engine's note of it is all that brings the
+	// device to let its own group go (#584, FG-M1). A forget that fails for the moment leaves the note for the turn's
+	// retry, and a close before the forget leaves it in the record for the next start.
+	test(
+		"another member's group is taken by the turn's retry after a forget that failed for the moment",
+		async () => {
+			const { fake, a, b, conversation } = await foundingForgotten(true);
+			await b.engine.openConversation(conversation);
+			let fails = 1;
+			const host = answeringHost(a.host, (command) =>
+				command.cmd === "forget_group" && fails-- > 0 ? Promise.reject(new Error("the call was cut")) : undefined,
+			);
+			const again = await restarted(fake, a, { host });
+			// The turn's retry, 2 s on.
+			again.clock.advance(2_000);
+			await sameGroup([again, b], conversation);
+		},
+		SLOW,
+	);
+
+	test(
+		"another member's group is taken at the next start after the app closed before its forget",
+		async () => {
+			const { fake, ana, a, b, conversation } = await foundingForgotten(true);
+			await a.host.open(ana);
+			const own = (await groupOf(a, conversation))!;
+			await b.engine.openConversation(conversation);
+			// The welcome is applied, and the app goes before the forget: its core's worker with it.
+			const host = answeringHost(a.host, (command) =>
+				command.cmd === "forget_group" ? Promise.reject(new Error("the core's worker went")) : undefined,
+			);
+			const closed = await restarted(fake, a, { host });
+			expect((await groupOf(closed, conversation))?.authenticator).toBe(own.authenticator);
+			const again = await restarted(fake, closed, { host: a.host });
+			const held = await sameGroup([again, b], conversation);
+			expect(held.authenticator).not.toBe(own.authenticator);
+		},
+		SLOW,
+	);
+
 	// Who may not make the group: a member of a group the API lost lets it go and waits for its owner, and the owner's
 	// founding made again brings their device in by its welcome, held to the record.
 	test(

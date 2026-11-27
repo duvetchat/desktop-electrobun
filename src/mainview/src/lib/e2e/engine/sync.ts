@@ -42,7 +42,7 @@ import {
 	type Drawn,
 	type HeldMembers,
 } from "./members";
-import { REFUSED_GENERATIONS, type EngineStore } from "./store";
+import { ANOTHER_GROUPS, REFUSED_GENERATIONS, type EngineStore } from "./store";
 
 /**
  * What a conversation says over its message box of its group (PLAN-E2E-CLIENTES.md, «Avisos»): blocked, with who may
@@ -161,6 +161,12 @@ function keptRefusals(store: EngineStore): Map<string, number> {
 	return read;
 }
 
+/** The conversations the record notes another group of (#584): what doesn't read as an ID is none. */
+function keptAnother(store: EngineStore): Set<string> {
+	const kept = store.read<unknown>(ANOTHER_GROUPS);
+	return new Set(Array.isArray(kept) ? kept.filter((id): id is string => typeof id === "string") : []);
+}
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 /** A number the engine counts with (an entry's, a group's generation): a whole one JS holds exactly, 0 or more. */
@@ -274,9 +280,11 @@ export class Conversations {
 	readonly #otherSender = new Set<string>();
 	/**
 	 * Conversations whose queue brought a welcome to another group at the generation this device holds (another_group,
-	 * #553): what's applied stops there, and the device lets its own go for the API's.
+	 * #553): what's applied stops there, and the device lets its own go for the API's. Kept in the record too, as the
+	 * welcome is spent once applied, until the forget is done or there's nothing to forget (#584): a close, or a forget
+	 * that fails for the moment, leaves it for the next start or the turn's retry.
 	 */
-	readonly #another = new Set<string>();
+	readonly #another: Set<string>;
 	/**
 	 * Restarts the core refused (a successor's, without a statement it needs), or whose commit the API's validator did
 	 * (#550), by conversation, with the queue's last number then: Restart is off until a newer entry comes (task 22's
@@ -325,6 +333,7 @@ export class Conversations {
 		this.#dropped = dropped;
 		this.#catchUps = new CatchUps(parts, soon);
 		this.#refused = keptRefusals(parts.store);
+		this.#another = keptAnother(parts.store);
 	}
 
 	/** Begins with the pinned external sender: the minute a commit whose bytes were lost waits for starts now. */
@@ -369,6 +378,7 @@ export class Conversations {
 		this.#cantRestart.clear();
 		this.#refused.clear();
 		this.#keepRefusals();
+		this.#keepAnother();
 	}
 
 	state(conversationId: string): ConversationState | null {
@@ -751,7 +761,7 @@ export class Conversations {
 				});
 			held = await this.#holding(conv.id);
 		}
-		if (held === "group" && (await this.#forget(conv.id, true))) {
+		if (held === "group" && (await this.#forget(conv.id, true)) === "forgotten") {
 			founding = legacyRecord(this.#parts.store, conv) ?? founding;
 			if (!isRecord(conv, founding)) return this.#membersChanged(conv, 0);
 			held = null;
@@ -892,7 +902,7 @@ export class Conversations {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);
 			// The API's group at this generation isn't the one this device holds (#553).
-			if (refused && rule === "another_group") this.#another.add(conv.id);
+			if (refused && rule === "another_group") this.#noteAnother(conv.id, true);
 			if (refused && MEMBERS_REFUSED.has(rule ?? "")) {
 				this.#refuse(conv.id, generations.get(seq) ?? conv.mls?.generation ?? 0);
 			}
@@ -972,10 +982,11 @@ export class Conversations {
 	 * forget_group), its block too, and keeps its record (keepForgotten), which whatever brings the group back is held
 	 * to. What waited to be sent there goes stale, for the sends to make again. A commit of this device's kept there
 	 * (staged after a refusal, or its bytes gone with the app) never entered a group the API doesn't hold: `drop` tells
-	 * the core so, which drops it; without it, nothing goes while one waits. Whether the group went: not where the core
-	 * holds none, nor its row alone, which waits for the API's group to pass its epoch.
+	 * the core so, which drops it; without it, nothing goes while one waits. Whether the group went (`forgotten`), the
+	 * core held nothing to let go (`nothing`: no group, or its row alone, which waits for the API's group to pass its
+	 * epoch), or a commit of its own still waits there (`waits`).
 	 */
-	async #forget(id: string, drop: boolean): Promise<boolean> {
+	async #forget(id: string, drop: boolean): Promise<"forgotten" | "nothing" | "waits"> {
 		const { host } = this.#parts;
 		const forget = () => host.handle<Forgotten>({ cmd: "forget_group", conversation_id: id });
 		let forgotten: Forgotten;
@@ -986,13 +997,13 @@ export class Conversations {
 				return forget();
 			});
 		} catch (error) {
-			const waits = error instanceof CoreError && (error.code === "not_found" || error.code === "pending_commit");
-			if (waits) return false;
+			if (error instanceof CoreError && error.code === "not_found") return "nothing";
+			if (error instanceof CoreError && error.code === "pending_commit") return "waits";
 			throw error;
 		}
 		this.#settling.delete(id);
 		keepForgotten(this.#parts.store, id, forgotten.expected);
-		return true;
+		return "forgotten";
 	}
 
 	/** The group as the core holds it, or null without one. */
@@ -1015,8 +1026,13 @@ export class Conversations {
 	 */
 	async #after(given: Conversation, at: Where, read: boolean): Promise<void> {
 		// Another member's group at this device's generation (#553): its own goes, and it comes in by an external commit,
-		// held to the record, as the welcome its key package opened is spent.
-		if (this.#another.delete(given.id) && (await this.#forget(given.id, true))) return this.#join(given);
+		// held to the record, as the welcome its key package opened is spent. The note goes once the forget is done or
+		// there was nothing to forget; a forget that throws leaves it for the turn's retry (#584).
+		if (this.#another.has(given.id)) {
+			const forgot = await this.#forget(given.id, true);
+			if (forgot !== "waits") this.#noteAnother(given.id, false);
+			if (forgot === "forgotten") return this.#join(given);
+		}
 		let conv = given;
 		const held = await this.#group(conv.id);
 		if (held) this.#behind(conv.id, held.generation);
@@ -1200,6 +1216,18 @@ export class Conversations {
 
 	#keepRefusals() {
 		this.#parts.store.write(REFUSED_GENERATIONS, this.#refused.size ? Object.fromEntries(this.#refused) : null);
+	}
+
+	/** Another group's welcome came in the conversation (`another`), or its note goes: in the record too (#584). */
+	#noteAnother(id: string, another: boolean) {
+		if (this.#another.has(id) === another) return;
+		if (another) this.#another.add(id);
+		else this.#another.delete(id);
+		this.#keepAnother();
+	}
+
+	#keepAnother() {
+		this.#parts.store.write(ANOTHER_GROUPS, this.#another.size ? [...this.#another] : null);
 	}
 
 	/**
@@ -1483,7 +1511,8 @@ export class Conversations {
 		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost, this.#through]) {
 			kept.delete(id);
 		}
-		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#another]) kept.delete(id);
+		for (const kept of [this.#settling, this.#removed, this.#otherSender]) kept.delete(id);
+		this.#noteAnother(id, false);
 		this.#cantRestart.delete(id);
 		this.#unrefuse(id);
 		this.#accepted.delete(id);
