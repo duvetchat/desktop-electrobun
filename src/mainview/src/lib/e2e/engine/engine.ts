@@ -198,6 +198,11 @@ export class E2EEngine {
 	state: EngineState = { name: "starting" };
 	/** The cutover's instant, as GET /api/e2e gave it: a conversation from before it says when its messages went. */
 	cutoverAt: string | null = null;
+	/**
+	 * The API serves another external sender than the one this device pinned (Ruling 32): the pinned one stays, and the
+	 * views say so while it's served (#575, M5), as a group under the new one won't open here.
+	 */
+	serverKeyChanged = false;
 	readonly #parts: EngineParts;
 	readonly #listeners = new Set<(state: EngineState) => void>();
 	/** The flow under way: each one waits for the one before. */
@@ -1568,6 +1573,7 @@ export class E2EEngine {
 			const { external_sender, cutover_at } = await parts.api.config();
 			this.cutoverAt = cutover_at;
 			this.#pinned = pinnedSender(parts.store, external_sender, this.#pinned);
+			this.serverKeyChanged = this.#pinned !== external_sender;
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);

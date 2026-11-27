@@ -1134,6 +1134,7 @@
 		<EncryptionGate
 			encryption={encryption.state}
 			backup={encryption.backup}
+			serverKeyChanged={encryption.serverKeyChanged}
 			web={!isElectrobunWindow()}
 			onMakeIdentity={makeIdentity}
 			onKeySaved={keySaved}

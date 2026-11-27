@@ -114,6 +114,7 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 	made.onState((state) => {
 		encryption.state = state;
 		encryption.cutoverAt = made.cutoverAt;
+		encryption.serverKeyChanged = made.serverKeyChanged;
 		// The user's other tabs show it too: a new device's setup moves on here, in the tab that leads.
 		tabs?.stateChanged();
 		// Ready, the rows the views asked for before may be there now.
@@ -290,6 +291,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			dismissShared: ({ shareId }: MessageParams) => live().dismissShared(shareId ?? ""),
 			offers: (id: string) => engine?.offers(id) ?? [],
 			cutoverAt: () => engine?.cutoverAt ?? null,
+			serverKeyChanged: () => engine?.serverKeyChanged ?? false,
 			// The person's contacts (Task 28).
 			contacts: () => engine?.contacts() ?? { changes: {}, verified: {} },
 			// What the encrypted backup shows (Task 32).
@@ -369,6 +371,7 @@ async function follow(): Promise<void> {
 	if (!asked || asked.leader) return;
 	encryption.state = await asked.call<EngineState>("state").catch(() => encryption.state);
 	encryption.cutoverAt = await asked.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
+	encryption.serverKeyChanged = await asked.call<boolean>("serverKeyChanged").catch(() => encryption.serverKeyChanged);
 	encryption.contacts = await asked.call<ContactsShown>("contacts").catch(() => encryption.contacts);
 	encryption.backup = await asked.call<BackupShown>("backup").catch(() => encryption.backup);
 	if (encryption.state.name === "ready") refreshAll();

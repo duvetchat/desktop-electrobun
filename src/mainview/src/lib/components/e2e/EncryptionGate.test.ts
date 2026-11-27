@@ -120,7 +120,16 @@ describe("the encryption gate", () => {
 		);
 	});
 
+	// #575 (M5): another server key than the one this device first saw is said, while it's served, when nothing else of
+	// the ready device's shows (Ruling 32): a conversation under the new one won't open here.
+	test("says when the server key isn't the one this device first saw", () => {
+		const shown = render(EncryptionGate, { props: { ...props({ name: "ready" }), serverKeyChanged: true } });
+		expect(shown.body).toContain(NOTICES.server_key_changed);
+		expect(drawn({ name: "ready" }).trim()).toBe("");
+	});
+
 	test("says it in the notices' words", () => {
+		expect(en.e2e_server_key_changed).toBe(NOTICES.server_key_changed);
 		expect(en.e2e_removed_device).toBe(NOTICES.removed_device);
 		expect(en.e2e_locked).toBe(NOTICES.locked);
 		expect(en.e2e_unsupported_browser).toBe(NOTICES.unsupported_browser);

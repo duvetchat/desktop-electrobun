@@ -383,11 +383,14 @@ describe.skipIf(!coreLibrary)("a group whose external sender isn't the API's is 
 		async () => {
 			const { fake, a, b, conversation } = await dm();
 			const pinned = fake.externalSender;
+			expect(a.engine.serverKeyChanged).toBe(false);
 			const bos = (await statusOf(b)).device_id!;
 			const other = generateKeyPairSync("ed25519");
 			fake.externalSender = Buffer.from(other.publicKey.export({ format: "jwk" }).x!, "base64url").toString("base64");
 			const again = await restarted(fake, a);
 			expect(again.store.read<string>("external_sender")).toBe(pinned);
+			// A notice, never a change (#575, M5): the person is told while it's served.
+			expect(again.engine.serverKeyChanged).toBe(true);
 			fake.proposeRemoval(conversation, bos, other.privateKey);
 			await turnEnded(again);
 			await turnEnded(b);

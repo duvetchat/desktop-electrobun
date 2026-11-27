@@ -39,6 +39,7 @@
 	let {
 		encryption,
 		backup = { state: "uploading" },
+		serverKeyChanged = false,
 		web,
 		onMakeIdentity,
 		onKeySaved,
@@ -52,6 +53,8 @@
 		encryption: EngineState;
 		/** What the encrypted backup shows, of which the gate says a new device's restore alone. */
 		backup?: BackupShown;
+		/** The API serves another server key than the one this device first saw (Ruling 32, #575 M5). */
+		serverKeyChanged?: boolean;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
 		web: boolean;
 		onMakeIdentity: () => Promise<void>;
@@ -86,7 +89,21 @@
 
 	let hiddenFor = $state<string | null>(null);
 	// What the × hides: the state's bar, or a restore's, whose dismissal leaves a later bar of the ready state shown.
-	const barKey = $derived(encryption.name === "ready" && backup.state === "restoring" ? "restoring" : encryption.name);
+	// The server key's notice, on a ready device whose bar says nothing else (#575, M5): its × hides it alone.
+	const serverKeyShown = $derived(
+		encryption.name === "ready" &&
+			!encryption.rotation &&
+			!encryption.keysAgain &&
+			backup.state !== "restoring" &&
+			serverKeyChanged,
+	);
+	const barKey = $derived(
+		encryption.name === "ready" && backup.state === "restoring"
+			? "restoring"
+			: serverKeyShown
+				? "server_key"
+				: encryption.name,
+	);
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
@@ -139,7 +156,7 @@
 				if (!rotation) {
 					// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
 					if (encryption.keysAgain) return { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys };
-					if (backup.state !== "restoring") return null;
+					if (backup.state !== "restoring") return serverKeyShown ? { text: t("e2e_server_key_changed") } : null;
 					return {
 						text: t("e2e_backup_restoring", { done: formatNumber(backup.done), total: formatNumber(backup.total) }),
 					};

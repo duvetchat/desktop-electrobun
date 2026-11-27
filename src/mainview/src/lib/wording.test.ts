@@ -11,7 +11,12 @@ const LEFT_OUT: Record<string, string> = {
 	"lib/components/server-render.ts": "test tooling: Svelte's server rendering",
 };
 // The API itself is still the server.
-const ABOUT_THE_API = new Set(["No answer from the server in time", "Server did not return a valid token"]);
+const ABOUT_THE_API = new Set([
+	"No answer from the server in time",
+	"Server did not return a valid token",
+	// The API's own key, which signs every group's removals (Ruling 32, #575 M5): the words both apps share.
+	"Duvet's server key isn't the one this device first saw. This device keeps the first one, so a conversation that uses the new one won't open here.",
+]);
 const WORD = /\b(servers?|channels?)\b/i;
 const shown = (s: string) =>
 	s

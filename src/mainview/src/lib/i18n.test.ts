@@ -15,7 +15,7 @@ const files = new Map(LOCALES.map((locale) => [locale, read(`${locale}.json`)]))
 const fileOf = (locale: Locale) => files.get(locale) ?? {};
 const translations = LOCALES.filter((locale) => locale !== "en");
 // The messages whose "server" is the API itself, not a Space (as lib/wording.test.ts's ABOUT_THE_API).
-const ABOUT_THE_API = new Set<string>([]);
+const ABOUT_THE_API = new Set<string>(["e2e_server_key_changed"]);
 
 /** What a message's words are built around: its placeholders, tags, select cases and plural cases. */
 interface Shape {

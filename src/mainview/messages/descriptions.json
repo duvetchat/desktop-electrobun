@@ -212,6 +212,7 @@
 	"e2e_safety_qr_label": "The screen reader's name of the code another phone scans to check the security number. {name} is the contact's name.",
 	"e2e_search_split": "Shown in place of an encrypted conversation's search results, when the search mixes what only the server can look for (pinned:, has:sticker) with what only this device can (words, has:image, has:video, has:sound). pinned:, has:sticker, has:image, video and sound are the search's filters, typed as they are: keep them in English.",
 	"e2e_send_anyway": "[short] The button of the question asked before a message goes, after a verified contact's keys changed: send it all the same (a verb).",
+	"e2e_server_key_changed": "The encryption bar at the bottom of the app, on a device that's ready: the server signs its groups with another key than the one this device saw first and keeps, so encrypted conversations under the new key won't open on it. The same words as the mobile app's.",
 	"e2e_set_up": "[short] The button of e2e_first_device: sets up encryption (a verb).",
 	"e2e_set_up_again": "[short] The button of e2e_removed_device: deletes this device's encrypted data and sets it up again as a new device (a verb).",
 	"e2e_setup_again": "In the setup card, when another device of the person's changed their device list first, and this one has to start its setup over.",

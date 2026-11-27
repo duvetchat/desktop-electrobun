@@ -223,6 +223,7 @@
 	"e2e_safety_qr_label": "A code of your security number with {name}",
 	"e2e_search_split": "In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
 	"e2e_send_anyway": "Send anyway",
+	"e2e_server_key_changed": "Duvet's server key isn't the one this device first saw. This device keeps the first one, so a conversation that uses the new one won't open here.",
 	"e2e_set_up": "Set up",
 	"e2e_set_up_again": "Set up again",
 	"e2e_setup_again": "Your devices changed while this one was being set up: set it up again.",
