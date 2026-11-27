@@ -1,5 +1,6 @@
 import type { ActiveCallInfo, CallVoiceState } from "$lib/stores.svelte";
 import type { Conversation, ConversationMember } from "$lib/api/conversations";
+import { t } from "$lib/i18n";
 import { conversationTitle, otherMember } from "$lib/pane";
 import type {
 	CallAcceptedEvent,
@@ -64,7 +65,8 @@ export function callDeclinedNotice(
 		return null;
 	}
 	const user = members.find((m) => m.user_id === declined.user_id)?.user;
-	return `${user?.alias ?? user?.username ?? "They"} declined`;
+	const name = user?.alias ?? user?.username;
+	return name === undefined ? t("call_declined_by_someone") : t("call_declined_by", { name });
 }
 
 /**
@@ -74,12 +76,14 @@ export function callDeclinedNotice(
  */
 export function missedCallNotice(call: ShownCall | null, incoming: CallIncomingEvent): string | null {
 	if (!call || call.conversationId === incoming.conversation_id) return null;
-	return `Missed a call from ${incoming.initiator_name}`;
+	return t("call_missed_from", { name: incoming.initiator_name });
 }
 
 /** What the user is told when they can't be in the voice room they're in any more: they lost access to it, or it was
- * deleted or hidden from them, or its space was deleted (#213). */
-export const VOICE_ROOM_LOST = "You can't be in this voice room anymore";
+ * deleted or hidden from them, or its space was deleted (#213). In the app's language. */
+export function voiceRoomLostNotice(): string {
+	return t("call_voice_room_lost");
+}
 
 /**
  * What the user is told when the gateway ends the voice this client is in (VOICE_SESSION_REPLACED). "permissions" means
@@ -87,7 +91,7 @@ export const VOICE_ROOM_LOST = "You can't be in this voice room anymore";
  * reason, a newer join of theirs, from another session, took it.
  */
 export function voiceEndedNotice(ended: VoiceSessionReplacedEvent): string {
-	return ended.reason === "permissions" ? VOICE_ROOM_LOST : "Your voice moved to another device";
+	return ended.reason === "permissions" ? voiceRoomLostNotice() : t("call_voice_moved");
 }
 
 /**
@@ -257,7 +261,7 @@ export function callCardFace(
 		const place = conversation?.type === 2 ? conversationTitle(conversation, meId) : null;
 		return { userId: call.initiatorId, avatar: call.initiatorAvatar, name: call.initiatorName, place };
 	}
-	if (!conversation) return { userId: null, avatar: null, name: "Chat", place: null };
+	if (!conversation) return { userId: null, avatar: null, name: t("call_unknown_chat"), place: null };
 	const other = otherMember(conversation, meId);
 	return {
 		userId: other?.user_id ?? null,

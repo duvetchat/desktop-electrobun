@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
+	import Rich from "$lib/components/Rich.svelte";
 	import {
 		AppWindow as AppWindowIcon,
 		Columns2 as ColumnsIcon,
@@ -151,7 +153,7 @@
 			newChannelCategory = null;
 		} catch (e) {
 			console.error(e);
-			toast(getApiError(e, "Failed to create room"), "error");
+			toast(getApiError(e, t("shell_room_create_failed")), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -165,7 +167,7 @@
 			confirmDeleteChannel = null;
 		} catch (err) {
 			console.error("Failed to delete channel:", err);
-			toast(getApiError(err, "Failed to delete room"), "error");
+			toast(getApiError(err, t("shell_room_delete_failed")), "error");
 		} finally {
 			isDeletingChannel = false;
 		}
@@ -333,7 +335,7 @@
 			if (!isDraggingCategory) payload.parent_id = newParentId;
 			await updateRoom(guild.id, srcId, payload);
 		} catch (err) {
-			toast(getApiError(err, "Failed to move room"), "error");
+			toast(getApiError(err, t("shell_room_move_failed")), "error");
 		}
 	}
 
@@ -413,7 +415,7 @@
 <!-- The rooms hang from the Space's row on a guide line, and the sidebar scrolls them. -->
 <div class="border-duvet-sb-edge text-duvet-ink mb-1 ml-[9px] flex flex-col border-l pb-1 pl-[3px]" role="list">
 	{#if sidebarItems.length === 0}
-		<p class="text-duvet-ink2 px-3 py-1.5 text-[13px]">No rooms you can see yet</p>
+		<p class="text-duvet-ink2 px-3 py-1.5 text-[13px]">{t("shell_rooms_empty")}</p>
 	{/if}
 	{#each sidebarItems as item, itemIdx}
 		{#if item.kind === "category"}
@@ -448,13 +450,15 @@
 					</button>
 				{/snippet}
 				<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(item.channel.id)}>
-					Copy room ID
+					{t("shell_room_copy_id")}
 				</MenuItem>
 				{#if canManageCategory}
-					<MenuItem icon={PencilIcon} onSelect={() => openChannelSettings(item.channel)}>Edit category</MenuItem>
+					<MenuItem icon={PencilIcon} onSelect={() => openChannelSettings(item.channel)}
+						>{t("shell_category_edit")}</MenuItem
+					>
 					<MenuSeparator />
 					<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = item.channel)}>
-						Delete category
+						{t("shell_category_delete")}
 					</MenuItem>
 				{/if}
 			</ContextMenu>
@@ -546,7 +550,9 @@
 									>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
 								>
 							{:else if voiceCount > 0}
-								<span class="text-duvet-ink2 ml-1 shrink-0 text-[11.5px] font-normal">{voiceCount} in voice</span>
+								<span class="text-duvet-ink2 ml-1 shrink-0 text-[11.5px] font-normal"
+									>{t("shell_in_voice", { count: voiceCount })}</span
+								>
 							{/if}
 						</button>
 					{/snippet}
@@ -554,21 +560,23 @@
 						icon={AppWindowIcon}
 						keys={keysFor(mac, SHELL_KEYS.openInTab)}
 						disabled={!canJoin}
-						onSelect={() => selectChannel(channel, "tab")}>Open in new tab</MenuItem
+						onSelect={() => selectChannel(channel, "tab")}>{t("shell_open_in_new_tab")}</MenuItem
 					>
 					<MenuItem
 						icon={ColumnsIcon}
 						keys={keysFor(mac, SHELL_KEYS.openBeside)}
 						disabled={!canJoin}
-						onSelect={() => selectChannel(channel, "beside")}>Open beside</MenuItem
+						onSelect={() => selectChannel(channel, "beside")}>{t("shell_open_beside")}</MenuItem
 					>
 					<MenuSeparator />
 					<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(channel.id)}>
-						Copy room ID
+						{t("shell_room_copy_id")}
 					</MenuItem>
 					<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
 					{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
-						<MenuItem icon={LinkSimpleIcon} onSelect={() => openInviteModal(channel)}>Invite people</MenuItem>
+						<MenuItem icon={LinkSimpleIcon} onSelect={() => openInviteModal(channel)}
+							>{t("shell_invite_people")}</MenuItem
+						>
 					{/if}
 					<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
 					{#if channel.type === "text"}
@@ -582,16 +590,18 @@
 					{/if}
 					{#if canManage}
 						<MenuSeparator />
-						<MenuItem icon={GearSixIcon} onSelect={() => openChannelSettings(channel)}>Room settings</MenuItem>
+						<MenuItem icon={GearSixIcon} onSelect={() => openChannelSettings(channel)}
+							>{t("shell_room_settings")}</MenuItem
+						>
 						<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = channel)}>
-							Delete room
+							{t("shell_room_delete")}
 						</MenuItem>
 					{/if}
 				</ContextMenu>
 				<!-- Who's in the voice room, under its row, each with their member menu on a right-click -->
 				{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
 					{@const people = channel.voiceUsers}
-					<ContextMenu label="Member">
+					<ContextMenu label={t("shell_member_menu")}>
 						{#snippet target(props)}
 							<div
 								{...withoutLongPress(props)}
@@ -654,17 +664,17 @@
 					<span
 						class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
 						role="img"
-						aria-label="Sharing their screen">Live</span
+						aria-label={t("shell_voice_sharing_screen")}>{t("shell_voice_live")}</span
 					>
 				{/if}
 				{#if user.camera}
-					<VideoIcon class="size-3" role="img" aria-label="Camera on" />
+					<VideoIcon class="size-3" role="img" aria-label={t("shell_voice_camera_on")} />
 				{/if}
 				{#if user.muted}
-					<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
+					<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label={t("shell_voice_muted")} />
 				{/if}
 				{#if user.deafened}
-					<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
+					<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label={t("shell_voice_deafened")} />
 				{/if}
 			</div>
 		</div>
@@ -691,7 +701,7 @@
 <!-- Create room: its kind, its category (a category has none) and its name. Enter in the name creates it. -->
 <Sheet
 	bind:open={showCreateModal}
-	title="Create room"
+	title={t("shell_room_create")}
 	class="max-w-[400px]"
 	onOpenAutoFocus={(e) => {
 		e.preventDefault();
@@ -699,19 +709,19 @@
 	}}
 >
 	<div class="flex flex-col gap-1.5">
-		<label for="channelType" class={FIELD_LABEL}>Room type</label>
+		<label for="channelType" class={FIELD_LABEL}>{t("shell_room_type")}</label>
 		<select id="channelType" bind:value={newChannelType} class="{SELECT} h-[38px]! w-full max-w-none!">
-			<option value={1}>Text room</option>
-			<option value={2}>Voice room</option>
-			<option value={3}>Category</option>
+			<option value={1}>{t("shell_room_type_text")}</option>
+			<option value={2}>{t("shell_room_type_voice")}</option>
+			<option value={3}>{t("shell_room_type_category")}</option>
 		</select>
 	</div>
 
 	{#if newChannelType !== 3}
 		<div class="flex flex-col gap-1.5">
-			<label for="channelCategory" class={FIELD_LABEL}>Category</label>
+			<label for="channelCategory" class={FIELD_LABEL}>{t("shell_room_category")}</label>
 			<select id="channelCategory" bind:value={newChannelCategory} class="{SELECT} h-[38px]! w-full max-w-none!">
-				<option value={null}>None</option>
+				<option value={null}>{t("shell_room_category_none")}</option>
 				{#each categories as category}
 					<option value={category.id}>{category.name}</option>
 				{/each}
@@ -720,7 +730,7 @@
 	{/if}
 
 	<div class="flex flex-col gap-1.5">
-		<label for="channelName" class={FIELD_LABEL}>Room name</label>
+		<label for="channelName" class={FIELD_LABEL}>{t("shell_room_name")}</label>
 		<div class="relative">
 			<span
 				class="text-duvet-ink2 pointer-events-none absolute top-1/2 left-3 grid -translate-y-1/2"
@@ -738,7 +748,7 @@
 				bind:this={roomNameField}
 				bind:value={newChannelName}
 				class="{fieldClass()} pl-9"
-				placeholder="new-room"
+				placeholder={t("shell_room_name_placeholder")}
 				maxlength={64}
 				onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
 			/>
@@ -747,10 +757,15 @@
 
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" onclick={() => (showCreateModal = false)}>Cancel</Button>
-		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}>Create room</Button>
+		<Button variant="quiet" onclick={() => (showCreateModal = false)}>{t("shell_cancel")}</Button>
+		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}
+			>{t("shell_room_create")}</Button
+		>
 	{/snippet}
 </Sheet>
+
+<!-- The room's name in the question, after its #. -->
+{#snippet roomName(text: string)}<span class="text-duvet-ink font-semibold">{text}</span>{/snippet}
 
 <!-- Delete room: asked first. While it's being deleted the question stays, and can't be dismissed. -->
 <Dialog
@@ -760,13 +775,15 @@
 			if (!v && !isDeletingChannel) confirmDeleteChannel = null;
 		}
 	}
-	title="Delete room"
+	title={t("shell_room_delete")}
 	escapeKeydownBehavior={isDeletingChannel ? "ignore" : "close"}
 >
-	Delete <span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This can't be undone.
+	<Rich key="shell_room_delete_question" values={{ name: confirmDeleteChannel?.name ?? "" }} tags={{ b: roomName }} />
 	{#snippet actions()}
-		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}>Cancel</Button>
-		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>Delete</Button>
+		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}
+			>{t("shell_cancel")}</Button
+		>
+		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>{t("shell_delete")}</Button>
 	{/snippet}
 </Dialog>
 

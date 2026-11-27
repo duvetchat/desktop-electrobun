@@ -10,6 +10,7 @@
 	import { Play as PlayIcon } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import { loadRelayOrigin, relayOrigin } from "$lib/player-relay";
 	import { playerFrame } from "$lib/urls";
 
@@ -55,7 +56,7 @@
 		if (packaged) loadRelayOrigin();
 	});
 	const frame = $derived(playerFrame(url, ownHosts, packaged ? (relay ?? $relayOrigin) : null));
-	const label = $derived(title ? `Play ${title}` : "Play");
+	const label = $derived(title ? t("media_play_named", { title }) : t("media_play"));
 	const coverClass = "group absolute inset-0 flex items-center justify-center overflow-hidden bg-duvet-stage";
 </script>
 

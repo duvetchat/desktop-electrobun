@@ -133,12 +133,12 @@ describe("a pinned chat", () => {
 
 	test("is pinned and unpinned from its row's menu, above its notifications", () => {
 		expect(source("DMSidebar.svelte")).toMatch(
-			/<MenuItem icon=\{pinned \? PinOffIcon : PinIcon\} onSelect=\{\(\) => togglePinnedChat\(conv\.id\)\}\s*>\{pinned \? "Unpin" : "Pin to top"\}<\/MenuItem\s*>\s*<NotificationSubmenu/,
+			/<MenuItem icon=\{pinned \? PinOffIcon : PinIcon\} onSelect=\{\(\) => togglePinnedChat\(conv\.id\)\}\s*>\{pinned \? t\("shell_unpin"\) : t\("shell_pin_to_top"\)\}<\/MenuItem\s*>\s*<NotificationSubmenu/,
 		);
 	});
 
 	test("a room has no pin", () => {
-		expect(source("ChannelsSidebar.svelte")).not.toMatch(/Pin to top|togglePinned/);
+		expect(source("ChannelsSidebar.svelte")).not.toMatch(/shell_pin_to_top|togglePinned/);
 	});
 });
 

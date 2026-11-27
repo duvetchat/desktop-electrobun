@@ -44,6 +44,9 @@ describe("the split of the user's panel", () => {
 			"<ProfileControls collapsed />",
 		])
 			expect(row).toContain(part);
+		// Docked, the media controls are the sidebar's to mount, as one block above the row (BRIEF.md "Media controls");
+		// only the folded column has them here. The call panel is theirs in voice, so the row mounts no voice status.
+		expect(row).not.toContain('aria-label={t("shell_settings")}');
 		expect(row).not.toContain("<UserSettings");
 		expect(row).not.toContain('aria-label="Settings"');
 		expect(row).not.toContain("<MediaControls />");
@@ -78,7 +81,7 @@ describe("the split of the user's panel", () => {
 		expect(expanded).toContain('class="flex shrink-0 items-center gap-0.5"');
 		expect(expanded).toContain("label={micLabel}");
 		expect(expanded).toContain("onclick={actions.toggleMute}");
-		expect(expanded).toContain('label={media.deafened ? "Undeafen" : "Deafen"}');
+		expect(expanded).toContain('label={media.deafened ? t("shell_undeafen") : t("shell_deafen")}');
 		expect(expanded).toContain("onclick={actions.toggleDeafen}");
 		expect(expanded).toContain("disabled={!media.canSpeak}");
 		expect(expanded).toContain("onclick={openSettings}");
@@ -89,14 +92,14 @@ describe("the split of the user's panel", () => {
 		expect(mic).toBeLessThan(deafen);
 		expect(deafen).toBeLessThan(settings);
 		// The deafen's chevron opens the output volume: a bar over the voice and shared sound.
-		expect(expanded).toContain('aria-label="Audio output"');
-		expect(expanded).toContain("Output volume");
 		expect(expanded).toContain("<Slider");
 		expect(expanded).toContain("voiceOutputVolume");
 		const code = script(bar);
-		expect(code).toContain('const micLabel = $derived(media.muted ? "Unmute" : "Mute");');
 		expect(code).toContain("const media = $derived($liveMedia);");
 		expect(code).toContain("const actions = liveMediaActions;");
+		expect(expanded).toContain('aria-label={t("shell_audio_output")}');
+		expect(expanded).toContain('{t("shell_output_volume")}');
+		expect(code).toContain('const micLabel = $derived(media.muted ? t("shell_unmute") : t("shell_mute"));');
 	});
 
 	test("the output volume the deafen's chevron sets reaches everyone's sound", () => {

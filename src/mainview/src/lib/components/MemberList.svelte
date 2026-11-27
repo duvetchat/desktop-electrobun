@@ -94,6 +94,7 @@
 	import { withoutLongPress } from "$lib/default-menu";
 	import { personOf } from "$lib/member-menu";
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
+	import { t } from "$lib/i18n";
 
 	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile, and their menu on a
 	// right-click (MemberMenu, #423). The members popover of a pane's bar and the members column beside a chat both show
@@ -255,7 +256,7 @@
 	});
 </script>
 
-<ContextMenu bind:open={menuOpen} label="Member">
+<ContextMenu bind:open={menuOpen} label={t("people_member_menu")}>
 	{#snippet target(props)}
 		<div
 			{...withoutLongPress(props)}
@@ -285,7 +286,7 @@
 		<div>
 			<!-- The heading stays at the top while its rows scroll under it, on the list's own colour. -->
 			<div class="{OVERLINE} {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 select-none">
-				{group.title} — {group.members.length}
+				{t("people_members_group", { group: group.title, count: group.members.length })}
 			</div>
 
 			{#if start > 0}
@@ -318,7 +319,7 @@
 								{@const activity = shownActivities($userActivities[member.id])[0]!}
 								<p class="text-duvet-ink2 truncate text-[11.5px] leading-4">
 									{isSpotify(activity)
-										? "Listening to Spotify"
+										? t("people_activity_spotify")
 										: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
 								</p>
 							{/if}

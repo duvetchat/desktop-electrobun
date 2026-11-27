@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { t } from "$lib/i18n";
 
 // The emoji dataset (emoji-datasource's 1.3 MB, built and sorted as it loads) and Shiki rode every start in the layout
 // chunk, though only the picker, the : suggestions and code blocks use them (#292).
@@ -19,7 +20,9 @@ describe("the emoji dataset", () => {
 		expect(first).toBe(second);
 		expect(emojiDataNow()).toBe(first);
 		expect(first.searchEmojis("grinning")[0]?.emoji).toBe("😀");
-		expect(first.emojiCategories[0]?.label).toBe("Smileys & Emotion");
+		// Its categories' names are messages, which the picker draws in the app's language.
+		expect(first.emojiCategories[0]?.label).toBe("emoji_smileys");
+		expect(t(first.emojiCategories[0]!.label)).toBe("Smileys & Emotion");
 	});
 
 	test("the picker and the : suggestions read it once loaded, and ask for it", () => {

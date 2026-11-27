@@ -8,6 +8,7 @@
 // macOS, or through Bun, which would hand the clipboard to any frame that has Electrobun's preload.
 
 import { resolveExternalHref } from "$lib/external-links";
+import { t } from "$lib/i18n";
 import { rawOf } from "$lib/message-box";
 
 /** What a right-click is on, as the page reads it from the element under the pointer and the selection. */
@@ -203,7 +204,7 @@ const SEARCH_SHOWN = 28;
 export function searchLabel(text: string): string {
 	const line = [...text.replace(/\s+/g, " ").trim()];
 	const shown = line.length > SEARCH_SHOWN ? `${line.slice(0, SEARCH_SHOWN).join("")}…` : line.join("");
-	return `Search Duvet for “${shown}”`;
+	return t("shell_menu_search", { text: shown });
 }
 
 type Key = Pick<KeyboardEvent, "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey">;

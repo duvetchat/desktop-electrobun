@@ -2,9 +2,11 @@
 	import { buttonClass, iconTileClass } from "$lib/components/ui/recipes";
 	import { ArrowRightLeft as MoveIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
+	import Rich from "$lib/components/Rich.svelte";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { transferProgress } from "$lib/storage-transfers";
+	import { storageCase, transferProgress } from "$lib/storage-transfers";
 	import { formatFileSize } from "$lib/utils/format";
 	import { StorageTransferStatus, type StorageTransfer } from "$lib/types";
 
@@ -16,53 +18,66 @@
 	}: {
 		/** A queued or moving transfer. */
 		transfer: StorageTransfer;
-		/** The names of its storages. */
-		source: string;
-		target: string;
+		/** The names of its buckets: null for one whose name isn't known, and for the default storage, which its
+		 * sentences say in words of their own (storageCase). */
+		source: string | null;
+		target: string | null;
 		/** Who started it, when that's someone else. */
 		startedBy?: string | null;
 	} = $props();
 
 	const progress = $derived(transferProgress(transfer));
+	const bytes = $derived({
+		from: storageCase(transfer.source_bucket_id, source),
+		source: source ?? "",
+		moved: formatFileSize(transfer.moved_bytes),
+		total: formatFileSize(transfer.total_bytes),
+	});
 	const queued = $derived(transfer.status === StorageTransferStatus.Queued);
 	// The worker stops after the file it's on: the transfer stays "cancelling" until it ends.
 	let cancelledId = $state<string | null>(null);
 	const cancelling = $derived(cancelledId === transfer.id);
 
 	async function cancel() {
-		const t = transfer;
-		cancelledId = t.id;
+		const cancelled = transfer;
+		cancelledId = cancelled.id;
 		try {
-			await storageTransfers.cancel(t);
+			await storageTransfers.cancel(cancelled);
 		} catch (err) {
 			cancelledId = null;
-			toast(getApiError(err, "Failed to cancel the transfer"), "error");
+			toast(getApiError(err, t("storage_transfer_cancel_failed")), "error");
 		}
 	}
 </script>
+
+{#snippet dot(text: string)}<span class="text-duvet-ink2">{text}</span>{/snippet}
 
 <div class="bg-duvet-card shadow-duvet-raised flex flex-col gap-2.5 rounded-2xl px-3.5 py-3">
 	<div class="flex items-center gap-3">
 		<span class={iconTileClass("md")}><MoveIcon class="size-4" /></span>
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-[13.5px] font-medium">
-				{queued ? "Waiting to move" : "Moving"} to {target}
-				<span class="text-duvet-ink2">·</span>
-				{progress.done}/{progress.total} files
-				{#if !queued}
-					<span class="text-duvet-ink2">·</span>
-					{progress.percent}%
-				{/if}
+				<Rich
+					key="storage_transfer_progress"
+					values={{
+						state: queued ? "queued" : "moving",
+						to: storageCase(transfer.target_bucket_id, target),
+						target: target ?? "",
+						done: progress.done,
+						total: progress.total,
+						ratio: progress.percent / 100,
+					}}
+					tags={{ dot }}
+				/>
 			</p>
 			<p class="text-duvet-ink2 truncate text-xs">
-				From {source} · {formatFileSize(transfer.moved_bytes)} of {formatFileSize(transfer.total_bytes)} moved
-				{#if startedBy}
-					· started by {startedBy}
-				{/if}
+				{startedBy
+					? t("storage_transfer_bytes_started_by", { ...bytes, name: startedBy })
+					: t("storage_transfer_bytes", bytes)}
 			</p>
 		</div>
 		<button onclick={cancel} disabled={cancelling} class={buttonClass("secondary", "sm")}>
-			{cancelling ? "Cancelling…" : "Cancel"}
+			{cancelling ? t("storage_transfer_cancelling") : t("storage_transfer_cancel")}
 		</button>
 	</div>
 	<div class="bg-duvet-toggle-off h-1.5 w-full overflow-hidden rounded-full">

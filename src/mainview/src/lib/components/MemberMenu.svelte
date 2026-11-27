@@ -19,6 +19,7 @@
 	import { getApiError } from "$lib/api/api";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { isStaff } from "$lib/badges";
+	import { t } from "$lib/i18n";
 	import { memberMenuItems, tiesOf, type MenuPerson } from "$lib/member-menu";
 	import {
 		acceptFriend,
@@ -120,8 +121,8 @@
 		} catch (err) {
 			wanted.delete(role.id);
 			const fallback = on
-				? `Couldn't give ${person.name} ${role.name}`
-				: `Couldn't take ${role.name} from ${person.name}`;
+				? t("people_role_give_failed", { name: person.name, role: role.name })
+				: t("people_role_take_failed", { name: person.name, role: role.name });
 			toast(getApiError(err, fallback), "error");
 		} finally {
 			changing.delete(role.id);
@@ -133,30 +134,32 @@
 </script>
 
 {#if items.profile}
-	<MenuItem icon={User} onSelect={() => afterClose(() => onProfile?.())}>Profile</MenuItem>
+	<MenuItem icon={User} onSelect={() => afterClose(() => onProfile?.())}>{t("people_menu_profile")}</MenuItem>
 {/if}
 {#if items.mention}
-	<MenuItem icon={AtSign} onSelect={() => onMention?.(person.id)}>Mention</MenuItem>
+	<MenuItem icon={AtSign} onSelect={() => onMention?.(person.id)}>{t("people_menu_mention")}</MenuItem>
 {/if}
 {#if items.message}
-	<MenuItem icon={MessageCircle} onSelect={() => chatWith(person.id)}>Message</MenuItem>
+	<MenuItem icon={MessageCircle} onSelect={() => chatWith(person.id)}>{t("people_menu_message")}</MenuItem>
 {/if}
 {#if items.call}
-	<MenuItem icon={Phone} onSelect={() => chatWith(person.id, true)}>Call</MenuItem>
+	<MenuItem icon={Phone} onSelect={() => chatWith(person.id, true)}>{t("people_menu_call")}</MenuItem>
 {/if}
 
 {#if lineBefore(1)}<MenuSeparator />{/if}
 {#if items.friend === "add"}
-	<MenuItem icon={UserPlus} onSelect={() => void addFriend(person.id)}>Add friend</MenuItem>
+	<MenuItem icon={UserPlus} onSelect={() => void addFriend(person.id)}>{t("people_menu_add_friend")}</MenuItem>
 {:else if items.friend === "accept"}
-	<MenuItem icon={UserCheck} onSelect={() => void acceptFriend(person.id)}>Accept friend request</MenuItem>
+	<MenuItem icon={UserCheck} onSelect={() => void acceptFriend(person.id)}>{t("people_menu_accept_friend")}</MenuItem>
 {:else if items.friend === "remove"}
-	<MenuItem icon={UserX} onSelect={() => void removeFriend(person.id, person.name)}>Remove friend</MenuItem>
+	<MenuItem icon={UserX} onSelect={() => void removeFriend(person.id, person.name)}
+		>{t("people_menu_remove_friend")}</MenuItem
+	>
 {/if}
 
 {#if lineBefore(2)}<MenuSeparator />{/if}
 {#if items.roles.length > 0}
-	<MenuSub label="Roles" icon={Shield}>
+	<MenuSub label={t("people_menu_roles")} icon={Shield}>
 		{#each items.roles as { role, held } (role.id)}
 			{@const on = wanted.get(role.id) ?? held}
 			<MenuItem checked={on} closeOnSelect={false} onSelect={() => void setRole(role, !on)}>{role.name}</MenuItem>
@@ -164,17 +167,21 @@
 	</MenuSub>
 {/if}
 {#if items.displayName}
-	<MenuItem icon={Pencil} onSelect={() => void changeDisplayName()}>Change display name</MenuItem>
+	<MenuItem icon={Pencil} onSelect={() => void changeDisplayName()}>{t("people_menu_display_name")}</MenuItem>
 {/if}
 
 {#if lineBefore(3)}<MenuSeparator />{/if}
 {#if items.moderation?.kick}
 	{@const { target } = items.moderation}
-	<MenuItem icon={UserMinus} danger onSelect={() => void kickFromSpace(target)}>Kick {person.name}</MenuItem>
+	<MenuItem icon={UserMinus} danger onSelect={() => void kickFromSpace(target)}
+		>{t("people_kick_member", { name: person.name })}</MenuItem
+	>
 {/if}
 {#if items.moderation?.ban}
 	{@const { target } = items.moderation}
-	<MenuItem icon={Ban} danger onSelect={() => banRequest.set(target)}>Ban {person.name}</MenuItem>
+	<MenuItem icon={Ban} danger onSelect={() => banRequest.set(target)}
+		>{t("people_ban_member", { name: person.name })}</MenuItem
+	>
 {/if}
 {#if items.removeFromGroup}
 	<MenuItem
@@ -182,19 +189,19 @@
 		danger
 		onSelect={() => void removeFromGroup(person.name, () => onRemoveFromGroup?.(person.id) ?? Promise.resolve())}
 	>
-		Remove from group
+		{t("people_remove_from_group")}
 	</MenuItem>
 {/if}
 
 {#if lineBefore(4)}<MenuSeparator />{/if}
 <MenuItem icon={Copy} onSelect={() => void navigator.clipboard.writeText(person.id).catch(console.error)}>
-	Copy user ID
+	{t("people_menu_copy_id")}
 </MenuItem>
 
 {#if lineBefore(5) && person.flags}
 	{@const { flags, badges } = person.flags}
 	<MenuSeparator />
 	<MenuItem icon={BadgeCheck} onSelect={() => userFlagsRequest.set({ id: person.id, flags, badges })}>
-		Edit flags and badges
+		{t("people_menu_edit_flags")}
 	</MenuItem>
 {/if}

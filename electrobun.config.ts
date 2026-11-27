@@ -2,6 +2,7 @@
 import type { ElectrobunConfig } from "electrobun";
 
 import pkg from "./package.json";
+import en from "./src/mainview/messages/en.json";
 import { secondWindowCopyRules } from "./src/mainview/src/lib/app-windows";
 
 // Electrobun's Bun API (electrobun/bun) imports three.js and Babylon.js onto its default export, which the app never uses:
@@ -21,6 +22,11 @@ export default {
 		name: "Duvet",
 		version: pkg.version,
 		identifier: "com.duvet.desktop",
+		// The Linux desktop entry's Comment, which launchers show beside the app's name: English's os_ message (#464), the
+		// words nix/package.nix's entry had (was Electrobun's default, "Duvet application", on the shortcut its Linux
+		// installer copies to the Desktop); each other language's is added by scripts.postBuild, and nix/package.nix's
+		// entry takes them all from there.
+		description: en.os_desktop_comment,
 	},
 	build: {
 		bun: {
@@ -34,10 +40,10 @@ export default {
 			// camera as NSCameraUsageDescription), and an app without them can't open either. Screen sharing needs no
 			// entry: macOS asks for Screen Recording itself. With codesign on, Electrobun would also sign these texts as
 			// the entitlements' values, where the hardened runtime wants true: check the mic and the camera then.
+			// English's os_ messages (#464); each other language's goes in its InfoPlist.strings (scripts.postBuild).
 			entitlements: {
-				"com.apple.security.device.audio-input":
-					"Duvet uses your microphone for voice rooms, calls and voice messages.",
-				"com.apple.security.device.camera": "Duvet uses your camera when you turn on video in a voice room or a call.",
+				"com.apple.security.device.audio-input": en.os_microphone_usage,
+				"com.apple.security.device.camera": en.os_camera_usage,
 			},
 		},
 		win: {
@@ -47,6 +53,9 @@ export default {
 			icon: "icon.iconset/icon_256x256.png",
 			bundleCEF: true,
 		},
+		// No `locales` (#464): in Electrobun 1.15.1 it trims the ICU data of Bun's own Intl on Windows and Linux
+		// (trimICUData in its CLI), not CEF's locale packs (locales/*.pak), which ship whole whatever it says; and Bun
+		// formats its words in each of the app's languages (src/bun/i18n.ts).
 		copy: {
 			"src/mainview/build/_app": "views/mainview/_app",
 			"src/mainview/build/sounds": "views/mainview/sounds",
@@ -82,6 +91,11 @@ export default {
 	scripts: {
 		// Builds the sources in native/macos for the build's target (scripts/build-native.ts), before the copy step.
 		preBuild: "scripts/build-native.ts",
+		// macOS's permission prompts in each language the app ships (#464): its InfoPlist.strings and the Info.plist's
+		// CFBundleLocalizations, written into the app's bundle, then into the self-extracting one a release is opened
+		// from, each after Electrobun writes its Info.plist and before it signs it (scripts/localize-bundle.ts).
+		postBuild: "scripts/localize-bundle.ts",
+		postWrap: "scripts/localize-bundle.ts",
 	},
 	runtime: {
 		dragRegions: true,

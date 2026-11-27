@@ -5,6 +5,8 @@
 	import { tick } from "svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { friendUser } from "$lib/friends";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
 	import { mentionsLabel } from "$lib/shell-layout";
@@ -101,13 +103,10 @@
 				key: `conv:${conv.id}`,
 				id: conv.id,
 				name:
-					conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "Direct message"),
-				sub:
 					conv.type === 2
-						? conv.members.length === 1
-							? "1 member"
-							: `${conv.members.length} members`
-						: "Direct message",
+						? (conv.name ?? t("shell_chat_group_untitled"))
+						: (other?.user?.alias ?? other?.user?.username ?? t("shell_chat_dm_untitled")),
+				sub: conv.type === 2 ? t("shell_group_members", { count: conv.members.length }) : t("shell_chat_kind_dm"),
 				group: conv.type === 2 || !other,
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
 				mentions: $shownMentionCounts[conv.id] ?? 0,
@@ -210,7 +209,7 @@
 				inputEl?.focus();
 			}}
 		>
-			<Dialog.Title class="sr-only">Jump to a Space, room or chat</Dialog.Title>
+			<Dialog.Title class="sr-only">{t("shell_switcher_title")}</Dialog.Title>
 			<div class="border-duvet-line flex shrink-0 items-center gap-3 border-b px-4 py-3.5">
 				<SearchIcon size={18} class="text-duvet-ink2 shrink-0" />
 				<input
@@ -218,9 +217,9 @@
 					bind:value={query}
 					type="text"
 					class="text-duvet-ink placeholder:text-duvet-ink2 focus-override min-w-0 flex-1 bg-transparent text-[17px] leading-[1.2] outline-none"
-					placeholder="Where to?"
+					placeholder={t("shell_switcher_placeholder")}
 					role="combobox"
-					aria-label="Search Spaces, rooms and chats"
+					aria-label={t("shell_switcher_search")}
 					aria-expanded="true"
 					aria-controls="quick-switcher-list"
 					aria-autocomplete="list"
@@ -229,13 +228,13 @@
 					spellcheck="false"
 					onkeydown={handleKeydown}
 				/>
-				<Kbd>Esc</Kbd>
+				<Kbd>{t("keys_esc")}</Kbd>
 			</div>
 			<ul
 				bind:this={listEl}
 				id="quick-switcher-list"
 				role="listbox"
-				aria-label="Results"
+				aria-label={t("shell_switcher_results")}
 				class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-2"
 			>
 				{#each results as item, index (item.key)}
@@ -278,25 +277,31 @@
 							{item.name}
 						</span>
 						<span class="text-duvet-ink2 min-w-0 flex-1 truncate text-xs">
-							{#if item.kind === "space"}Space{:else if item.kind === "room"}{item.spaceName}{:else if item.kind === "conversation"}{item.sub}{:else}Friend{/if}
+							{#if item.kind === "space"}{t(
+									"shell_switcher_kind_space",
+								)}{:else if item.kind === "room"}{item.spaceName}{:else if item.kind === "conversation"}{item.sub}{:else}{t(
+									"shell_switcher_kind_friend",
+								)}{/if}
 						</span>
 						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
 							<span class={countBadgeClass("sm")} role="img" aria-label={mentionsLabel(item.mentions)}
-								>{item.mentions}</span
+								>{formatNumber(item.mentions)}</span
 							>
 						{/if}
 						{#if isActive}
-							<span class="text-duvet-accent-text shrink-0 text-[11.5px] font-medium" aria-hidden="true">Open</span>
+							<span class="text-duvet-accent-text shrink-0 text-[11.5px] font-medium" aria-hidden="true"
+								>{t("shell_switcher_open")}</span
+							>
 						{/if}
 					</li>
 				{:else}
 					<li class="px-3 py-8 text-center text-[13px] text-duvet-ink2" role="presentation">
-						{query.trim() ? `Nothing matches “${query.trim()}”` : "No Spaces or chats yet"}
+						{query.trim() ? t("shell_switcher_no_match", { query: query.trim() }) : t("shell_switcher_empty")}
 					</li>
 				{/each}
 			</ul>
 			<p class="border-duvet-line text-duvet-ink2 shrink-0 border-t px-4 py-[9px] text-[11.5px]">
-				↑ ↓ to move · Enter to open · Esc to close
+				{t("shell_switcher_help")}
 			</p>
 		</Dialog.Content>
 	</Dialog.Portal>

@@ -16,6 +16,9 @@
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
 	import { calloutClass, CARD, FIELD, FIELD_SM, LABEL, SELECT } from "$lib/components/settings/recipes";
 	import { getApiError } from "$lib/api/api";
+	import { t, type MessageKey } from "$lib/i18n";
+	import { formatDate } from "$lib/i18n/format";
+	import Rich from "$lib/components/Rich.svelte";
 	import {
 		listWebhooks,
 		createWebhook,
@@ -37,7 +40,7 @@
 
 	const attachmentHost = getHostURL();
 	const several = $derived(rooms.length > 1);
-	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "deleted room";
+	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? null;
 
 	let webhooksLoading = $state(false);
 	let loadFailed = $state(false);
@@ -113,7 +116,7 @@
 		} catch (err) {
 			if (load !== loads) return;
 			console.error("Failed to load webhooks:", err);
-			toast(getApiError(err, "Failed to load webhooks"), "error");
+			toast(getApiError(err, t("room_webhooks_load_failed")), "error");
 			loadFailed = true;
 		} finally {
 			if (load === loads) webhooksLoading = false;
@@ -144,7 +147,7 @@
 			await loadWebhooks();
 		} catch (err) {
 			console.error("Failed to create webhook:", err);
-			toast(getApiError(err, "Failed to create webhook"), "error");
+			toast(getApiError(err, t("room_webhook_create_failed")), "error");
 		} finally {
 			isCreatingWebhook = false;
 		}
@@ -178,43 +181,53 @@
 			await loadWebhooks();
 		} catch (err) {
 			console.error("Failed to update webhook:", err);
-			toast(getApiError(err, "Failed to update webhook"), "error");
+			toast(getApiError(err, t("room_webhook_update_failed")), "error");
 		}
 	}
 
 	async function handleDeleteWebhook(wh: Webhook) {
-		await confirmAction(`Delete webhook "${wh.username}"? This can't be undone.`, "Delete", async () => {
-			isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: true };
-			try {
-				await deleteWebhook(space.id, wh.room_id, wh.id);
-				await loadWebhooks();
-			} finally {
-				isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: false };
-			}
-		});
+		await confirmAction(
+			t("room_webhook_delete_confirm", { name: wh.username }),
+			t("room_webhook_delete"),
+			async () => {
+				isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: true };
+				try {
+					await deleteWebhook(space.id, wh.room_id, wh.id);
+					await loadWebhooks();
+				} finally {
+					isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: false };
+				}
+			},
+			t("room_webhook_delete_busy"),
+		);
 	}
 
 	async function handleResetWebhookToken(wh: Webhook) {
 		await confirmAction(
-			"Reset this webhook's token? The old token will stop working immediately.",
-			"Reset token",
+			t("room_webhook_reset_token_confirm"),
+			t("room_webhook_reset_token"),
 			async () => {
 				try {
 					const newToken = await resetWebhookToken(space.id, wh.room_id, wh.id);
 					createdWebhookToken = newToken;
 					createdWebhookId = wh.id;
-					toast("Token reset successfully", "success");
+					toast(t("room_webhook_token_reset_done"), "success");
 				} catch (err) {
 					console.error("Failed to reset webhook token:", err);
-					toast(getApiError(err, "Failed to reset token"), "error");
+					toast(getApiError(err, t("room_webhook_reset_token_failed")), "error");
 				}
 			},
+			t("room_webhook_reset_token_busy"),
 		);
 	}
 
-	function copyWebhookUrl(url: string, what: string) {
+	/** When a webhook was made, as a date in the app's language. */
+	const created = (wh: Webhook) => formatDate(new Date(wh.created_at));
+
+	/** Copies one of a new webhook's URLs, and says which (`copied`: the notice's key). */
+	function copyWebhookUrl(url: string, copied: MessageKey) {
 		navigator.clipboard.writeText(url);
-		toast(`${what} copied to clipboard`, "success");
+		toast(t(copied), "success");
 	}
 </script>
 
@@ -233,7 +246,7 @@
 			<button
 				type="button"
 				class="text-fixed-white hover:bg-fixed-white/20 flex size-6 items-center justify-center rounded-md"
-				title="Change avatar"
+				title={t("room_webhook_avatar_change")}
 				onclick={pick}
 			>
 				<CameraIcon class="size-3" />
@@ -242,7 +255,7 @@
 				<button
 					type="button"
 					class="text-duvet-call-red-ink hover:bg-fixed-white/20 flex size-6 items-center justify-center rounded-md"
-					title="Remove avatar"
+					title={t("room_webhook_avatar_remove")}
 					onclick={remove}
 				>
 					<TrashIcon class="size-3" />
@@ -252,26 +265,33 @@
 	</div>
 {/snippet}
 
+{#snippet dot(text: string)}<span class="mx-1 opacity-60">{text}</span>{/snippet}
+
 {#if webhooksLoading}
-	<p class="text-duvet-ink2 px-1.5 text-sm">Loading webhooks…</p>
+	<p class="text-duvet-ink2 px-1.5 text-sm">{t("room_webhooks_loading")}</p>
 {:else}
 	<div class="flex flex-col gap-5">
 		<!-- Create new webhook -->
 		{#if rooms.length > 0}
 			<SettingsGroup
-				title="Create webhook"
+				title={t("room_webhook_create_title")}
 				plain
 				class="flex flex-col gap-3"
-				note={`Webhooks allow external services to send messages to ${several ? "a room" : `#${rooms[0]!.name}`}.`}
+				note={several ? t("room_webhooks_note_any_room") : t("room_webhooks_note", { room: rooms[0]?.name ?? "" })}
 			>
 				<label class="block">
-					<span class={LABEL}>Username</span>
-					<input type="text" class={FIELD} placeholder="Webhook Bot" bind:value={newWebhookName} />
+					<span class={LABEL}>{t("room_webhook_username_label")}</span>
+					<input
+						type="text"
+						class={FIELD}
+						placeholder={t("room_webhook_username_placeholder")}
+						bind:value={newWebhookName}
+					/>
 				</label>
 
 				{#if several}
 					<label class="block">
-						<span class={LABEL}>Room</span>
+						<span class={LABEL}>{t("room_webhook_room_label")}</span>
 						<select class="{SELECT} h-[38px]! w-full max-w-none!" bind:value={newWebhookRoomId}>
 							{#each rooms as r (r.id)}
 								<option value={r.id}>#{r.name}</option>
@@ -281,7 +301,7 @@
 				{/if}
 
 				<div>
-					<span class={LABEL}>Avatar (optional)</span>
+					<span class={LABEL}>{t("room_webhook_avatar_label")}</span>
 					<div class="flex items-center gap-3">
 						{@render avatarSlot(
 							newWebhookAvatarPreview,
@@ -289,14 +309,14 @@
 							() => pickWebhookAvatar("new"),
 							clearNewWebhookAvatar,
 						)}
-						<p class="text-duvet-ink2 text-xs">Click to upload an avatar</p>
+						<p class="text-duvet-ink2 text-xs">{t("room_webhook_avatar_hint")}</p>
 					</div>
 				</div>
 
 				<div>
 					<Button onclick={handleCreateWebhook} disabled={isCreatingWebhook || !newWebhookName.trim()}>
 						<PlusIcon size={15} />
-						{isCreatingWebhook ? "Creating…" : "Create"}
+						{isCreatingWebhook ? t("room_webhook_creating") : t("room_webhook_create")}
 					</Button>
 				</div>
 			</SettingsGroup>
@@ -306,36 +326,34 @@
 		{#if createdWebhookToken && createdWebhookId}
 			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
 			<div class="{calloutClass('warn')} flex-col gap-2! overflow-hidden">
-				<p class="font-semibold">Webhook token (shown only once)</p>
-				<div class="flex items-center gap-2">
-					<code
-						class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 truncate rounded-md px-3 py-2 font-mono text-xs select-text"
-					>
-						{createdWebhookToken}
-					</code>
+				<p class="font-semibold">{t("room_webhook_token_title")}</p>
+				<!-- The token on a line of its own, the buttons together under it at the right: beside it, a longer
+				     language's buttons would leave it no room (#562). -->
+				<code class="bg-duvet-code-bg text-duvet-ink block truncate rounded-md px-3 py-2 font-mono text-xs select-text">
+					{createdWebhookToken}
+				</code>
+				<div class="flex items-center justify-end gap-2">
 					<Button
 						variant="secondary"
 						size="sm"
-						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
-						title="Copy webhook URL"
+						onclick={() => copyWebhookUrl(urls.url, "room_webhook_url_copied")}
+						title={t("room_webhook_copy_url_tooltip")}
 					>
 						<CopyIcon size={13} />
-						Copy URL
+						{t("room_webhook_copy_url")}
 					</Button>
 					<Button
 						variant="secondary"
 						size="sm"
-						onclick={() => copyWebhookUrl(urls.github, "GitHub URL")}
-						title="Copy the URL with /github"
+						onclick={() => copyWebhookUrl(urls.github, "room_webhook_github_url_copied")}
+						title={t("room_webhook_copy_github_url_tooltip")}
 					>
 						<CopyIcon size={13} />
-						Copy GitHub URL
+						{t("room_webhook_copy_github_url")}
 					</Button>
 				</div>
-				<p class="truncate text-[11px] opacity-80" title={urls.url}>Webhook URL: {urls.url}</p>
-				<p class="text-duvet-ink2 text-[11px]">
-					Paste the GitHub URL as a GitHub repository's webhook: its pushes, issues and pull requests post here.
-				</p>
+				<p class="truncate text-[11px] opacity-80" title={urls.url}>{t("room_webhook_url", { url: urls.url })}</p>
+				<p class="text-duvet-ink2 text-[11px]">{t("room_webhook_github_hint")}</p>
 				<div>
 					<Button
 						variant="quiet"
@@ -345,7 +363,7 @@
 							createdWebhookId = null;
 						}}
 					>
-						Dismiss
+						{t("room_webhook_token_dismiss")}
 					</Button>
 				</div>
 			</div>
@@ -355,16 +373,14 @@
 		{#if loadFailed}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
 				<WebhookIcon class="text-duvet-ink2 mb-3 size-9" />
-				<p class="text-duvet-ink2 text-sm">Couldn't load the webhooks.</p>
+				<p class="text-duvet-ink2 text-sm">{t("room_webhooks_load_failed_empty")}</p>
 			</div>
 		{:else if roomWebhooks.length === 0}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
 				<WebhookIcon class="text-duvet-ink2 mb-3 size-9" />
-				<p class="text-duvet-ink2 text-sm">No webhooks yet.</p>
+				<p class="text-duvet-ink2 text-sm">{t("room_webhooks_empty")}</p>
 				<p class="text-duvet-ink2 mt-1 text-xs">
-					{rooms.length > 0
-						? "Create one above to get started."
-						: "Webhooks post in text rooms, and there are none here you can see."}
+					{rooms.length > 0 ? t("room_webhooks_empty_hint") : t("room_webhooks_no_rooms")}
 				</p>
 			</div>
 		{:else}
@@ -380,7 +396,7 @@
 							)}
 							<input
 								type="text"
-								aria-label="Webhook name"
+								aria-label={t("room_webhook_name_label")}
 								class="{FIELD_SM} min-w-0 flex-1"
 								bind:value={editingWebhookName}
 								onkeydown={(e) => {
@@ -392,14 +408,14 @@
 								}}
 							/>
 							<IconButton
-								label="Save"
-								title="Save"
+								label={t("room_webhook_save")}
+								title={t("room_webhook_save")}
 								class="text-duvet-alive-text!"
 								onclick={() => handleUpdateWebhook(wh)}
 							>
 								<CheckIcon size={16} />
 							</IconButton>
-							<IconButton label="Cancel" title="Cancel" onclick={cancelWebhookEdit}>
+							<IconButton label={t("room_webhook_cancel")} title={t("room_webhook_cancel")} onclick={cancelWebhookEdit}>
 								<XIcon size={16} />
 							</IconButton>
 						{:else}
@@ -420,28 +436,39 @@
 							<div class="min-w-0 flex-1">
 								<p class="truncate text-[13.5px] font-medium">{wh.username}</p>
 								<p class="text-duvet-ink2 truncate text-xs">
-									{#if several}Posts in #{roomName(wh.room_id)}<span class="mx-1 opacity-60">&middot;</span>{/if}Created {new Date(
-										wh.created_at,
-									).toLocaleDateString()}
+									{#if several}
+										{@const room = roomName(wh.room_id)}
+										<Rich
+											key="room_webhook_details"
+											values={{ place: room === null ? "gone" : "room", room: room ?? "", date: created(wh) }}
+											tags={{ dot }}
+										/>
+									{:else}
+										{t("room_webhook_created", { date: created(wh) })}
+									{/if}
 								</p>
 							</div>
 							<div
 								class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 							>
-								<IconButton label="Rename" title="Rename" onclick={() => startWebhookEdit(wh)}>
+								<IconButton
+									label={t("room_webhook_rename")}
+									title={t("room_webhook_rename")}
+									onclick={() => startWebhookEdit(wh)}
+								>
 									<PencilIcon size={16} />
 								</IconButton>
 								<IconButton
-									label="Reset token"
-									title="Reset token"
+									label={t("room_webhook_reset_token")}
+									title={t("room_webhook_reset_token")}
 									class="hover:text-duvet-warn!"
 									onclick={() => handleResetWebhookToken(wh)}
 								>
 									<WebhookIcon size={16} />
 								</IconButton>
 								<IconButton
-									label="Delete"
-									title="Delete"
+									label={t("room_webhook_delete")}
+									title={t("room_webhook_delete")}
 									danger
 									onclick={() => handleDeleteWebhook(wh)}
 									disabled={isDeletingWebhook[wh.id]}
@@ -459,7 +486,7 @@
 
 <ImageCropModal
 	bind:open={showWebhookAvatarCrop}
-	title="Change webhook avatar"
+	title={t("room_webhook_avatar_change")}
 	aspect={1}
 	targetWidth={256}
 	targetHeight={256}

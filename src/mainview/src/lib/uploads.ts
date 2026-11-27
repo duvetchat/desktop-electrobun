@@ -1,5 +1,7 @@
 import { get, writable } from "svelte/store";
 import type { UploadOptions } from "$lib/api/api";
+import { t } from "$lib/i18n";
+import { formatFileSize, formatNumber } from "$lib/i18n/format";
 
 /** How far an upload is, in percent of its body's bytes sent (FetchRequestConfig.onUploadProgress), rounded down: 100
  * once every byte is up and the answer is awaited, never before. 0 while the total isn't known. */
@@ -10,7 +12,7 @@ export function uploadPercent(sent: number, total: number): number {
 
 /** An upload's progress as the mobile app words it: "Uploading · 42%". It stays at 100% while the answer is awaited. */
 export function uploadNote(percent: number): string {
-	return `Uploading · ${percent}%`;
+	return t("chat_upload_progress", { percent });
 }
 
 /** Whether every byte of an upload's body is up: its request then waits for the answer. */
@@ -43,7 +45,11 @@ export function fileGoingUp(sizes: number[], sent: number, total: number): numbe
 export function messageUploadNote(sizes: number[], sent: number, total: number): string {
 	const percent = uploadPercent(sent, total);
 	if (sizes.length <= 1) return uploadNote(percent);
-	return `Uploading ${fileGoingUp(sizes, sent, total) + 1} of ${sizes.length} · ${percent}%`;
+	return t("chat_upload_progress_files", {
+		current: fileGoingUp(sizes, sent, total) + 1,
+		total: sizes.length,
+		percent,
+	});
 }
 
 /** A list without the copy of a message being sent (whose ID is its nonce), or null when it has none: the API's copy
@@ -80,8 +86,25 @@ const aborts = new Map<string, AbortController>();
 /** What a send resolves to when Cancel stopped its upload. */
 export const CANCELLED = Symbol("cancelled");
 
-/** The notice for a message whose Cancel came once the API had its whole body, and which it posted all the same. */
-export const SENT_BEFORE_CANCEL = "Your message was sent before it could be cancelled";
+/** The notice for a message whose Cancel came once the API had its whole body, and which it posted all the same, in the
+ * app's language. */
+export function sentBeforeCancel(): string {
+	return t("chat_upload_sent_before_cancel");
+}
+
+/**
+ * A file's size as the chat writes it under a file, in the app's language: as formatFileSize (lib/i18n/format.ts) up
+ * to a megabyte, then megabytes with one decimal (2.5 MB), as the chat always has.
+ */
+export function chatFileSize(bytes: number): string {
+	if (bytes < 1024 * 1024) return formatFileSize(bytes);
+	const size = formatNumber(bytes / (1024 * 1024), {
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+		useGrouping: false,
+	});
+	return t("format_size_mb", { size });
+}
 
 // The upload of nonce went on: a change of its percent (and so of its files' bars) is news, a few more bytes aren't.
 function progressed(nonce: string, sent: number, total: number) {

@@ -11,7 +11,9 @@ test("a group's bar offers what the user can do to it in the pane's one More, a 
 	expect(view).toContain("const actionsOnGroup = $derived(groupActions(conversation, me?.id));");
 	const groupMenu = view.slice(view.indexOf("{#snippet groupMenu()}"), view.indexOf("{#snippet actions()}"));
 	expect(groupMenu).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
-	expect(groupMenu).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
+	expect(groupMenu).toContain(
+		'<MenuItem icon={LogOut} danger onSelect={leaveGroup}>{t("people_group_leave_menu")}</MenuItem>',
+	);
 	// The bar gets them with the actions, a group's alone.
 	expect(view).toContain("show(convId, actions, actionsOnGroup.leave ? groupMenu : null);");
 	// The actions draw a ⋯ of their own only without a bar.
@@ -19,7 +21,7 @@ test("a group's bar offers what the user can do to it in the pane's one More, a 
 	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
 	expect(actions.match(/<Ellipsis\b/g)).toHaveLength(1);
 	expect(actions).toMatch(
-		/\{#if actionsOnGroup\.leave && !onBarActions\}\s*<Menu align="end" label="More for this group">[\s\S]*?\{@render groupMenu\(\)\}\s*<\/Menu>/,
+		/\{#if actionsOnGroup\.leave && !onBarActions\}\s*<Menu align="end" label=\{t\("people_group_more"\)\}>[\s\S]*?\{@render groupMenu\(\)\}\s*<\/Menu>/,
 	);
 });
 
@@ -31,12 +33,18 @@ test("the call button calls with one press, and its chevron offers a voice call 
 	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
 	// The phone itself places a voice call, as before; the chevron beside it opens the menu. Both wait while a call
 	// shows, or the user's own rings from another device.
-	expect(actions).toMatch(/onclick=\{startCall\}\s*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Start call"/);
 	expect(actions).toMatch(
-		/<Menu align="end" label="Start a call">\s*\{#snippet trigger\(props\)\}\s*<button\s*\{\.\.\.props\}[^>]*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Voice or video call"\s*aria-label="Voice or video call"\s*>\s*<ChevronDown/,
+		/onclick=\{startCall\}\s*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title=\{t\("people_conversation_start_call"\)\}/,
 	);
-	expect(actions).toContain("<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>");
-	expect(actions).toContain("<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>");
+	expect(actions).toMatch(
+		/<Menu align="end" label=\{t\("people_conversation_call_menu"\)\}>\s*\{#snippet trigger\(props\)\}\s*<button\s*\{\.\.\.props\}[^>]*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title=\{t\("people_conversation_call_options"\)\}\s*aria-label=\{t\("people_conversation_call_options"\)\}\s*>\s*<ChevronDown/,
+	);
+	expect(actions).toContain(
+		'<MenuItem icon={Phone} onSelect={startCall}>{t("people_conversation_voice_call")}</MenuItem>',
+	);
+	expect(actions).toContain(
+		'<MenuItem icon={Video} onSelect={startVideoCall}>{t("people_conversation_video_call")}</MenuItem>',
+	);
 	expect(view).toMatch(
 		/function startVideoCall\(\) \{\s*startConversationCall\(conversation, \{ video: true \}\);\s*\}/,
 	);
@@ -46,15 +54,18 @@ test("the call button calls with one press, and its chevron offers a voice call 
 
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {
 	const view = source("ConversationView.svelte");
-	expect(view).toContain('await promptDialog("Rename group", "Group name", current);');
+	// Its words said as the dialog draws, so a language switched while it's open reaches them.
+	expect(view).toMatch(
+		/await promptDialog\(\s*\(\) => t\("people_group_rename_prompt"\),\s*\(\) => t\("people_group_name_placeholder"\),\s*current,?\s*\);/,
+	);
 	expect(view).toContain("if (!name || name === current) return;");
-	expect(view).toContain(`toast(getApiError(err, "Couldn't rename the group"), "error");`);
+	expect(view).toContain('toast(getApiError(err, t("people_group_rename_failed")), "error");');
 });
 
 test("leaving asks first, and what the API took goes here at once, a call there included", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toMatch(
-		/confirmAction\("Leave the group\?", "Leave group", async \(\) => \{\s*await leaveConversation\(convId\);\s*conversationLeft\(convId\);\s*\}\)/,
+		/confirmAction\(\s*t\("people_group_leave_confirm"\),\s*t\("people_group_leave_action"\),\s*async \(\) => \{\s*await leaveConversation\(convId\);\s*conversationLeft\(convId\);\s*\},\s*t\("people_group_leave_busy"\),\s*\)/,
 	);
 });
 
@@ -93,7 +104,7 @@ test("the new group dialog goes by what's picked: one friend's DM, or a group", 
 		/<div class="[^"]*\{selectedFriendIds\.size > 1 \? '' : 'invisible'\}">\s*<label for="group-name"/,
 	);
 	expect(friends).toContain("disabled={selectedFriendIds.size <= 1}");
-	expect(friends).toContain('selectedFriendIds.size === 1 ? "Start chat" : "Create group"');
+	expect(friends).toContain('selectedFriendIds.size === 1 ? t("people_new_chat_start") : t("people_new_group_create")');
 	// What it refused is about the picks before this one.
 	expect(friends).toMatch(/selectedFriendIds = next;\s*groupError = "";/);
 });

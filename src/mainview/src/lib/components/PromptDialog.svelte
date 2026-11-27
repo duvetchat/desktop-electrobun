@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { promptStore } from "$lib/stores/prompt.svelte";
+	import { promptStore, say } from "$lib/stores/prompt.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import { fieldClass } from "$lib/overlay-forms";
+	import { t } from "$lib/i18n";
 
 	const open = $derived(promptStore.pending !== null);
 	let inputEl = $state<HTMLInputElement | null>(null);
@@ -20,8 +21,8 @@
 			if (!next) promptStore.resolve(null);
 		}
 	}
-	title={promptStore.pending?.message ?? ""}
-	closeLabel="Cancel"
+	title={say(promptStore.pending?.message) ?? ""}
+	closeLabel={t("dialog_cancel")}
 	class="max-w-[400px]"
 	onOpenAutoFocus={(e) => {
 		e.preventDefault();
@@ -34,8 +35,8 @@
 			bind:this={inputEl}
 			type="text"
 			class={fieldClass()}
-			placeholder={promptStore.pending.placeholder}
-			aria-label={promptStore.pending.message}
+			placeholder={say(promptStore.pending.placeholder)}
+			aria-label={say(promptStore.pending.message)}
 			bind:value={promptStore.value}
 			onkeydown={(e) => {
 				if (e.key !== "Enter") return;
@@ -47,7 +48,7 @@
 	{/if}
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" onclick={() => promptStore.resolve(null)}>Cancel</Button>
-		<Button onclick={submit}>OK</Button>
+		<Button variant="quiet" onclick={() => promptStore.resolve(null)}>{t("dialog_cancel")}</Button>
+		<Button onclick={submit}>{t("dialog_ok")}</Button>
 	{/snippet}
 </Sheet>

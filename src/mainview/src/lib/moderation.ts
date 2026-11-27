@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 import { getApiError } from "$lib/api/api";
 import { kickMember } from "$lib/api/moderation";
+import { t } from "$lib/i18n";
 import { canModerate, Permission } from "$lib/permissions";
 import { confirmAction } from "$lib/stores/confirm.svelte";
 import { toast } from "$lib/stores/toast.svelte";
@@ -43,16 +44,17 @@ export function moderationOf(
  * reason in a toast. */
 export function kickFromSpace(target: ModerationTarget): Promise<void> {
 	return confirmAction(
-		`Kick ${target.name} from ${target.spaceName}? They can join again with an invite.`,
-		"Kick",
+		t("mod_kick_confirm", { name: target.name, space: target.spaceName }),
+		t("mod_kick_confirm_button"),
 		async () => {
 			try {
 				await kickMember(target.spaceId, target.memberId);
-				toast(`${target.name} was kicked`, "success");
+				toast(t("mod_kick_done", { name: target.name }), "success");
 			} catch (err) {
-				toast(getApiError(err, "Couldn't kick them"), "error");
+				toast(getApiError(err, t("mod_kick_failed")), "error");
 			}
 		},
+		t("mod_kick_busy"),
 	);
 }
 

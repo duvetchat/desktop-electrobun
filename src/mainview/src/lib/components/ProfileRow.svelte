@@ -9,6 +9,7 @@
 	import MediaControls from "$lib/components/MediaControls.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
+	import { t } from "$lib/i18n";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
 
@@ -22,7 +23,10 @@
 	// The status the user chose, which everyone sees while they're connected.
 	const myChoice = $derived(chosenStatus($currentUser?.status));
 	const myStatus = $derived(userStatusToString(myChoice));
-	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
+	const myStatusLabel = $derived.by(() => {
+		const label = STATUS_CHOICES.find((c) => c.status === myChoice)?.label;
+		return label ? t(label) : "";
+	});
 </script>
 
 {#if collapsed && $currentUser}

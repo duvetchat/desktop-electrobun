@@ -94,8 +94,9 @@ describe("usedOptions", () => {
 		expect(usedOptions(entryOf(cmd)!, fields({ t: "😀" }))).toEqual({ problem: "t takes 2 characters at least" });
 		expect(usedOptions(entryOf(cmd)!, fields({ t: "abcd" }))).toEqual({ problem: "t takes 3 characters at most" });
 		const unbounded = command({ type: T.String, name: "t", description: "d" });
+		// A count is written in the app's language: 6,000 in English.
 		expect(usedOptions(entryOf(unbounded)!, fields({ t: "a".repeat(6001) }))).toEqual({
-			problem: "t takes 6000 characters at most",
+			problem: "t takes 6,000 characters at most",
 		});
 	});
 

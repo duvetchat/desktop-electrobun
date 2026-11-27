@@ -1,3 +1,4 @@
+import { t } from "$lib/i18n";
 import { canViewRoom } from "$lib/permissions";
 import type { GatewaySpace, PaneLeaf, PaneNode, Tab } from "$lib/types";
 
@@ -61,11 +62,11 @@ export function removeLeaf(root: PaneNode, id: string): PaneNode | null {
  */
 export function closeTabsIn(leaf: PaneLeaf, channelIds: string[]): Pick<PaneLeaf, "tabs" | "activeChannelId"> {
 	const closing = new Set(channelIds);
-	const open = (t: Tab) => !closing.has(t.channelId);
+	const open = (each: Tab) => !closing.has(each.channelId);
 	const tabs = leaf.tabs.filter(open);
 	let activeChannelId = leaf.activeChannelId;
 	if (activeChannelId && closing.has(activeChannelId)) {
-		const idx = leaf.tabs.findIndex((t) => t.channelId === activeChannelId);
+		const idx = leaf.tabs.findIndex((each) => each.channelId === activeChannelId);
 		activeChannelId =
 			(leaf.tabs.slice(idx + 1).find(open) ?? leaf.tabs.slice(0, idx).findLast(open))?.channelId ?? null;
 	}
@@ -99,7 +100,7 @@ export function spaceLanding(
 	const leaves = leavesOf(root);
 	const focused = leaves.find((l) => l.id === focusedPaneId);
 	const panes = focused ? [focused, ...leaves.filter((l) => l !== focused)] : leaves;
-	const isSpaceRoom = (t: Tab) => !isConversationTab(t) && t.spaceId === spaceId;
+	const isSpaceRoom = (each: Tab) => !isConversationTab(each) && each.spaceId === spaceId;
 	const pick = (match: (t: Tab) => boolean): SpaceLanding => {
 		for (const leaf of panes) {
 			const tab = leaf.tabs.find(match);
@@ -108,7 +109,7 @@ export function spaceLanding(
 		return null;
 	};
 	return (
-		(lastRoomId ? pick((t) => isSpaceRoom(t) && t.channelId === lastRoomId) : null) ??
+		(lastRoomId ? pick((each) => isSpaceRoom(each) && each.channelId === lastRoomId) : null) ??
 		pick(isSpaceRoom) ??
 		(firstRoomId ? { kind: "room", channelId: firstRoomId } : null)
 	);
@@ -137,9 +138,9 @@ export function otherMember<C extends ConversationLike>(
 
 /** A conversation's name, as the DM list shows it: a group's own, or the other member's. */
 export function conversationTitle(conv: ConversationLike, meId: string | undefined): string {
-	if (conv.type === 2) return conv.name ?? "Group";
+	if (conv.type === 2) return conv.name ?? t("shell_chat_group_untitled");
 	const other = otherMember(conv, meId);
-	return other?.user?.alias ?? other?.user?.username ?? "Direct message";
+	return other?.user?.alias ?? other?.user?.username ?? t("shell_chat_dm_untitled");
 }
 
 /** The tab a conversation opens in. */
@@ -164,7 +165,7 @@ export function filterPaneTree(node: PaneNode, keep: (tab: Tab) => boolean): Pan
 		return {
 			...node,
 			tabs,
-			activeChannelId: tabs.some((t) => t.channelId === node.activeChannelId)
+			activeChannelId: tabs.some((each) => each.channelId === node.activeChannelId)
 				? node.activeChannelId
 				: tabs[0]!.channelId,
 		};

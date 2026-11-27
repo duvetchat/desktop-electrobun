@@ -4,20 +4,27 @@
 // base URL or a header, so a frame of the app can't have one; this page's own address is http://127.0.0.1, a Referer
 // YouTube accepts, and what it frames sends it. Nothing is deployed and no other host is involved.
 //
-// What it serves is fixed: the page, its script and its style, for a video id that is [\w-]{1,32}. It listens on
+// What it serves is its own: the page, its script and its style, for a video id that is [\w-]{1,32}. It listens on
 // 127.0.0.1 only, answers a Host that isn't its own address with 404 (a page of another site can't read it through DNS
 // rebinding), and its page has a CSP of its own: no script but its own file, no frame but YouTube's.
+import { language, t } from "./i18n";
 
 const CSP =
 	"default-src 'none'; script-src 'self'; style-src 'self'; frame-src https://www.youtube.com; base-uri 'none'; form-action 'none'";
 
-const HTML = `<!doctype html>
-<html lang="en">
+/** HTML's special characters in a text, as entities: a translation is text, never markup. */
+const escapeHtml = (text: string) =>
+	text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// The page and its script are in the app's language (#464, i18n.ts), made for each request: a screen reader names the
+// player's frame by its title, and reads it in the voice of the page's lang.
+const html = () => `<!doctype html>
+<html lang="${language()}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>YouTube player</title>
+<title>${escapeHtml(t("window_youtube_player_page"))}</title>
 <link rel="stylesheet" href="/youtube.css">
 <script src="/youtube.js" defer></script>
 </head>
@@ -29,22 +36,23 @@ const CSS = `html, body { margin: 0; height: 100%; background: #000; }
 iframe { display: block; border: 0; width: 100%; height: 100%; }
 `;
 
-const SCRIPT = `const id = new URLSearchParams(location.search).get("v");
+// The frame's title is a JavaScript string: JSON.stringify keeps a translation's quotes and backslashes in it.
+const script = () => `const id = new URLSearchParams(location.search).get("v");
 if (id !== null && /^[\\w-]{1,32}$/.test(id)) {
 	const frame = document.createElement("iframe");
 	frame.src = \`https://www.youtube.com/embed/\${id}?autoplay=1\`;
 	frame.allow = "autoplay; encrypted-media; fullscreen; picture-in-picture";
 	frame.allowFullscreen = true;
 	frame.referrerPolicy = "strict-origin-when-cross-origin";
-	frame.title = "YouTube video";
+	frame.title = ${JSON.stringify(t("window_youtube_player"))};
 	document.body.append(frame);
 }
 `;
 
-const FILES: Record<string, { type: string; body: string }> = {
-	"/youtube": { type: "text/html; charset=utf-8", body: HTML },
-	"/youtube.css": { type: "text/css; charset=utf-8", body: CSS },
-	"/youtube.js": { type: "text/javascript; charset=utf-8", body: SCRIPT },
+const FILES: Record<string, { type: string; body: () => string }> = {
+	"/youtube": { type: "text/html; charset=utf-8", body: html },
+	"/youtube.css": { type: "text/css; charset=utf-8", body: () => CSS },
+	"/youtube.js": { type: "text/javascript; charset=utf-8", body: script },
 };
 
 /** The answer to a request to the relay listening at port. */
@@ -54,7 +62,7 @@ export function relayResponse(request: Request, port: number): Response {
 	if (request.headers.get("host") !== `127.0.0.1:${port}`) return none;
 	const file = FILES[new URL(request.url).pathname];
 	if (!file) return none;
-	return new Response(file.body, {
+	return new Response(file.body(), {
 		headers: {
 			"Content-Type": file.type,
 			"Content-Security-Policy": CSP,

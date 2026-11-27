@@ -1,6 +1,8 @@
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { setLocalePref, t } from "$lib/i18n";
+import { PSEUDO } from "$lib/i18n/locale";
 
 // Shiki's highlighter compiles a WASM and parses grammars on the main thread. Made as markdown.ts loaded, it ran before
 // the app page could open its socket (#285); made once the first screen was up, it loaded all 29 grammars and the WASM
@@ -29,7 +31,7 @@ void mock.module("shiki", () => ({
 	},
 }));
 
-const { renderMarkdown } = await import("$lib/markdown");
+const { loadCustomTheme, renderMarkdown } = await import("$lib/markdown");
 const block = (lang: string) => "```" + lang + "\nconst a = 1\n```";
 
 test("loading markdown.ts makes no highlighter", () => {
@@ -58,6 +60,39 @@ test("the first block in a language it knows shows plain, and makes the highligh
 	expect(loads).toEqual(["javascript", "python"]);
 	expect(renderMarkdown(block("python"))).toContain("HIGHLIGHTED python");
 	expect(made).toHaveLength(1);
+});
+
+// #464: a custom theme that fails to load says why as it did in English ("HTTP 404", the engine's JSON error), and the
+// app's own sentence in another language, which getApiError shows as it is.
+test("a custom theme that fails says what it said in English, and the app's words in another language", async () => {
+	let answer = () => new Response("", { status: 404 });
+	const asked: string[] = [];
+	const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
+		asked.push(input instanceof Request ? input.url : input.toString());
+		return answer();
+	}) as typeof fetch);
+	// The loader logs each failure.
+	const logged = spyOn(console, "error").mockImplementation(() => {});
+	const failed = () =>
+		loadCustomTheme("https://themes.test/a.json").then(
+			() => new Error("the theme loaded"),
+			(e: unknown) => (e instanceof Error ? e : new Error(String(e))),
+		);
+	try {
+		expect((await failed()).message).toBe("HTTP 404");
+		expect(asked).toEqual(["https://themes.test/a.json"]);
+		answer = () => new Response("<!doctype html>", { status: 200 });
+		expect(await failed()).toBeInstanceOf(SyntaxError);
+		await setLocalePref(PSEUDO);
+		for (const status of [404, 200]) {
+			answer = () => new Response(status === 200 ? "<!doctype html>" : "", { status });
+			expect((await failed()).message).toBe(t("settings_code_theme_failed"));
+		}
+	} finally {
+		fetched.mockRestore();
+		logged.mockRestore();
+		await setLocalePref("en");
+	}
 });
 
 test("the app's start makes no highlighter", () => {

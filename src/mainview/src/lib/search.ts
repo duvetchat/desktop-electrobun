@@ -1,5 +1,7 @@
 import { searchConversationMessages, type Conversation } from "$lib/api/conversations";
 import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
+import { t } from "$lib/i18n";
+import { formatList } from "$lib/i18n/format";
 import { directMessageToMessage, gatewayMessageToMessage, type GatewaySpace, type Message } from "$lib/types";
 
 /** A message a search found, and where it is: a room (of spaceId, when the search was everywhere), or a conversation. */
@@ -105,21 +107,24 @@ export function parseSearch(
 			const member =
 				members.find((u) => u.raw_username.toLowerCase() === value) ??
 				members.find((u) => u.username.toLowerCase() === value);
-			if (!member) return { error: `No member is called ${m[2]}` };
+			if (!member) return { error: t("chat_search_no_member", { name: m[2]! }) };
 			add(key === "from" ? "authorIds" : "mentions", member.id);
 		} else if (key === "in") {
 			const room = rooms.find((r) => roomSlug(r.name) === value);
-			if (!room) return { error: `No room is called ${m[2]}` };
+			if (!room) return { error: t("chat_search_no_room", { name: m[2]! }) };
 			add("roomIds", room.id);
 		} else if (key === "has") {
-			if (!SEARCH_HAS.includes(value)) return { error: `has: takes ${SEARCH_HAS.join(", ")}` };
+			if (!SEARCH_HAS.includes(value))
+				return {
+					error: t("chat_search_has_takes", { values: formatList(SEARCH_HAS, { type: "unit", style: "short" }) }),
+				};
 			add("has", value);
 		} else if (key === "pinned") {
-			if (value !== "true" && value !== "false") return { error: "pinned: takes true or false" };
+			if (value !== "true" && value !== "false") return { error: t("chat_search_pinned_takes") };
 			search.pinned = value === "true";
 		} else {
 			const day = parseDay(value);
-			if (!day) return { error: `${key}: takes a date like ${isoDay(now)}` };
+			if (!day) return { error: t("chat_search_date_takes", { filter: key, example: isoDay(now) }) };
 			const [start, end] =
 				key === "before" ? [undefined, day] : key === "after" ? [nextDay(day), undefined] : [day, nextDay(day)];
 			if (start && (!search.after || start > new Date(search.after))) search.after = start.toISOString();

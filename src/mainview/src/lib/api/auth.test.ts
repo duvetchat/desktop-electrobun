@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import api, { FetchError } from "$lib/api/api";
+import api, { FetchError, NetworkError } from "$lib/api/api";
 import { logIn, logout, resetPassword, signIn, verifyEmail } from "$lib/api/auth";
 
 // Where the page goes: there's no window outside a browser.
@@ -53,11 +53,12 @@ describe("a refusal", () => {
 	});
 
 	test("says what the page was doing when the API gave no reason", async () => {
-		posted.mockRejectedValue(new Error("Failed to fetch"));
+		// A request that failed on the network.
+		posted.mockRejectedValue(new NetworkError(new TypeError("Load failed")));
 		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");
 		expect(await message(verifyEmail("t"))).toBe("Verification failed");
 		expect(await message(signIn({ username: "u", alias: null, password: "p", email: "e@x.test" }))).toBe(
-			"Couldn't create your account: Failed to fetch",
+			"Couldn't create your account: Load failed",
 		);
 		posted.mockRejectedValue(refused("internal server error", 500));
 		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");

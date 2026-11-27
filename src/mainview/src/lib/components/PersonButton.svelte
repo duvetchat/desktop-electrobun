@@ -5,6 +5,7 @@
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { t } from "$lib/i18n";
 	import type { GatewaySpace, MemberOnSidebar } from "$lib/types";
 
 	// A person's row, as the button that opens their profile (#357, S-34 members and S-38 friends): their avatar with
@@ -110,7 +111,7 @@
 					<span
 						class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em] [-webkit-text-fill-color:currentColor] {offline
 							? 'opacity-60'
-							: ''}">BOT</span
+							: ''}">{t("people_tag_bot")}</span
 					>
 				{/if}
 				{#if badges && member.is_owner}

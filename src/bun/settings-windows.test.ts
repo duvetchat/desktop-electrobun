@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { setLanguage, tIn } from "./i18n";
 import {
 	parseOpenAppWindow,
 	settingsChrome,
@@ -556,4 +559,74 @@ describe("a Space's settings window's title", () => {
 		made[0].gone = true;
 		expect(() => windows.stateFromMain(space("s1", "Harbour Lanterns", 1))).not.toThrow();
 	});
+});
+
+// #464: the titles are Bun's words, in the language the main window's page says the app is in.
+describe("the windows' titles in the app's language", () => {
+	const pseudo = (key: "window_settings" | "window_space_settings", name?: string) =>
+		tIn("en-XA", key, name === undefined ? {} : { name });
+
+	test("are retitled when the language changes, each Space's with the name it has now", () => {
+		const { windows, log } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		windows.stateFromMain({
+			channel: "sync:space:s1",
+			epoch: 1000,
+			seq: 1,
+			sentAt: 0,
+			value: { id: "s1", name: "Harbour Lanterns" },
+		});
+		log.length = 0;
+		try {
+			setLanguage("en-XA");
+			windows.retitle();
+			expect(log).toEqual([
+				`title 2: ${pseudo("window_settings")}`,
+				`title 3: ${pseudo("window_space_settings", "Harbour Lanterns")}`,
+			]);
+			// A Space's name is the owner's, as they wrote it: only the words around it change.
+			expect(pseudo("window_space_settings", "Harbour Lanterns")).toContain("Harbour Lanterns");
+			// Once, for a language: asked again, nothing changes.
+			windows.retitle();
+			expect(log).toHaveLength(2);
+		} finally {
+			setLanguage("en");
+		}
+	});
+
+	test("a window opened in a language is titled in it", () => {
+		const { windows, made } = manager();
+		try {
+			setLanguage("en-XA");
+			windows.open({ window: "settings" });
+			expect(made[0].title).toBe(pseudo("window_settings"));
+		} finally {
+			setLanguage("en");
+		}
+	});
+
+	test("a window that is going keeps its title, and the others are still retitled", () => {
+		const { windows, made, log } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		made[0].gone = true;
+		try {
+			setLanguage("en-XA");
+			expect(() => windows.retitle()).not.toThrow();
+			expect(log).toEqual([`title 3: ${pseudo("window_space_settings", "Harbour Lights")}`]);
+		} finally {
+			setLanguage("en");
+		}
+	});
+});
+
+// #464: each window's page asks Bun for the system's languages as it starts (lib/i18n/bun-link.ts); a window whose RPC
+// didn't answer would wait out primeSystemLanguages' time, then go by the web view's languages.
+test("every window's page can ask Bun for the system's languages", () => {
+	for (const file of ["index.ts", "settings-window-native.ts", "media-window-open.ts"]) {
+		expect(readFileSync(join(import.meta.dir, file), "utf8"), file).toMatch(
+			/systemLanguages: \(\) => systemLanguages\(/,
+		);
+	}
 });

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { richParts } from "$lib/i18n";
 
 const friendsView = readFileSync(join(import.meta.dir, "FriendsView.svelte"), "utf8");
 
@@ -22,10 +23,23 @@ test("it takes the focus as it opens, so a key typed then doesn't go into a chat
 	expect(friendsView).not.toMatch(/role="dialog"/);
 });
 
+// #464: a heading of the friends list is "Online 3", its number in even-width digits through the tag the list gives a
+// snippet. A tag named like the number's placeholder took the number's place, and the headings read "Online ".
+test("a heading of the friends list says how many friends are in it, in the tag drawn in even-width digits", () => {
+	const tag = /key="people_friends_group_heading"[\s\S]*?tags=\{\{ (\w+): tabular \}\}/.exec(friendsView)?.[1];
+	expect(tag).toBeString();
+	expect(richParts("people_friends_group_heading", { group: "Online", count: 3 })).toEqual([
+		"Online ",
+		{ tag: tag!, text: "3" },
+	]);
+});
+
 // A friend's Remove friend was a bare icon, shown only on hover; it takes a card of its own beside Message's.
 test("a friend's Remove friend has the same card as Message", () => {
-	expect(friendsView).toMatch(/class=\{cardIconButtonClass\(\)\}[\s\S]*?aria-label="Message \{member\.username\}"/);
 	expect(friendsView).toMatch(
-		/class=\{cardIconButtonClass\(true\)\}[\s\S]*?aria-label="Remove \{member\.username\} from your friends"/,
+		/class=\{cardIconButtonClass\(\)\}[\s\S]*?aria-label=\{t\("people_friends_message_label"/,
+	);
+	expect(friendsView).toMatch(
+		/class=\{cardIconButtonClass\(true\)\}[\s\S]*?aria-label=\{t\("people_friends_remove_label"/,
 	);
 });

@@ -4,6 +4,7 @@
 // the main window's page, and the main window's states come to it.
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import { SETTINGS_CHANNEL, type AppWindow, type AppWindowSpec } from "./settings-windows";
+import { systemLanguages } from "./system-languages";
 import { placeWindowButtons } from "./window-buttons";
 import { Maximizer } from "./window-frame";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
@@ -14,6 +15,8 @@ type SettingsWindowRPC = {
 		requests: {
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
 			nativeWindowDrag: { params: void; response: boolean };
+			// The system's languages, for its page's "Match system" (system-languages.ts, #464).
+			systemLanguages: { params: void; response: string[] };
 		};
 		messages: {
 			closeWindow: void;
@@ -62,6 +65,7 @@ export function createSettingsWindow(spec: AppWindowSpec, deps: NativeWindowDeps
 				},
 				// Electrobun drags it, by its title bar's class: Windows' own move loop is the main window's (window-snap.ts).
 				nativeWindowDrag: () => false,
+				systemLanguages: () => systemLanguages(),
 			},
 			messages: {
 				closeWindow: () => window.close(),

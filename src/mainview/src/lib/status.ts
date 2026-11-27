@@ -1,5 +1,6 @@
 import type { Conversation } from "$lib/api/conversations";
 import type { Friend } from "$lib/api/friends";
+import type { MessageKey } from "$lib/i18n";
 import type { CallState } from "$lib/stores.svelte";
 import type {
 	ChosenStatus,
@@ -11,10 +12,10 @@ import type {
 } from "$lib/types";
 
 /** The statuses a user can choose (PUT /api/users/@me/status), as the user panel's menu lists them. Others see the
- * one chosen while the user is connected. */
-export const STATUS_CHOICES: { status: ChosenStatus; label: string; description?: string }[] = [
-	{ status: 1, label: "Online", description: "Sounds and calls as usual" },
-	{ status: 2, label: "Do not disturb", description: "No sounds, and calls don't ring" },
+ * one chosen while the user is connected. Their words are messages (#464), which the menu reads with t() as it draws. */
+export const STATUS_CHOICES: { status: ChosenStatus; label: MessageKey; description?: MessageKey }[] = [
+	{ status: 1, label: "status_online", description: "status_online_note" },
+	{ status: 2, label: "status_dnd", description: "status_dnd_note" },
 ];
 
 /** The status a user chose, from what their READY or /users/@me says: do not disturb, or else online (a gateway from

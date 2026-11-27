@@ -2,6 +2,7 @@
 	import { activeCall, conversations, currentUser, typingNow } from "$lib/stores.svelte";
 	import { quietPlaces, shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { get } from "svelte/store";
+	import { t } from "$lib/i18n";
 	import {
 		AppWindow as AppWindowIcon,
 		BellOff as BellOffIcon,
@@ -60,14 +61,14 @@
 
 	function convTitle(conv: Conversation): string {
 		const me = get(currentUser);
-		if (conv.type === 2) return conv.name ?? "Group";
+		if (conv.type === 2) return conv.name ?? t("shell_chat_group_untitled");
 		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
+		return other?.user?.alias ?? other?.user?.username ?? t("shell_chat_dm_untitled");
 	}
 
 	function convSubtitle(conv: Conversation): string {
-		if (conv.type === 2) return conv.members.length === 1 ? "1 member" : `${conv.members.length} members`;
-		return "Direct message";
+		if (conv.type === 2) return t("shell_group_members", { count: conv.members.length });
+		return t("shell_chat_kind_dm");
 	}
 
 	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
@@ -101,7 +102,7 @@
 	});
 </script>
 
-<div class="flex flex-col" role="group" aria-label="Chats">
+<div class="flex flex-col" role="group" aria-label={t("shell_chats")}>
 	{#each listed.shown as conv (conv.id)}
 		{@const shown = convStatus(conv)}
 		<!-- A DM shows the other person; a group, which has no picture, its mark, as its tab does (#376) -->
@@ -155,10 +156,14 @@
 							>
 							<!-- The pin's mark, as a pinned Space's row has it -->
 							{#if pinned}
-								<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Pinned" />
+								<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label={t("shell_pinned")} />
 							{/if}
 							{#if muted}
-								<BellOffIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Notifications off" />
+								<BellOffIcon
+									class="text-duvet-ink2 size-[11px] shrink-0"
+									role="img"
+									aria-label={t("shell_notifications_off")}
+								/>
 							{/if}
 						</span>
 						{#if inCall}
@@ -166,7 +171,7 @@
 								class="text-duvet-alive-text flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3] font-semibold"
 							>
 								<PhoneCallIcon class="size-3 shrink-0" aria-hidden="true" />
-								<span class="truncate">In a call</span>
+								<span class="truncate">{t("shell_in_a_call")}</span>
 							</span>
 						{:else}
 							<span
@@ -184,28 +189,28 @@
 							>{chipCount(news.mentions)}</span
 						>
 					{:else if unread}
-						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
+						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" role="img" aria-label={t("shell_unread")}></span>
 					{/if}
 				</button>
 			{/snippet}
 			<MenuItem icon={AppWindowIcon} keys={keysFor(mac, SHELL_KEYS.openInTab)} onSelect={() => onSelect(conv.id, "tab")}
-				>Open in new tab</MenuItem
+				>{t("shell_open_in_new_tab")}</MenuItem
 			>
 			<MenuItem
 				icon={ColumnsIcon}
 				keys={keysFor(mac, SHELL_KEYS.openBeside)}
-				onSelect={() => onSelect(conv.id, "beside")}>Open beside</MenuItem
+				onSelect={() => onSelect(conv.id, "beside")}>{t("shell_open_beside")}</MenuItem
 			>
 			<MenuSeparator />
 			<MenuItem icon={pinned ? PinOffIcon : PinIcon} onSelect={() => togglePinnedChat(conv.id)}
-				>{pinned ? "Unpin" : "Pin to top"}</MenuItem
+				>{pinned ? t("shell_unpin") : t("shell_pin_to_top")}</MenuItem
 			>
 			<NotificationSubmenu targetId={conv.id} target={2} itemClass={menuItemClass()} contentClass={MENU_PANEL} />
 		</ContextMenu>
 	{/each}
 
 	{#if $conversations.length === 0}
-		<p class="text-duvet-ink2 px-2.5 py-2 text-[13px]">No chats yet</p>
+		<p class="text-duvet-ink2 px-2.5 py-2 text-[13px]">{t("shell_chats_empty")}</p>
 	{/if}
 
 	{#if folded && listed.more > 0}
@@ -217,7 +222,7 @@
 			onclick={() => (expanded = !expanded)}
 		>
 			{#if expanded}
-				<ChevronUpIcon class="size-[13px] shrink-0" aria-hidden="true" />Show fewer
+				<ChevronUpIcon class="size-[13px] shrink-0" aria-hidden="true" />{t("shell_show_fewer")}
 			{:else}
 				<ChevronDownIcon class="size-[13px] shrink-0" aria-hidden="true" />{moreChatsLabel(listed.more)}
 			{/if}

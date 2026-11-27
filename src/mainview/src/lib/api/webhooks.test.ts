@@ -15,9 +15,16 @@ test("a webhook's GitHub URL is its URL with /github", () => {
 test("the token box copies the URL and the GitHub URL", () => {
 	const box = readFileSync(join(import.meta.dir, "..", "components", "Webhooks.svelte"), "utf8");
 	expect(box).toContain("{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}");
-	expect(box).toContain('copyWebhookUrl(urls.url, "Webhook URL")');
-	expect(box).toContain('copyWebhookUrl(urls.github, "GitHub URL")');
-	expect(box).toContain("Copy GitHub URL");
+	expect(box).toContain('copyWebhookUrl(urls.url, "room_webhook_url_copied")');
+	expect(box).toContain('copyWebhookUrl(urls.github, "room_webhook_github_url_copied")');
+	expect(box).toContain('t("room_webhook_copy_github_url")');
+	// The words, in en.json (#464).
+	const en: Record<string, string> = JSON.parse(
+		readFileSync(join(import.meta.dir, "..", "..", "..", "messages", "en.json"), "utf8"),
+	);
+	expect(en.room_webhook_url_copied).toBe("Webhook URL copied to clipboard");
+	expect(en.room_webhook_github_url_copied).toBe("GitHub URL copied to clipboard");
+	expect(en.room_webhook_copy_github_url).toBe("Copy GitHub URL");
 });
 
 test("a webhook's avatar is cropped, for the one being made and the one being edited", () => {
