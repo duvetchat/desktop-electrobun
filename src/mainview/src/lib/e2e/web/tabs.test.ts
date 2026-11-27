@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { CoreError } from "../errors";
 import { FakeHub, FakeLocks } from "../testing/fake-tabs";
-import { BrowserTabs, lockName, type Methods } from "./tabs";
+import { BrowserTabs, lockName, type BrowserTabsOptions, type Methods } from "./tabs";
 
 // The tabs' protocol (PLAN-E2E-CLIENTES.md, the web's worker, lock and tabs) over a channel and a lock of its own: the
 // fakes of testing/fake-tabs.ts do what BroadcastChannel and navigator.locks do, as tabs.ts uses them. The browser's own, with the core,
@@ -24,6 +24,7 @@ function tabOf(
 	methods: Methods = {},
 	lead = async () => {},
 	once: string[] = [],
+	more: Partial<BrowserTabsOptions> = {},
 ) {
 	const changed: string[] = [];
 	const deleted: string[][] = [];
@@ -47,6 +48,7 @@ function tabOf(
 		},
 		onLeader: (tab) => leaders.push(tab),
 		onState: () => states++,
+		...more,
 	});
 	return { tabs, changed, deleted, leaders, led: () => led, states: () => states };
 }
@@ -101,6 +103,36 @@ describe("the tabs of one user", () => {
 		expect(c.leaders).toEqual(["a", "b"]);
 		expect(await c.tabs.call<string>("whoami")).toBe("b");
 		expect(most).toBe(1);
+	});
+
+	// #575 (M3): a tab whose lead throws (the host's chunk of a tab from before a deploy doesn't load) doesn't lead with
+	// no engine: the lock goes to the next tab, it says so, and asks for the lock again after a while.
+	test("a tab whose lead throws lets the lock go, says so, and tries again", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const failed: unknown[] = [];
+		let loads = false;
+		const lead = async () => {
+			if (!loads) throw new Error("the host's chunk didn't load");
+		};
+		const a = tabOf(hub, locks, "a", {}, lead, [], { onLeadFailed: (error) => failed.push(error), retryMs: 20 });
+		await settle();
+		expect(a.tabs.leader).toBe(false);
+		expect(failed.length).toBeGreaterThan(0);
+		expect(hub.posted).not.toContainEqual({ event: "leader", tab: "a" });
+		// While no tab leads, what it asks gets not_ready, never an answer that doesn't come.
+		expect(await a.tabs.call("whoami").catch((error: unknown) => error)).toMatchObject({ code: "not_ready" });
+		// The lock went: the next tab leads, and serves the first.
+		const b = tabOf(hub, locks, "b");
+		await b.tabs.leading;
+		await hub.delivered();
+		expect(await a.tabs.call<string>("whoami")).toBe("b");
+		// It asked for the lock again: once the tab that leads goes, it leads, its host loading by then.
+		loads = true;
+		b.tabs.close();
+		await a.tabs.leading;
+		expect(a.tabs.leader).toBe(true);
+		expect(await a.tabs.call<string>("whoami")).toBe("a");
 	});
 
 	test("a request left unanswered is sent again to the tab that leads next", async () => {

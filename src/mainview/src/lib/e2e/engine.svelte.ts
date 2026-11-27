@@ -337,6 +337,15 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			engine = engineFor(userId, await platform.webHost(), platform);
 			await engine.start();
 		},
+		// A lead that threw (a tab from before a deploy can't load the host's chunk) leads nothing (#575, M3): an engine
+		// it made goes, the tab says so, and it asks for the lock again, the next tab leading meanwhile.
+		onLeadFailed: (error) => {
+			console.error("[e2e] This tab couldn't open encrypted conversations; it tries again soon:", error);
+			const made = engine;
+			engine = null;
+			void made?.stop().catch((stopped: unknown) => console.error("[e2e] Its engine didn't stop:", stopped));
+			encryption.state = { name: "failed", lostKey: false };
+		},
 		onLeader: () => void follow(),
 		onState: () => void follow(),
 		onChanged: (id, deleted) => {
