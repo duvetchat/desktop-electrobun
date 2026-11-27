@@ -250,9 +250,21 @@ export function verifyQuestion({ user, digits }: { user: string; digits: string 
 
 /**
  * Opening the database of another account than the one this installation opened last (#558): each account that used
- * Duvet here keeps its own, which signing out leaves. By its ID, which is all Bun knows of it.
+ * Duvet here keeps its own, which signing out leaves. By its ID, which is all Bun knows of it. `again`, a second switch
+ * since the app started, in words of its own: a script that asks right after the person's yes to the first would
+ * otherwise get a box they take for the one they just answered.
  */
-export function otherAccountQuestion(user: string): Question {
+export function otherAccountQuestion(user: string, again = false): Question {
+	if (again) {
+		return {
+			title: "Switch accounts again?",
+			message:
+				"Duvet already switched to another account's encrypted conversations since it started, and now it's asked to " +
+				"switch again.\n\nOpen this account's only if you've just signed out and signed in to it here." +
+				`\n\nIts ID: ${user}`,
+			yes: "Open",
+		};
+	}
 	return {
 		title: "Open another account's encrypted conversations?",
 		message:

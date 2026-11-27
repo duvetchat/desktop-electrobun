@@ -235,6 +235,10 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 	let worker: CoreWorker | null = null;
 	/** The account the page opened last, whether its database opened or not: the only one whose data it may delete. */
 	let current: string | null = null;
+	/** The account whose database Bun opened last in this run, which a mark the file didn't take can't hide (RM3). */
+	let openedLast: string | null = null;
+	/** Whether the person said yes to another account's database in this run already. */
+	let switched = false;
 	/** The core's instance: one more each time its worker stops, which the page is told. */
 	let instance = 1;
 	/** The handle of the database the worker has open, and one a stopped worker left open in the library. */
@@ -286,7 +290,8 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 	/**
 	 * Another account than the one this installation opened last asks the person first (#558): signing out leaves each
 	 * account's database here (decision 13), and a script in one account's page would read or delete another's. What's
-	 * open closes before the box, so a no leaves no database open. A mark Bun can't read asks too.
+	 * open closes before the box, so a no leaves no database open. A mark Bun can't read asks too, and so does one that
+	 * isn't the account Bun opened last in this run: its write didn't go down (RM3). A second switch has words of its own.
 	 */
 	async function mayOpen(userId: string) {
 		let last: string | null | undefined;
@@ -295,18 +300,22 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 		} catch (error) {
 			console.error("[e2e] the account opened last couldn't be read:", error);
 		}
-		if (last !== null && last !== userId) {
+		const another =
+			last === undefined || (openedLast !== null && last !== openedLast) || (last !== null && last !== userId);
+		if (another) {
 			if (worker) unwrap(await core("close"));
 			opened = null;
 			let yes = false;
 			try {
-				yes = await confirm(otherAccountQuestion(userId));
+				yes = await confirm(otherAccountQuestion(userId, switched));
 			} catch (error) {
 				console.error("[e2e] the confirmation failed:", error);
 			}
 			if (!yes) throw refused("refused", "the person didn't confirm it");
+			switched = true;
 		}
 		if (last !== userId) lastUser.write(userId);
+		openedLast = userId;
 	}
 
 	/**

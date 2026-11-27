@@ -1157,6 +1157,32 @@ describe("whose database Bun opens", () => {
 		expect(fileMark(mark).read()).toBeNull();
 		expect(fileMark(join(folder, "nothing")).read()).toBeNull();
 	});
+
+	// #558's re-review, RM3 (a): a script that asks for another account right after the person's yes to one shouldn't
+	// get a box the person takes for the one they just answered.
+	test("a second switch to another account in one run asks in other words than the first", async () => {
+		const { asked, confirm } = person(true, true);
+		const page = pageOf({ start: ready().start, confirm });
+		await page.ask("open", { userId: ANA });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(2);
+		expect(asked[1]?.title).not.toBe(asked[0]?.title);
+		expect(asked[1]?.message).toContain("already switched");
+		expect(asked[1]?.message).toContain(ANA);
+	});
+
+	// RM3 (b): a mark the file didn't take would let the next switch back go unasked.
+	test("a mark the file didn't take asks, as Bun opened another account since", async () => {
+		const { asked, confirm } = person(true, false);
+		// A file that keeps saying Ana, whatever Bun writes.
+		const stuck: UserMark = { read: () => ANA, write: () => {} };
+		const page = pageOf({ start: ready().start, confirm, lastUser: stuck });
+		await page.ask("open", { userId: ANA });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(2);
+	});
 });
 
 describe("without the core's library", () => {
