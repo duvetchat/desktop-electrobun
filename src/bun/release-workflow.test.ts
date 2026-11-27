@@ -16,13 +16,16 @@ const job = (name: string): Record<string, unknown> => {
 const secrets = (of: unknown) => [...new Set(JSON.stringify(of).match(/secrets\.\w+/g))].sort();
 
 describe("the release workflow", () => {
-	test("Linux's stable job runs Windows' steps, on GitHub's Ubuntu runner, for a tag alone", () => {
-		const { "runs-on": windowsRunner, ...windows } = job("windows");
-		const { "runs-on": linuxRunner, ...linux } = job("linux");
+	test("Linux's stable job runs Windows' steps, on GitHub's Ubuntu runner, for a tag alone, once Linux is turned on", () => {
+		const { "runs-on": windowsRunner, if: windowsIf, ...windows } = job("windows");
+		const { "runs-on": linuxRunner, if: linuxIf, ...linux } = job("linux");
 		expect(windowsRunner).toBe("windows-latest");
 		expect(linuxRunner).toBe("ubuntu-24.04");
 		expect(linux).toEqual(windows);
-		expect(linux.if).toBe("github.event_name == 'push'");
+		expect(windowsIf).toBe("github.event_name == 'push'");
+		// A Linux build carries the core, which no frame may reach before RM1 (#588): no tag publishes one until the
+		// repository's RELEASE_LINUX says Linux is on (PLAN-E2E-PLATAFORMAS.md).
+		expect(linuxIf).toBe("github.event_name == 'push' && vars.RELEASE_LINUX == 'true'");
 	});
 
 	test("the signing key and the releases' token reach the stable jobs alone", () => {

@@ -91,8 +91,10 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
 
   # The windows job's steps, on Linux x64 (#590): src/bun/release-workflow.test.ts holds the two jobs to the same ones.
+  # A Linux build carries the core, which no frame may reach before RM1 (#588), so a tag publishes one only once the
+  # repository's RELEASE_LINUX variable says Linux is on (PLAN-E2E-PLATAFORMAS.md's turning on).
   linux:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && vars.RELEASE_LINUX == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
