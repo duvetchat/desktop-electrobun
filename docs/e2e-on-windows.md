@@ -108,7 +108,9 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
 5. **A player's frame holds nothing of the window's RPC.** In a dev build, play a YouTube and a TikTok embed in a
    room. In DevTools' console (F12), pick each of the player's frames in the context menu at the top (top ▾), and run
    `[typeof __electrobunSecretKeyBytes, typeof __electrobunRpcSocketPort]`: every frame says
-   `['undefined', 'undefined']`, where the top one says `['object', 'number']` (desktop-electrobun#556).
+   `['undefined', 'undefined']`, where the top one says `['object', 'number']` (desktop-electrobun#556). Then, in each
+   frame, `[typeof __electrobunBunBridge, typeof __electrobunInternalBridge, typeof __electrobunEventBridge]` says
+   `undefined` three times: the bun bridge carries the RPC with no key at all.
 6. **The rest, with the web and with the Pixel:**
    - conversing: a message, a reply, an edit, a deletion, in a DM and in a group;
    - attachments: a picture, a file, a voice note;
