@@ -823,6 +823,9 @@
 		letter-spacing: -0.003em;
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
+		/* A word longer than its line breaks rather than spill past it: German's and Finnish's compounds in a narrow
+		   column (#562). What fits is laid out as before; a line kept to one (truncate) is still cut. */
+		overflow-wrap: break-word;
 		margin: 0;
 		height: var(--app-height);
 		width: var(--app-width);

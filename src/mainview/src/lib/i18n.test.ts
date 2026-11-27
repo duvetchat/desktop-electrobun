@@ -175,6 +175,14 @@ describe("the language files", () => {
 		}
 	});
 
+	// A machine translation's leftovers: a zero-width space or a byte-order mark is a break where no word ends, unseen.
+	test("hold no zero-width spaces or byte-order marks", () => {
+		for (const locale of LOCALES) {
+			const found = Object.keys(fileOf(locale)).filter((key) => /[​﻿]/.test(fileOf(locale)[key]!));
+			expect({ locale, found }).toEqual({ locale, found: [] });
+		}
+	});
+
 	test("have translator notes only for keys that exist", () => {
 		const notes = read("descriptions.json");
 		expect(Object.keys(notes).filter((key) => !(key in en))).toEqual([]);
@@ -196,6 +204,64 @@ describe("the language files", () => {
 			.map((file) => readFileSync(file, "utf8"))
 			.join("\n");
 		expect(Object.keys(en).filter((key) => !code.includes(`"${key}"`))).toEqual([]);
+	});
+
+	// #562: a message noted [short] sits in a fixed width (a button, a tab, a menu item, a column), and a translation
+	// much longer than its English may not fit there. Each one over 1.4× is listed here until it's looked at in the app,
+	// in its narrowest place, and kept in lib/i18n/long-labels.json with the words that were seen to fit: a change to
+	// them is looked at again. The file began with every one there was when the check came in.
+	describe("a [short] message", () => {
+		const RATIO = 1.4;
+		// Below four letters a ratio says little: OK is Aceptar, All is Kaikki.
+		const FLOOR = 4;
+		// What a placeholder or a plural's number takes in the words shown, about.
+		const PLACEHOLDER = 3;
+		const notes = read("descriptions.json");
+		const kept: Record<string, string> = JSON.parse(
+			readFileSync(join(import.meta.dir, "i18n", "long-labels.json"), "utf8"),
+		);
+
+		/** How many characters a message shows: its words, a few for each placeholder, its longest plural or select
+		 *  case. */
+		const shownLength = (message: string): number => {
+			const walk = (elements: MessageFormatElement[]): number =>
+				elements.reduce((length, element) => {
+					if (element.type === TYPE.literal) return length + [...element.value].length;
+					if (element.type === TYPE.tag) return length + walk(element.children);
+					if (element.type === TYPE.select || element.type === TYPE.plural)
+						return length + Math.max(...Object.values(element.options).map((option) => walk(option.value)));
+					return length + PLACEHOLDER;
+				}, 0);
+			return walk(parse(message, { ignoreTag: false }));
+		};
+
+		/** Every translation of a [short] message over 1.4× its English, as long-labels.json keeps it. */
+		const long = new Map<string, string>();
+		for (const locale of translations) {
+			for (const [key, message] of Object.entries(fileOf(locale))) {
+				if (!notes[key]?.startsWith("[short]")) continue;
+				const english = shownLength(en[key]!);
+				if (english >= FLOOR && shownLength(message) > RATIO * english) long.set(`${locale} ${key}`, message);
+			}
+		}
+
+		test("isn't over 1.4× its English unless it was seen to fit (lib/i18n/long-labels.json)", () => {
+			const unchecked = [...long]
+				.filter(([id, message]) => kept[id] !== message)
+				.map(([id, message]) => ({
+					[id]: message,
+				}));
+			expect(unchecked).toEqual([]);
+		});
+
+		test("seen to fit is still over 1.4× its English, in the same words", () => {
+			expect(Object.keys(kept).filter((id) => long.get(id) !== kept[id])).toEqual([]);
+		});
+
+		test("seen to fit is kept in alphabetical order", () => {
+			const ids = Object.keys(kept);
+			expect(ids).toEqual([...ids].sort());
+		});
 	});
 
 	test("make a pseudo-language with English's placeholders and tags, for every message", () => {

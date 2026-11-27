@@ -1876,7 +1876,7 @@
 	"space_storage_warning_logged": "Tutti i file caricati possono essere <b>registrati, monitorati o condivisi</b> dal proprietario del bucket.",
 	"space_storage_warning_own": "Inserisci solo le credenziali che <b>possiedi e controlli</b>. Se qualcuno ha condiviso le credenziali con te, tieni presente che:",
 	"space_storage_warning_read": "Il proprietario del bucket può <b>leggere, modificare o eliminare</b> tutti gli emoji e i file degli adesivi.",
-	"space_storage_warning_revoke": "Possono <b>revocare l’accesso</b> senza preavviso, rompendo emoji e adesivi in ​​tutto lo Spazio.",
+	"space_storage_warning_revoke": "Possono <b>revocare l’accesso</b> senza preavviso, rompendo emoji e adesivi in tutto lo Spazio.",
 	"space_storage_warning_title": "Prima di aggiungere un secchio",
 	"space_unknown_user": "Utente sconosciuto",
 	"space_upload": "Carica",
