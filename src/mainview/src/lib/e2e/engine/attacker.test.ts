@@ -2452,6 +2452,36 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// A take-back that fails (a host that refuses forgotten, as a cut call does) fails the start (#594's review, M3): the
+	// device isn't ready, so nothing brings a group back without the record it would have taken back; the start goes
+	// again, and then the record holds.
+	test(
+		"a start whose take-back fails is never ready, and brings no group back until it goes again",
+		async () => {
+			const { fake, b: closed, record, conversation } = await forgottenThenWithoutCy(true);
+			const log: string[] = [];
+			let refusing = true;
+			const host = watchedHost(closed.host, log, (cmd) =>
+				refusing && cmd === "forgotten" ? new Error("the core didn't answer") : null,
+			);
+			const b = await restarted(fake, closed, { store: record, host });
+			await turnEnded(b);
+			expect(log).toContain("forgotten");
+			expect(b.engine.state.name).toBe("starting");
+			expect(b.states.map((state) => state.name)).not.toContain("ready");
+			expect(log.filter((cmd) => ["apply", "create_group", "join_external"].includes(cmd))).toEqual([]);
+			expect(await groupOf(b, conversation)).toBeNull();
+			// The start goes again at the next READY: the record is taken back, and the restart without Cy refused.
+			refusing = false;
+			b.connect(b.registered.at(-1) ?? null);
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
 	// A server that leaves the conversation out of one listing doesn't have the core let its record go (#594's review,
 	// I1): a record whose own write never landed is the core's alone, the next start takes it back, and the group the
 	// server makes meanwhile is refused.
