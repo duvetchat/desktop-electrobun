@@ -75,6 +75,8 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 	"join_external",
 	"reset_group",
 	"forget_group",
+	"forgotten",
+	"drop_forgotten",
 	"group",
 	"apply",
 	"encrypt",
@@ -104,6 +106,8 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
  * What asks the person first: create_identity too, which the core runs as it runs reset_identity (a new identity on a
  * device without one), so asking for the one alone would leave the other as a way around it; sign_device_list, whose
  * list takes devices off the account (Task 24); and verify_user, whose mark a script could set on a forged key (Task 28).
+ * Not forgotten nor drop_forgotten (#594): a kept record is user IDs the page already shows, and the person's yes, which
+ * the page gives, lets one go as drop_forgotten does.
  */
 export const CONFIRMED: ReadonlySet<string> = new Set([
 	"approval_confirm",

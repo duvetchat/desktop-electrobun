@@ -64,6 +64,8 @@ const CONTRACT = [
 	"join_external",
 	"reset_group",
 	"forget_group",
+	"forgotten",
+	"drop_forgotten",
 	"group",
 	"apply",
 	"encrypt",
@@ -209,7 +211,7 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 
 describe("what the page may ask", () => {
 	test("a command off the list is refused", async () => {
-		// The contract's 56 but approval_from_qr: the desktop never scans a QR (Ruling 21), so only a script would ask it.
+		// The contract's 58 but approval_from_qr: the desktop never scans a QR (Ruling 21), so only a script would ask it.
 		expect([...CORE_COMMANDS].sort()).toEqual(CONTRACT.filter((cmd) => cmd !== "approval_from_qr").sort());
 		const core = fakeCore((op) =>
 			op === "open" ? { ok: { state: "ready", keyStorage: "file", handle: 1 } } : { ok: { reached: op } },
