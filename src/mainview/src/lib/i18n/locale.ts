@@ -35,6 +35,28 @@ export const LOCALE_NAMES: Record<UiLocale, string> = {
 	[PSEUDO]: "Ƥšéûðö (en-XA)",
 };
 
+/**
+ * The country whose flag the picker shows beside each language (#565), as its region code. A flag is a country's, not
+ * a language's: English's is the United States', whose spelling the app's English keeps, and Spanish, written for Latin
+ * America, has Mexico's, its largest country. The pseudo-language has none. The flag only decorates: the name is the
+ * option's label.
+ */
+export const LOCALE_FLAGS: Record<UiLocale, string | null> = {
+	en: "US",
+	es: "MX",
+	fr: "FR",
+	de: "DE",
+	"pt-BR": "BR",
+	it: "IT",
+	fi: "FI",
+	[PSEUDO]: null,
+};
+
+/** A region's flag emoji: its two letters as regional indicator symbols ("FR" is 🇫🇷). */
+export function flagEmoji(region: string): string {
+	return String.fromCodePoint(...[...region.toUpperCase()].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65));
+}
+
 /** System follows the system's languages, among those shipped; a language keeps to it. */
 export type LocalePref = "system" | UiLocale;
 

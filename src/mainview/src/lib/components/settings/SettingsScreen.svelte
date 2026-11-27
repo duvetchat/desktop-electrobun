@@ -134,6 +134,7 @@
 	import Slider from "./Slider.svelte";
 	import VoiceVideoSettings from "./VoiceVideoSettings.svelte";
 	import ChoiceCards from "./ChoiceCards.svelte";
+	import LanguageSelect from "./LanguageSelect.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -169,7 +170,7 @@
 	import { OFFERED, localePref, setLocalePref, systemLanguageName, t, type MessageKey } from "$lib/i18n";
 	import { formatDate, formatNumber } from "$lib/i18n/format";
 	import Rich from "$lib/components/Rich.svelte";
-	import { LOCALE_NAMES, parseLocalePref } from "$lib/i18n/locale";
+	import { parseLocalePref } from "$lib/i18n/locale";
 	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
 	import { isImageAttachment, isTextAttachment } from "$lib/attachment-preview";
@@ -1736,18 +1737,13 @@
 	{:else if activeSection === "appearance"}
 		<SettingsGroup title={t("settings_language_title")}>
 			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
-				<select
+				<LanguageSelect
 					id="app-language"
-					class={SELECT}
 					value={localePref()}
-					onchange={(event) => void setLocalePref(parseLocalePref(event.currentTarget.value, OFFERED))}
-				>
-					<option value="system">{t("settings_language_system", { language: systemLanguageName() })}</option>
-					{#each OFFERED as locale (locale)}
-						<!-- Each language's name in itself, marked as that language for the system to read it right. -->
-						<option value={locale} lang={locale}>{LOCALE_NAMES[locale]}</option>
-					{/each}
-				</select>
+					offered={OFFERED}
+					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
+					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
+				/>
 			</SettingsRow>
 		</SettingsGroup>
 
