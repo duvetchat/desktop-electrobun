@@ -15,6 +15,10 @@
 //   outside its quotes, where `&` ends the command and `^` escapes the next character: with `^`, the app would quit
 //   and not open again by itself. An app folder with any of those gets "Download update" (duvet.chat/download)
 //   instead.
+// - On Linux it moves the new build into <appData>/app, then runs `chmod +x "<launcher>"` and opens it again with
+//   sh -c "\"<launcher>\" &". Between a shell's double quotes `"`, `$`, `` ` `` and `\` don't stand for themselves: the
+//   chmod would fail once the old build is gone, and nothing would open again. A data folder with any of them gets
+//   "Download update" too.
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isNewerVersion, manifestVerifies, parseManifest, type UpdateManifest } from "./update-manifest";
@@ -58,6 +62,11 @@ export function updateBatCanName(folder: string): boolean {
 	return /^[ -~]*$/.test(folder) && !/[%&^]/.test(folder);
 }
 
+/** Whether Electrobun can apply an update in a folder on Linux: one a shell reads as itself between double quotes. */
+export function shellCanQuote(folder: string): boolean {
+	return !/["$`\\]/.test(folder);
+}
+
 /** The SHA-256 of a file, in hex, read as a stream. */
 export async function fileSha256(path: string): Promise<string> {
 	const hasher = new Bun.CryptoHasher("sha256");
@@ -77,7 +86,8 @@ export class UpdateChecker {
 		private readonly publicKey: Uint8Array<ArrayBuffer>,
 		private readonly onOffer: (offer: UpdateOffer | null) => void,
 		private readonly fetcher: (url: string) => Promise<Response> = (url) => fetch(url),
-		private readonly windows: boolean = process.platform === "win32",
+		/** The system whose rules for the app's data folder hold: Windows' update.bat, Linux's shell. */
+		private readonly platform: string = process.platform,
 	) {}
 
 	/** What the title bar offers; null for nothing. */
@@ -106,7 +116,7 @@ export class UpdateChecker {
 			}
 			// found.hash is now the signed one, a safe file name.
 			const appData = await this.updater.appDataFolder();
-			if (this.windows && !updateBatCanName(appData)) {
+			if (!this.canApplyIn(appData)) {
 				this.offerNow({ version: manifest.version, how: "download" });
 				return;
 			}
@@ -168,6 +178,13 @@ export class UpdateChecker {
 			// The page waits on "Restarting…": offered again, it can be tried again.
 			this.onOffer(this.offered);
 		}
+	}
+
+	/** Whether Electrobun can apply an update with the app's data in that folder, on this system. */
+	private canApplyIn(folder: string): boolean {
+		if (this.platform === "win32") return updateBatCanName(folder);
+		if (this.platform === "linux") return shellCanQuote(folder);
+		return true;
 	}
 
 	/** Runs Electrobun's download or apply with its checkForUpdate giving the build checked here. */

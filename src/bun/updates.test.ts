@@ -6,6 +6,7 @@ import { signManifest, type UpdateFacts } from "./update-manifest";
 import {
 	fileSha256,
 	platformPrefix,
+	shellCanQuote,
 	updateBatCanName,
 	UpdateChecker,
 	type UpdateOffer,
@@ -76,10 +77,11 @@ type SetUp = {
 	bytes?: Uint8Array;
 	hashes?: string[];
 	folder?: string;
-	windows?: boolean;
+	platform?: string;
 };
 
-/** A checker over a release of the build BUILD at newbuild01, 1.2.0, signed for this platform, on a stable 1.1.0. */
+/** A checker over a release of the build BUILD at newbuild01, 1.2.0, signed for this platform, on a stable 1.1.0. Its
+ * app data folder is under no system's rules unless the case names the system. */
 async function setUp(opts: SetUp = {}) {
 	const { privateKey, publicKey } = await keyPair();
 	const facts: UpdateFacts = {
@@ -106,7 +108,8 @@ async function setUp(opts: SetUp = {}) {
 			fetched.push(url);
 			return Response.json(release.manifest);
 		},
-		opts.windows ?? false,
+		// A system Electrobun doesn't build for, so no folder rule applies.
+		opts.platform ?? "freebsd",
 	);
 	return { checker, updater, did, extraction, offers, fetched };
 }
@@ -174,7 +177,7 @@ describe("the app's own updates (#456)", () => {
 	});
 
 	test("on Windows, an app folder update.bat can't name gets Download update, and nothing downloads", async () => {
-		const { checker, did, offers } = await setUp({ folder: "duvet-José-", windows: true });
+		const { checker, did, offers } = await setUp({ folder: "duvet-José-", platform: "win32" });
 		await checker.check();
 		expect(offers).toEqual([{ version: "1.2.0", how: "download" }]);
 		expect(did).toEqual(["check newbuild01"]);
@@ -188,6 +191,28 @@ describe("the app's own updates (#456)", () => {
 		// Electrobun hands the folder to schtasks through cmd, outside cmd's quotes.
 		expect(updateBatCanName("C:/Users/a&b/AppData/Local/com.duvet.desktop/stable")).toBe(false);
 		expect(updateBatCanName("C:/Users/a^b/AppData/Local/com.duvet.desktop/stable")).toBe(false);
+	});
+
+	test("a Linux data folder a shell would misread gets Download update", async () => {
+		// Electrobun puts the new build in <appData>/app, runs `chmod +x "<launcher>"` there, and opens it with
+		// sh -c "\"<launcher>\" &": between a shell's double quotes, $ ` \ and " don't stand for themselves.
+		const { checker, did, offers } = await setUp({ folder: "duvet-$HOME-", platform: "linux" });
+		await checker.check();
+		expect(offers).toEqual([{ version: "1.2.0", how: "download" }]);
+		expect(did).toEqual(["check newbuild01"]);
+		await checker.apply();
+		expect(did).toEqual(["check newbuild01"]);
+
+		// What Windows' update.bat can't name, a shell's quotes can.
+		const linux = await setUp({ folder: "duvet-José & (x) 'y' !-", platform: "linux" });
+		await linux.checker.check();
+		expect(linux.offers).toEqual([RESTART]);
+
+		expect(shellCanQuote("/home/ana/.local/share/com.duvet.desktop/stable")).toBe(true);
+		expect(shellCanQuote("/home/José Smith/data & more (x) 'y' %^!/com.duvet.desktop/stable")).toBe(true);
+		for (const odd of ['"', "$", "`", "\\"]) {
+			expect(shellCanQuote(`/home/a${odd}b/.local/share/com.duvet.desktop/stable`)).toBe(false);
+		}
 	});
 
 	test("applying runs once at a time, and one that fails hands the offer back for another try", async () => {

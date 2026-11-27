@@ -3,8 +3,9 @@ import { getElectrobunRpc, type UpdateOffer } from "$lib/electrobun-rpc";
 
 // The app's own updates (#456, src/bun/updates.ts): Bun downloads and verifies a newer version on the stable channel and
 // says so; the title bar then offers "Restart to update" (TitleStrip.svelte), which asks Bun to apply it. Nothing restarts
-// by itself. Where Bun can't apply it (a Windows app folder Electrobun's update.bat can't name), it offers "Download
-// update", which opens duvet.chat/download. The web has no Bun, and never shows either.
+// by itself. Where Bun can't apply it (a Windows app folder Electrobun's update.bat can't name, or a Linux one its shell
+// commands would misread), it offers "Download update", which opens duvet.chat/download. The web has no Bun, and never
+// shows either.
 
 /** What this needs of the RPC client (AppRPCClient has it). */
 export interface UpdateLink {
