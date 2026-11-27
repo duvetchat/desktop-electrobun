@@ -150,21 +150,18 @@ function withoutExpected(entry: MlsEntry): MlsEntry {
 	return own;
 }
 
-/** The refused generations the record keeps, by conversation: what doesn't read as one is none. */
-function keptRefusals(store: EngineStore): Map<string, number> {
-	const kept = store.read<unknown>(REFUSED_GENERATIONS);
+/**
+ * Generations the record keeps by conversation (the refused ones, those of another group's welcome): what doesn't read
+ * as one is none.
+ */
+function keptGenerations(store: EngineStore, key: string): Map<string, number> {
+	const kept = store.read<unknown>(key);
 	const read = new Map<string, number>();
 	if (typeof kept !== "object" || kept === null) return read;
 	for (const [id, generation] of Object.entries(kept)) {
 		if (Number.isSafeInteger(generation) && generation >= 0) read.set(id, generation);
 	}
 	return read;
-}
-
-/** The conversations the record notes another group of (#584): what doesn't read as an ID is none. */
-function keptAnother(store: EngineStore): Set<string> {
-	const kept = store.read<unknown>(ANOTHER_GROUPS);
-	return new Set(Array.isArray(kept) ? kept.filter((id): id is string => typeof id === "string") : []);
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -280,11 +277,12 @@ export class Conversations {
 	readonly #otherSender = new Set<string>();
 	/**
 	 * Conversations whose queue brought a welcome to another group at the generation this device holds (another_group,
-	 * #553): what's applied stops there, and the device lets its own go for the API's. Kept in the record too, as the
-	 * welcome is spent once applied, until the forget is done or there's nothing to forget (#584): a close, or a forget
-	 * that fails for the moment, leaves it for the next start or the turn's retry.
+	 * #553), with the welcome's generation: what's applied stops there, and the device lets its own go for the API's.
+	 * Kept in the record too, as the welcome is spent once applied, until the forget is done or there's nothing at that
+	 * generation to forget (#584): a close, or a forget that fails for the moment, leaves it for the next start or the
+	 * turn's retry. Any forget lets it go, as what's held after one is another group.
 	 */
-	readonly #another: Set<string>;
+	readonly #another: Map<string, number>;
 	/**
 	 * Restarts the core refused (a successor's, without a statement it needs), or whose commit the API's validator did
 	 * (#550), by conversation, with the queue's last number then: Restart is off until a newer entry comes (task 22's
@@ -332,8 +330,8 @@ export class Conversations {
 		this.#messagesChanged = messagesChanged;
 		this.#dropped = dropped;
 		this.#catchUps = new CatchUps(parts, soon);
-		this.#refused = keptRefusals(parts.store);
-		this.#another = keptAnother(parts.store);
+		this.#refused = keptGenerations(parts.store, REFUSED_GENERATIONS);
+		this.#another = keptGenerations(parts.store, ANOTHER_GROUPS);
 	}
 
 	/** Begins with the pinned external sender: the minute a commit whose bytes were lost waits for starts now. */
@@ -902,7 +900,9 @@ export class Conversations {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);
 			// The API's group at this generation isn't the one this device holds (#553).
-			if (refused && rule === "another_group") this.#noteAnother(conv.id, true);
+			if (refused && rule === "another_group") {
+				this.#noteAnother(conv.id, generations.get(seq) ?? conv.mls?.generation ?? 0);
+			}
 			if (refused && MEMBERS_REFUSED.has(rule ?? "")) {
 				this.#refuse(conv.id, generations.get(seq) ?? conv.mls?.generation ?? 0);
 			}
@@ -1002,6 +1002,7 @@ export class Conversations {
 			throw error;
 		}
 		this.#settling.delete(id);
+		this.#noteAnother(id, null);
 		keepForgotten(this.#parts.store, id, forgotten.expected);
 		return "forgotten";
 	}
@@ -1027,11 +1028,13 @@ export class Conversations {
 	async #after(given: Conversation, at: Where, read: boolean): Promise<void> {
 		// Another member's group at this device's generation (#553): its own goes, and it comes in by an external commit,
 		// held to the record, as the welcome its key package opened is spent. The note goes once the forget is done or
-		// there was nothing to forget; a forget that throws leaves it for the turn's retry (#584).
-		if (this.#another.has(given.id)) {
-			const forgot = await this.#forget(given.id, true);
-			if (forgot !== "waits") this.#noteAnother(given.id, false);
-			if (forgot === "forgotten") return this.#join(given);
+		// there was nothing to forget; a forget that throws leaves it for the turn's retry (#584). It's of the group
+		// held at the welcome's generation: one taken since (a restart's welcome in the same read), or none, is nothing
+		// to let go.
+		const note = this.#another.get(given.id);
+		if (note !== undefined) {
+			if ((await this.#group(given.id))?.generation !== note) this.#noteAnother(given.id, null);
+			else if ((await this.#forget(given.id, true)) === "forgotten") return this.#join(given);
 		}
 		let conv = given;
 		const held = await this.#group(conv.id);
@@ -1218,16 +1221,19 @@ export class Conversations {
 		this.#parts.store.write(REFUSED_GENERATIONS, this.#refused.size ? Object.fromEntries(this.#refused) : null);
 	}
 
-	/** Another group's welcome came in the conversation (`another`), or its note goes: in the record too (#584). */
-	#noteAnother(id: string, another: boolean) {
-		if (this.#another.has(id) === another) return;
-		if (another) this.#another.add(id);
-		else this.#another.delete(id);
+	/**
+	 * Another group's welcome to `generation` came in the conversation, or its note goes (null): in the record too
+	 * (#584).
+	 */
+	#noteAnother(id: string, generation: number | null) {
+		if ((this.#another.get(id) ?? null) === generation) return;
+		if (generation === null) this.#another.delete(id);
+		else this.#another.set(id, generation);
 		this.#keepAnother();
 	}
 
 	#keepAnother() {
-		this.#parts.store.write(ANOTHER_GROUPS, this.#another.size ? [...this.#another] : null);
+		this.#parts.store.write(ANOTHER_GROUPS, this.#another.size ? Object.fromEntries(this.#another) : null);
 	}
 
 	/**
@@ -1512,7 +1518,7 @@ export class Conversations {
 			kept.delete(id);
 		}
 		for (const kept of [this.#settling, this.#removed, this.#otherSender]) kept.delete(id);
-		this.#noteAnother(id, false);
+		this.#noteAnother(id, null);
 		this.#cantRestart.delete(id);
 		this.#unrefuse(id);
 		this.#accepted.delete(id);

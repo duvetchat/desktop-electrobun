@@ -45,9 +45,10 @@ export const LISTED = "listed";
  */
 export const REFUSED_GENERATIONS = "refused_generations";
 /**
- * The conversations whose queue brought a welcome to another group at the generation this device holds (sync.ts: apply's
- * another_group, #553), until the device let its own go or there was nothing to let go (#584): the welcome is spent as
- * it's applied, and this note is all that's left of it. Conversation IDs, nothing secret.
+ * The conversations whose queue brought a welcome to another group at the generation this device holds (sync.ts:
+ * apply's another_group, #553), with that generation, until the device let its own go or there was nothing at that
+ * generation to let go (#584): the welcome is spent as it's applied, and this note is all that's left of it. A
+ * conversation's ID and a number, nothing secret.
  */
 export const ANOTHER_GROUPS = "another_groups";
 /**

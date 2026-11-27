@@ -1783,6 +1783,76 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// The note of another group is of the generation its welcome came for, and any forget lets it go (#584, FG-M7): a
+	// group the device took since, or made again, is the device's to keep.
+	test(
+		"a restart's welcome taken in the same read as another group's is the group the device keeps",
+		async () => {
+			const { fake, ana, bo, a, b, conversation } = await foundingForgotten(true);
+			await b.engine.openConversation(conversation);
+			// Bo restarts the API's group by hand, his engine stopped: its next generation, a key package of Ana's in it.
+			await b.engine.stop();
+			await b.host.open(bo);
+			const key_packages: Record<string, string[]> = {};
+			for (const user of [ana, bo]) {
+				key_packages[user] = (await b.api.claimKeyPackages(user)).key_packages.map((kp) => kp.data);
+			}
+			const made = await b.host.handle<{
+				generation: number;
+				commit: string;
+				group_info: string;
+				initial_group_info: string;
+				welcome: string;
+			}>({
+				...{ cmd: "reset_group", conversation_id: conversation, members: [ana, bo], key_packages },
+			});
+			const { generation, commit, group_info, initial_group_info, welcome } = made;
+			const taken = await b.api.commit(conversation, {
+				generation,
+				epoch: 0,
+				commit,
+				group_info,
+				initial_group_info,
+				welcome,
+			});
+			await b.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: taken.seq });
+			// Ana's next session reads Bo's founding's welcome, which is another_group, then the restart's, which it takes.
+			const told: string[] = [];
+			const again = await restarted(fake, a, { host: watchedHost(a.host, told) });
+			const back = await restarted(fake, b);
+			expect((await sameGroup([again, back], conversation)).generation).toBe(1);
+			expect(told).not.toContain("forget_group");
+			expect(await madeAt(back, conversation, ana, ["commit"])).toEqual([]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a group made again after another group's note, its own let go on another path, is the group the device keeps",
+		async () => {
+			const { fake, ana, a, b, conversation } = await foundingForgotten(true);
+			await b.engine.openConversation(conversation);
+			let fails = 1;
+			const told: string[] = [];
+			const host = watchedHost(
+				answeringHost(a.host, (command) =>
+					command.cmd === "forget_group" && fails-- > 0 ? Promise.reject(new Error("the call was cut")) : undefined,
+				),
+				told,
+			);
+			// Ana's next session takes Bo's welcome (another_group), and its forget fails: the note waits for the retry.
+			const cut = await restarted(fake, a, { host });
+			// The API loses its group first: her next start lets her own go, as a group the API doesn't hold, and makes the
+			// DM's again, which the API holds from then on.
+			fake.loseGroup(conversation);
+			const again = await restarted(fake, cut, { host });
+			await turnEnded(again);
+			expect(told.filter((cmd) => cmd === "forget_group")).toHaveLength(2);
+			expect(await madeAt(again, conversation, ana, ["commit"])).toEqual([{ kind: "commit", generation: 0, epoch: 0 }]);
+		},
+		SLOW,
+	);
+
 	// Who may not make the group: a member of a group the API lost lets it go and waits for its owner, and the owner's
 	// founding made again brings their device in by its welcome, held to the record.
 	test(
