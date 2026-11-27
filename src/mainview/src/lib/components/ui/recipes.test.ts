@@ -8,6 +8,7 @@ import {
 	GLASS_STRONG,
 	iconButtonClass,
 	iconTileClass,
+	marqueeRun,
 	MENU_PANEL,
 	menuItemClass,
 	monogram,
@@ -17,8 +18,7 @@ import {
 	presenceSize,
 	SCRIM,
 	segmentIndex,
-	segmentNaming,
-	segmentsFit,
+	segmentTitle,
 	spaceIconRadius,
 } from "./recipes";
 
@@ -258,21 +258,21 @@ describe("the sums", () => {
 		expect(segmentIndex(options, undefined)).toBe(0);
 	});
 
-	// #562: at the sidebar's narrowest a column of All · Chats · Spaces is 68.7 px, less than a longer language's label
-	// and its icon take.
-	test("a segmented control's options fit while each one's row is no wider than a column", () => {
-		expect(segmentsFit([60, 68.7, 52], 68.7)).toBe(true);
-		// Rounded apart by less than half a pixel, it still fits.
-		expect(segmentsFit([69.1], 68.7)).toBe(true);
-		expect(segmentsFit([60, 104, 52], 68.7)).toBe(false);
-		expect(segmentsFit([], 0)).toBe(true);
+	// #562: at the sidebar's narrowest Spanish's Espacios is 55 px of words in a column that leaves them 37.
+	test("a segmented control's label scrolls as far as it's clipped, and only when it is", () => {
+		expect(marqueeRun(55, 37.7)).toEqual({ shift: 18, seconds: 2.5 });
+		// Rounded apart by less than half a pixel, it fits.
+		expect(marqueeRun(38.1, 37.7)).toEqual({ shift: 0, seconds: 0 });
+		expect(marqueeRun(30, 37.7)).toEqual({ shift: 0, seconds: 0 });
+		// Farther, at 30 px a second over the middle 60% of the run.
+		expect(marqueeRun(127, 37)).toEqual({ shift: 90, seconds: 5 });
 	});
 
-	test("an option with its icon only is named by its label and shows it as its tooltip, over its title", () => {
+	test("a segmented control's clipped option gives its label whole in its tooltip, over its title", () => {
 		const chats = { label: "Keskustelut", title: "Vain chatit" };
-		expect(segmentNaming(chats, false)).toEqual({ ariaLabel: undefined, title: "Vain chatit" });
-		expect(segmentNaming(chats, true)).toEqual({ ariaLabel: "Keskustelut", title: "Keskustelut\nVain chatit" });
-		expect(segmentNaming({ label: "Kaikki" }, true)).toEqual({ ariaLabel: "Kaikki", title: "Kaikki" });
-		expect(segmentNaming({ label: "Kaikki" }, false)).toEqual({ ariaLabel: undefined, title: undefined });
+		expect(segmentTitle(chats, false)).toBe("Vain chatit");
+		expect(segmentTitle(chats, true)).toBe("Keskustelut\nVain chatit");
+		expect(segmentTitle({ label: "Kaikki" }, true)).toBe("Kaikki");
+		expect(segmentTitle({ label: "Kaikki" }, false)).toBeUndefined();
 	});
 });

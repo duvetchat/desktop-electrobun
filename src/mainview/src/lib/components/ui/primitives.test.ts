@@ -201,7 +201,7 @@ describe("Segmented", () => {
 		);
 	});
 
-	test("keeps each option's icon whole in a tight column, the option's padding giving way (#426)", async () => {
+	test("keeps each option's icon whole in a tight column, its words giving way (#426)", async () => {
 		const icon = (await import("@lucide/svelte/icons/layout-grid")).default;
 		const found = await tags(Segmented, {
 			options: options.map((option) => ({ ...option, icon })),
@@ -213,48 +213,55 @@ describe("Segmented", () => {
 		const icons = found.filter((tag) => tag.name === "svg");
 		expect(icons).toHaveLength(3);
 		for (const svg of icons) expect(classes(svg)).toContain("shrink-0");
-		// Centred, a row wider than its column spills evenly into both side paddings (12 px each), not past one edge.
 		const radios = found.filter((tag) => tag.attributes.role === "radio");
-		for (const radio of radios) expect(classes(radio)).toContain("justify-center");
+		for (const radio of radios) expect(classes(radio)).toEqual(expect.arrayContaining(["justify-center", "px-0.5"]));
+		// Past its 2 px, its padding is a spacer either side, 10 px as before, that gives way before the words do.
+		const spacers = found.filter((tag) => classes(tag).includes("shrink-[1000]"));
+		expect(spacers).toHaveLength(6);
+		for (const spacer of spacers) expect(classes(spacer)).toEqual(expect.arrayContaining(["w-2.5", "min-w-0"]));
+		for (const svg of icons) expect(classes(svg)).toContain("mr-[5px]");
 	});
 
-	// #562: a longer language's label in a column too narrow for it.
-	test("draws each label cut where it can't fit, named by its words until it shows its icon alone", async () => {
-		const found = await tags(Segmented, { options, value: "all", label: "Show in the sidebar" });
-		const radios = found.filter((tag) => tag.attributes.role === "radio");
-		for (const radio of radios) {
-			expect(radio.attributes["aria-label"]).toBeUndefined();
-			expect(classes(radio)).toContain("min-w-0");
-			const words = found[found.indexOf(radio) + 1]!;
-			expect(classes(words)).toEqual(expect.arrayContaining(["min-w-0", "truncate", "leading-normal"]));
-		}
-	});
-
-	test("measures what each option takes on a hidden copy, of no size, out of a screen reader's reach", async () => {
+	// #562: a longer language's label in a column too narrow for it keeps its icon beside it, and scrolls.
+	test("draws each label whole in a window that clips it, its icon beside it, named by its words", async () => {
 		const icon = (await import("@lucide/svelte/icons/layout-grid")).default;
 		const found = await tags(Segmented, {
 			options: options.map((option) => ({ ...option, icon })),
 			value: "all",
 			label: "Show in the sidebar",
-			size: "sm",
 		});
-		const copy = found.find((tag) => tag.attributes["aria-hidden"] === "true" && classes(tag).includes("invisible"))!;
-		expect(classes(copy)).toEqual(expect.arrayContaining(["absolute", "size-0", "overflow-hidden"]));
-		const inside = found.slice(found.indexOf(copy) + 1);
-		const rows = inside.filter((tag) => classes(tag).includes("w-max"));
-		expect(rows).toHaveLength(3);
-		// Each in the option's type, with 2 px either side (the option's padding gives way before its words, #426), and
-		// room for its icon instead of a second one.
-		for (const row of rows) expect(classes(row)).toEqual(expect.arrayContaining(["px-0.5", "text-xs", "gap-[5px]"]));
-		expect(inside.some((tag) => tag.name === "svg")).toBe(false);
-		expect(inside.filter((tag) => classes(tag).includes("size-[14px]"))).toHaveLength(3);
-		// With icons to fall back on, the options' words are never cut: they spill into the padding.
 		const radios = found.filter((tag) => tag.attributes.role === "radio");
 		for (const radio of radios) {
-			const words = found.slice(found.indexOf(radio) + 1).find((tag) => tag.name === "span")!;
-			expect(classes(words)).toContain("shrink-0");
-			expect(classes(words)).not.toContain("truncate");
+			expect(radio.attributes["aria-label"]).toBeUndefined();
+			expect(classes(radio)).toEqual(expect.arrayContaining(["min-w-0", "group/segment"]));
+			const after = found.slice(found.indexOf(radio) + 1);
+			const box = after.find((tag) => classes(tag).includes("overflow-hidden"))!;
+			// The window shrinks, clips and keeps the descenders; the words in it stay whole, on one line.
+			expect(classes(box)).toEqual(expect.arrayContaining(["min-w-0", "overflow-hidden", "leading-normal"]));
+			expect(classes(box)).not.toContain("truncate");
+			// Taken to fit until measured: neither faded nor scrolling.
+			expect(box.attributes.class).not.toContain("mask-image");
+			const words = after[after.indexOf(box) + 1]!;
+			expect(classes(words)).toContain("inline-block");
+			expect(words.attributes.class).not.toContain("animate-marquee");
 		}
+		// Every option shows its icon: none is ever shown by its icon alone.
+		expect(found.filter((tag) => tag.name === "svg")).toHaveLength(3);
+		// Its tooltip is its title until its label is clipped.
+		expect(radios.map((radio) => radio.attributes.title)).toEqual([undefined, undefined, undefined]);
+	});
+
+	// What a clipped label is drawn with is set once it's measured, which a page drawn on the server never is.
+	test("scrolls a clipped label only while its option is pointed at or focused, faded at its edges", async () => {
+		const source = await Bun.file(new URL("./Segmented.svelte", import.meta.url)).text();
+		expect(source).toContain(
+			'const SCROLLS = "group-hover/segment:animate-marquee group-focus-visible/segment:animate-marquee";',
+		);
+		expect(source).toContain(
+			"[mask-image:linear-gradient(to_right,transparent,#000_3px,#000_calc(100%-3px),transparent)]",
+		);
+		expect(source).toContain("{clipped[option.value] ? SCROLLS : ''}");
+		expect(source).toContain("{clipped[option.value] ? CLIPPED : ''}");
 	});
 });
 
