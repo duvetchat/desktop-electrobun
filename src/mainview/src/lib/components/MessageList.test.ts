@@ -388,6 +388,20 @@ describe("the two layouts", () => {
 		expect(html).toContain("radial-gradient(420px_80px_at_60px_50%");
 	});
 
+	test("flat rows fuse consecutive mentions into one wash block", async () => {
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const mentions = [
+			from("05", ANA, "Ana", 5, `one <@${ME}>`),
+			from("06", "0190a3b2-0000-7000-8000-000000000003", "Bea", 6, `two <@${ME}>`),
+		];
+		const html = render(MessageList, { props: { messages: mentions, channelId: ROOM, spaceId: "space", intro } }).body;
+		// The two rows carry the same horizontal wash, and their meeting edges are square.
+		expect(count(html, "linear-gradient(90deg,var(--duvet-prism-gem)")).toBe(2);
+		expect(html).not.toContain("radial-gradient(420px_80px_at_60px_50%");
+		expect(html).toContain("rounded-t-xl");
+		expect(html).toContain("rounded-b-xl");
+	});
+
 	test("a day's label sits between two hairlines in flat rows, and alone in bubbles", async () => {
 		// The talk is all one day: one label, over its oldest message.
 		expect(count(list({}), "data-day-separator")).toBe(1);
