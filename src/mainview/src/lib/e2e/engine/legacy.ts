@@ -86,9 +86,14 @@ export function peopleOf(conv: Conversation): LegacyRecord {
 /** The record as the core's `expected` takes it, without the store's mark. */
 const peopleIn = ({ made: _made, ...record }: Kept): LegacyRecord => record;
 
-/** The person made the conversation here: its record is this user and their picks, of the kind they asked for. */
-export const keepMade = (store: EngineStore, conversationId: string, record: LegacyRecord) =>
-	keep(store, conversationId, { ...record, made: true });
+/**
+ * The person made the conversation here: its record is this user and their picks, of the kind they asked for. Where one
+ * is kept already (from before the cutover, made here, or let go), it stays (N-M2): the API's answer names the
+ * conversation, a DM they already had or any it picks, and Ruling 14's question isn't the API's to take away.
+ */
+export function keepMade(store: EngineStore, conversationId: string, record: LegacyRecord) {
+	if (!records(store).has(conversationId)) keep(store, conversationId, { ...record, made: true });
+}
 
 /** The person said yes to the members of today: the record goes, and none is made again. */
 export const dropRecord = (store: EngineStore, conversationId: string) => keep(store, conversationId, false);

@@ -83,6 +83,25 @@ describe.skipIf(!coreLibrary)("a conversation from before the cutover", () => {
 		SLOW,
 	);
 
+	// N-M2: a creation's answer names whichever conversation the API picks, a DM the person already had among them, at
+	// each «Message» on a contact. A record kept for it already stays: its question from before the cutover isn't lost.
+	test(
+		"a creation answered with a conversation that has a record keeps that record",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo], legacy: true });
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo);
+			expect(a.store.read<unknown>(LEGACY_RECORDS)).toEqual({ [conversation]: { members: [ana, bo] } });
+			expect((await a.engine.createConversation({ type: 1, user_id: bo })).id).toBe(conversation);
+			await sameGroup([a, b], conversation);
+			expect(a.store.read<unknown>(LEGACY_RECORDS)).toEqual({ [conversation]: { members: [ana, bo] } });
+		},
+		SLOW,
+	);
+
 	// M4: a record whose storage refuses it (full, or refused) can't keep it: the session holds it all the same, so a
 	// later look at the conversation doesn't take the members of that moment for the ones first seen.
 	test(
