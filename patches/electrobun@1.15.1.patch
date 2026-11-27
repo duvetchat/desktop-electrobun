@@ -1,0 +1,71 @@
+diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
+index 098aa8a05e4eab4425c3b50df4bb456474ba04fd..12b7d224344d24c623c6a4c172c16e3fc66c952b 100644
+--- a/dist/api/bun/core/Socket.ts
++++ b/dist/api/bun/core/Socket.ts
+@@ -84,25 +84,18 @@ const startRPCServer = () => {
+ 					maxPayloadLength: payloadLimit,
+ 					// Anything beyond the backpressure limit will be dropped
+ 					backpressureLimit: payloadLimit * 2,
+-					open(ws: ServerWebSocket<{ webviewId: number }>) {
+-						if (!ws?.data) {
+-							return;
+-						}
+-						const { webviewId } = ws.data;
+-
+-						if (!socketMap[webviewId]) {
+-							socketMap[webviewId] = { socket: ws, queue: [] };
+-						} else {
+-							socketMap[webviewId].socket = ws;
+-						}
+-					},
++					// Duvet (desktop-electrobun#559): a socket becomes its webview's in `message`, once a message of its own
++					// opens with the webview's key. Made the webview's as it opened, any client that connected last, the
++					// key or not, took Bun's messages for the webview from its page.
++					open(_ws: ServerWebSocket<{ webviewId: number }>) {},
+ 					close(ws: ServerWebSocket<{ webviewId: number }>, _code: number, _reason: string) {
+ 						if (!ws?.data) {
+ 							return;
+ 						}
+ 						const { webviewId } = ws.data;
+ 						// console.log("Closed:", webviewId, code, reason);
+-						if (socketMap[webviewId]) {
++						// Only the webview's own socket closing leaves it without one.
++						if (socketMap[webviewId]?.socket === ws) {
+ 							socketMap[webviewId].socket = null;
+ 						}
+ 					},
+@@ -132,6 +125,12 @@ const startRPCServer = () => {
+ 									// have had to match the encrypted packet data, so we can trust
+ 									// that this message can be passed to this browserview's rpc
+ 									// methods.
++									// Duvet (#559): the key opened it, so this socket is the webview's.
++									if (!socketMap[webviewId]) {
++										socketMap[webviewId] = { socket: ws, queue: [] };
++									} else {
++										socketMap[webviewId].socket = ws;
++									}
+ 									browserView.rpcHandler(JSON.parse(decrypted));
+ 								} catch (error) {
+ 									console.log("Error handling message:", error);
+diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
+index 6e0e437f48542e74b7f8e1727da828457f05445f..4ef34052afaef06d004c677449aada9b70cf50eb 100644
+--- a/dist/api/bun/proc/native.ts
++++ b/dist/api/bun/proc/native.ts
+@@ -1086,11 +1086,15 @@ window.__electrobunInternalBridge = window.__electrobunInternalBridge || window.
+ 			} else {
+ 				// Trusted webview: all bridges, full preload
+ 				// Note: Check existing value first to preserve bridges already set by CEF's OnContextCreated
++				// Duvet (desktop-electrobun#556): the RPC's port and key go to the top window alone. WebView2 runs this
++				// preload in every frame too, and a frame's page with them could ask whatever the webview's page asks.
+ 				dynamicPreload = `
+ window.__electrobunWebviewId = ${id};
+ window.__electrobunWindowId = ${windowId};
+-window.__electrobunRpcSocketPort = ${rpcPort};
+-window.__electrobunSecretKeyBytes = [${secretKey}];
++if (window === window.top) {
++	window.__electrobunRpcSocketPort = ${rpcPort};
++	window.__electrobunSecretKeyBytes = [${secretKey}];
++}
+ window.__electrobunEventBridge = window.__electrobunEventBridge || window.webkit?.messageHandlers?.eventBridge || window.eventBridge || window.chrome?.webview?.hostObjects?.eventBridge;
+ window.__electrobunInternalBridge = window.__electrobunInternalBridge || window.webkit?.messageHandlers?.internalBridge || window.internalBridge || window.chrome?.webview?.hostObjects?.internalBridge;
+ window.__electrobunBunBridge = window.__electrobunBunBridge || window.webkit?.messageHandlers?.bunBridge || window.bunBridge || window.chrome?.webview?.hostObjects?.bunBridge;

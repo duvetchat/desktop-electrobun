@@ -1,12 +1,25 @@
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { afterAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
-import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc";
+import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileMark, type BoundaryDeps, type UserMark } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
-import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, rotationQuestion, type Question } from "./confirm";
+import {
+	COMPARE_WITH_THE_BOX,
+	IDOK,
+	MB_DEFBUTTON2,
+	MB_OKCANCEL,
+	nativeConfirm,
+	nativeNotice,
+	newDeviceNotice,
+	rotationQuestion,
+	type Notice,
+	type Question,
+} from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
+import en from "../../mainview/messages/en.json";
+import conventions from "../../mainview/src/lib/e2e/testing/e2e-conventions.json";
 
 // Some of its cases run real cores, which a machine busy with other work takes past Bun's 5 s (#547), as fake-api's
 // tests allow for.
@@ -146,6 +159,12 @@ function person(...answers: boolean[]) {
 	return { asked, confirm };
 }
 
+/** The account opened last, kept in memory: a page of its own starts with none. */
+function memoryMark(): UserMark {
+	let last: string | null = null;
+	return { read: () => last, write: (userId) => void (last = userId) };
+}
+
 /** A reply as the page reads it from JSON: its `ok` and its error whatever the op gives. */
 type Reply = { id: number; instance: number; ok?: any; error?: any };
 
@@ -158,6 +177,8 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 	const send = e2eBoundary({
 		start: null,
 		confirm: async () => false,
+		show: () => {},
+		lastUser: memoryMark(),
 		...deps,
 		reply: (reply: E2eReply) => {
 			replies.push(reply);
@@ -329,6 +350,110 @@ describe("what asks the person first, outside the page", () => {
 		expect(await broken(question)).toBe(false);
 	});
 
+	// #557's re-review, RM6: the box's lines are the conventions' fingerprints, which the Android app reads too: the
+	// commitment's (approval_fingerprints) and the QR's (approval_qr_fingerprint), each of its bytes as the page's
+	// approvalFingerprint gives it.
+	test("the box's lines are the conventions' fingerprints of the core's commitment and QR", async () => {
+		const [made] = conventions.approval_fingerprints;
+		const scanned = conventions.approval_qr_fingerprint;
+		const notices: (Notice | null)[] = [];
+		const core = fakeCore((op) =>
+			op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: { commitment: made.commitment, qr: scanned.qr } },
+		);
+		const page = pageOf({ start: core.start, show: (notice) => notices.push(notice) });
+		await page.ask("open", { userId: ANA });
+		await page.run({ cmd: "approval_begin" });
+		const message = notices.at(-1)?.message ?? "";
+		expect(message).toContain(`With a code:\n${made.fingerprint}`);
+		expect(message).toContain(`Scanning its QR code with your phone:\n${scanned.fingerprint}`);
+		expect(await approvalFingerprint(Buffer.from(scanned.qr, "base64"))).toBe(scanned.fingerprint);
+	});
+
+	// #557's re-review, RC1: every approving device says the same of the new device's fingerprint, the web's page too.
+	test("the approver's box says what the approving page says of the new device's fingerprint", () => {
+		expect(COMPARE_WITH_THE_BOX).toBe(en.e2e_approval_fingerprint_line);
+	});
+
+	test("a notice replaces the one shown, and none takes it away; without the core's platform nothing shows", () => {
+		const boxes: { title: string; closed: boolean }[] = [];
+		const show = nativeNotice({
+			platform: "win32",
+			open: ({ title }) => {
+				const box = { title, closed: false };
+				boxes.push(box);
+				return { close: () => (box.closed = true) };
+			},
+		});
+		show({ title: "one", message: "1" });
+		show({ title: "two", message: "2" });
+		expect(boxes).toEqual([
+			{ title: "one", closed: true },
+			{ title: "two", closed: false },
+		]);
+		show(null);
+		expect(boxes.at(-1)?.closed).toBe(true);
+		expect(() => nativeNotice({ platform: "linux" })({ title: "three", message: "3" })).not.toThrow();
+	});
+
+	// #557's re-review, RM5: the QR's renewal brings a box up every 9 minutes while the setup's sheet shows it; only the
+	// first of a run of them is raised over what the person is doing.
+	test("a box that replaces one already shown doesn't take the foreground", () => {
+		const raised: [string, boolean][] = [];
+		const show = nativeNotice({
+			platform: "win32",
+			open: ({ title }, foreground) => {
+				raised.push([title, foreground]);
+				return { close: () => {} };
+			},
+		});
+		show({ title: "one", message: "1" });
+		show({ title: "two", message: "2" });
+		show(null);
+		show({ title: "three", message: "3" });
+		expect(raised).toEqual([
+			["one", true],
+			["two", false],
+			["three", true],
+		]);
+	});
+
+	// #557's re-review, RM4: the box is the new device's whole defense, and one that can't show would stop every new
+	// computer's approval with nothing in the log. Here user32 doesn't load, as a box that fails on Windows doesn't.
+	test.skipIf(process.platform === "win32")("a notice's box that can't show says why in the log", async () => {
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			nativeNotice({ platform: "win32" })({ title: "Set up this device (0000 1111 2222 3333)", message: "…" });
+			const said = () =>
+				logged.mock.calls.some(([line]) => String(line).includes("the notice's box couldn't be shown"));
+			for (let tries = 0; tries < 100 && !said(); tries++) await Bun.sleep(20);
+			expect(said()).toBe(true);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+
+	// The real box, on Windows alone: it shows while Bun goes on (its loop below runs meanwhile), and closing takes it
+	// away. It shows over the screen for a moment.
+	test.skipIf(process.platform !== "win32")(
+		"on Windows a notice is the system's box, which holds nothing",
+		async () => {
+			const { dlopen, FFIType } = await import("bun:ffi");
+			const { FindWindowW } = dlopen("user32.dll", {
+				FindWindowW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+			}).symbols;
+			const wide = (text: string) => new Uint16Array([...Array.from(text, (char) => char.charCodeAt(0)), 0]);
+			const notice = newDeviceNotice({ code: "0000 1111 2222 3333", scan: "4444 5555 6666 7777" });
+			const up = () => Boolean(FindWindowW(wide("#32770"), wide(notice.title)));
+			const show = nativeNotice({ platform: "win32" });
+			show(notice);
+			for (let tries = 0; !up() && tries < 50; tries++) await Bun.sleep(100);
+			expect(up()).toBe(true);
+			show(null);
+			for (let tries = 0; up() && tries < 50; tries++) await Bun.sleep(100);
+			expect(up()).toBe(false);
+		},
+	);
+
 	// Round 3: the yes runs Bun's own verify_user, by the QR of the number its box showed, never the page's command; and
 	// what the page sends while the box is open waits for it, as every request waits for the one before.
 	test("after the yes, the core gets Bun's verify_user, by the QR of the number it showed, and nothing runs meanwhile", async () => {
@@ -434,7 +559,7 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		// What the person compares with the new device's screen: the fingerprint of what the core certifies.
 		expect(asked[1].message).toContain(await fingerprintOf(two.commitment));
 		expect(asked[1].message).not.toContain(await fingerprintOf(one.commitment));
-		expect(asked[1].message).toContain("its screen shows the same 16 characters");
+		expect(asked[1].message).toContain("it shows the same 16 characters");
 		expect((await approver.run({ cmd: "status" })).ok.device_list).toBe(before);
 
 		expect((await approver.run({ cmd: "approval_confirm", code })).ok).toHaveProperty("transfer");
@@ -458,6 +583,69 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		expect(asked[1].message).toContain(NEW_A);
 		expect(asked[1].message).toContain(await fingerprintOf(forged));
 		expect(asked[1].message).not.toContain(await fingerprintOf(device.commitment));
+	});
+
+	// #557: a script in the new device's page sends an attempt of its own, and draws its fingerprint where the page shows
+	// the core's. Bun shows the fingerprints of its own core's attempt in a box of its own, which the approver's box
+	// tells the person to compare with.
+	test("the new device's own box names its core's fingerprints, never those of an attempt its page sends", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		const begun = (await device.run({ cmd: "approval_begin" })).ok;
+		// The script's attempt: another core's keys and hash, under this device's ID.
+		const script = await newDevice(NEW_B);
+		const forged = withDevice(script.commitment, NEW_A);
+		const { asked, confirm } = person(true, false);
+		const approver = await approverOf(confirm);
+		const { code } = await reveal(approver, script, forged);
+		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
+
+		const own = notices.at(-1)?.message ?? "";
+		expect(own).toContain(await fingerprintOf(begun.commitment));
+		// The QR's bytes aren't the commitment's: a phone that scans it names the QR's own fingerprint.
+		expect(own).toContain(await fingerprintOf(begun.qr));
+		expect(own).not.toContain(await fingerprintOf(forged));
+		const approving = asked[1]?.message ?? "";
+		expect(approving).toContain(await fingerprintOf(forged));
+		expect(approving).not.toContain(await fingerprintOf(begun.commitment));
+		expect(approving).toContain("in a box of its own, outside its window");
+	});
+
+	test("the new device's box goes with its attempt: the next one replaces it, and its transfer taken closes it", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		const first = (await device.run({ cmd: "approval_begin" })).ok;
+		expect(notices.at(-1)?.message).toContain(await fingerprintOf(first.commitment));
+		const second = (await device.run({ cmd: "approval_begin" })).ok;
+		expect(notices.at(-1)?.message).toContain(await fingerprintOf(second.commitment));
+		expect(notices.at(-1)?.message).not.toContain(await fingerprintOf(first.commitment));
+
+		// The honest way through, by the code: the box stays while the approver confirms, and goes with the transfer.
+		const approver = await approverOf(person(true, true).confirm);
+		const { offer } = (await approver.run({ cmd: "approval_offer", commitment: second.commitment })).ok;
+		const { reveal: revealed } = (await device.run({ cmd: "approval_reveal", offer })).ok;
+		const { code } = (await approver.run({ cmd: "approval_check", reveal: revealed })).ok;
+		expect((await device.run({ cmd: "approval_accept", code })).ok).toEqual({});
+		const { transfer } = (await approver.run({ cmd: "approval_confirm", code })).ok;
+		expect(notices.at(-1)).not.toBeNull();
+		expect((await device.run({ cmd: "approval_receive", transfer })).ok).toHaveProperty("identity_key");
+		expect(notices.at(-1)).toBeNull();
+	});
+
+	// #557's re-review, RM5: the setup's sheet closed, the page's attempt is over, and its box mustn't say to keep it open.
+	test("the page's end of an attempt takes the new device's box away", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		await device.run({ cmd: "approval_begin" });
+		expect(notices.at(-1)).not.toBeNull();
+		expect((await device.ask("endApproval")).ok).toEqual({});
+		expect(notices.at(-1)).toBeNull();
 	});
 
 	test("an offer the core takes and Bun can't read leaves nothing to approve", async () => {
@@ -966,6 +1154,8 @@ describe("a reply Bun can't send", () => {
 			const send = e2eBoundary({
 				start: null,
 				confirm: async () => false,
+				show: () => {},
+				lastUser: memoryMark(),
 				reply: (reply) => {
 					if (first) {
 						first = false;
@@ -977,6 +1167,90 @@ describe("a reply Bun can't send", () => {
 			send({ id: 9, op: "open", params: { userId: ANA }, instance: 0 });
 		});
 		expect(await sent).toEqual({ id: 9, instance: 1, error: { code: "internal" } });
+	});
+});
+
+// #558: each account that used this installation keeps its database here (decision 13), and a script in one account's
+// page could name another's.
+describe("whose database Bun opens", () => {
+	const ready = () => fakeCore((op) => (op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: {} }));
+	const opens = (core: ReturnType<typeof ready>) =>
+		core.calls.filter(({ op }) => op === "open").map(({ params }) => params);
+
+	test("another account than the one opened last asks first, and only that one's database is destroyed", async () => {
+		const core = ready();
+		const { asked, confirm } = person(false, true);
+		const page = pageOf({ start: core.start, confirm });
+		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toEqual([]);
+
+		// Bo's database, as a script in Ana's page asks it: the person's no opens nothing. Ana's closed before the box, so
+		// a page left signed in as Bo after Ana signed out, its close lost, can't read hers either.
+		expect((await page.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.message).toContain(BO);
+		expect(opens(core)).toEqual([{ userId: ANA }]);
+		expect(core.calls.map(({ op }) => op)).toEqual(["open", "close"]);
+		expect((await page.ask("destroy", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect(core.calls.some(({ op }) => op === "destroy")).toBe(false);
+
+		// The person's yes: Bo's opens, and is the one opened last, which opens again without asking.
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(2);
+		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect((await page.ask("destroy", { userId: BO })).ok).toEqual({});
+		expect(core.calls.filter(({ op }) => op === "destroy")).toEqual([{ op: "destroy", params: { userId: BO } }]);
+	});
+
+	test("the account opened last is the installation's, from one start of the app to the next", async () => {
+		const folder = mkdtempSync(join(tmpdir(), "duvet-boundary-"));
+		folders.push(folder);
+		const mark = join(folder, "e2e", "last-user");
+		const first = pageOf({ start: ready().start, lastUser: fileMark(mark) });
+		await first.ask("open", { userId: ANA });
+
+		const { asked, confirm } = person(false);
+		const lost = fakeCore((op) => (op === "open" ? { ok: { state: "failed", reason: "bad_key" } } : { ok: {} }));
+		const next = pageOf({ start: lost.start, confirm, lastUser: fileMark(mark) });
+		expect((await next.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect((await next.ask("destroy", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(1);
+		expect((await next.ask("open", { userId: ANA })).ok).toEqual({ state: "failed", reason: "bad_key" });
+		expect(asked).toHaveLength(1);
+		// Its key lost, Ana's database didn't open, and it's still hers: its data can go (Ruling 26's way out).
+		expect((await next.ask("destroy", { userId: ANA })).ok).toEqual({});
+		// A mark Bun can't read is no account: the next open asks nothing of the first account to open here.
+		writeFileSync(mark, "not an account");
+		expect(fileMark(mark).read()).toBeNull();
+		expect(fileMark(join(folder, "nothing")).read()).toBeNull();
+	});
+
+	// #558's re-review, RM3 (a): a script that asks for another account right after the person's yes to one shouldn't
+	// get a box the person takes for the one they just answered.
+	test("a second switch to another account in one run asks in other words than the first", async () => {
+		const { asked, confirm } = person(true, true);
+		const page = pageOf({ start: ready().start, confirm });
+		await page.ask("open", { userId: ANA });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(2);
+		expect(asked[1]?.title).not.toBe(asked[0]?.title);
+		expect(asked[1]?.message).toContain("already switched");
+		expect(asked[1]?.message).toContain(ANA);
+	});
+
+	// RM3 (b): a mark the file didn't take would let the next switch back go unasked.
+	test("a mark the file didn't take asks, as Bun opened another account since", async () => {
+		const { asked, confirm } = person(true, false);
+		// A file that keeps saying Ana, whatever Bun writes.
+		const stuck: UserMark = { read: () => ANA, write: () => {} };
+		const page = pageOf({ start: ready().start, confirm, lastUser: stuck });
+		await page.ask("open", { userId: ANA });
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("open", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(2);
 	});
 });
 

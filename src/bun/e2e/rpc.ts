@@ -2,9 +2,13 @@
 // page may ask of the core, and what asks the person first. A script in the page, an XSS in what a message draws, can
 // ask whatever the page can, and so read and write while it lasts. But the core takes the commands of its contract
 // alone, and approving a device, making an identity, changing the keys or taking a device off the account takes a yes
-// in the system's own box, whose text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
-// the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time, so nothing runs between a
-// question and the command it answers. A worker that stops is started again, with the database it had open.
+// in the system's own box, whose text Bun writes (confirm.ts). A new device's attempt to be approved shows its own core's
+// fingerprints in a box of Bun's too, outside the page (#557). The page asks in the main window's `e2e` message alone
+// (index.ts): the pop-out's and the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time,
+// so nothing runs between a question and the command it answers. A worker that stops is started again, with the
+// database it had open.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
 	ATTACHMENT_PART,
 	E2E_OPS,
@@ -19,13 +23,18 @@ import {
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 import {
 	approvalQuestion,
+	newDeviceNotice,
 	newKeysQuestion,
+	otherAccountQuestion,
+	qrBytes,
 	removalQuestion,
 	readCommitment,
 	rotationQuestion,
 	verifyQuestion,
 	type Confirm,
+	type Notice,
 	type Question,
+	type Show,
 } from "./confirm";
 import { CoreStopped, type CoreFailure, type CoreWorker, type WorkerReply } from "./core";
 
@@ -104,6 +113,8 @@ export const CONFIRMED: ReadonlySet<string> = new Set([
 	"verify_user",
 ]);
 
+/** What gives this device its identity, which ends any attempt of its to be approved. */
+const SET_UP: ReadonlySet<string> = new Set(["approval_receive", "recover", "create_identity", "reset_identity"]);
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
 const STANDALONE: ReadonlySet<string> = new Set(STANDALONE_OPS);
 /** A commitment's base64 at most: the core makes them of about 240 characters, and Bun reads none longer. */
@@ -119,8 +130,42 @@ export interface BoundaryDeps {
 	start: (() => CoreWorker) | null;
 	/** The person's answer, outside the page (confirm.ts). */
 	confirm: Confirm;
+	/** What Bun shows the person outside the page that asks nothing (confirm.ts): a new device's fingerprints. */
+	show: Show;
+	/** The account whose database this installation opened last (fileMark). */
+	lastUser: UserMark;
 	/** Sends the page a reply: the main window's `e2eReply` message. */
 	reply: (reply: E2eReply) => void;
+}
+
+/** The account whose database this installation opened last: its ID, or none; a mark Bun can't read throws. */
+export interface UserMark {
+	read(): string | null;
+	write(userId: string): void;
+}
+
+/** The account opened last, kept in a file: what isn't an account's ID in it, or no file, is none. */
+export function fileMark(file: string): UserMark {
+	return {
+		read() {
+			let kept: string;
+			try {
+				kept = readFileSync(file, "utf8");
+			} catch (error) {
+				if (isRecord(error) && error.code === "ENOENT") return null;
+				throw error;
+			}
+			return UUID.test(kept) ? kept : null;
+		},
+		write(userId) {
+			try {
+				mkdirSync(dirname(file), { recursive: true });
+				writeFileSync(file, userId);
+			} catch (error) {
+				console.error("[e2e] the account opened last wasn't kept:", error);
+			}
+		},
+	};
 }
 
 /** What answers a request with an error. */
@@ -186,8 +231,14 @@ function devices(value: unknown, field = "remove"): string[] {
  * Bun's half of the boundary: the handler of the main window's `e2e` message. It answers each request with `reply`, in
  * the order they came, and never throws: a throw in the app's worker would end it, and the app with it.
  */
-export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: unknown) => void {
+export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryDeps): (message: unknown) => void {
 	let worker: CoreWorker | null = null;
+	/** The account the page opened last, whether its database opened or not: the only one whose data it may delete. */
+	let current: string | null = null;
+	/** The account whose database Bun opened last in this run, which a mark the file didn't take can't hide (RM3). */
+	let openedLast: string | null = null;
+	/** Whether the person said yes to another account's database in this run already. */
+	let switched = false;
 	/** The core's instance: one more each time its worker stops, which the page is told. */
 	let instance = 1;
 	/** The handle of the database the worker has open, and one a stopped worker left open in the library. */
@@ -213,6 +264,59 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			}
 		}
 	};
+
+	/** A notice, or none: one that can't be shown is no reason to fail the op. */
+	const notify = (notice: Notice | null) => {
+		try {
+			show(notice);
+		} catch (error) {
+			console.error("[e2e] a notice couldn't be shown:", error);
+		}
+	};
+
+	/**
+	 * A new device's attempt, as its own core made it: its fingerprints in Bun's box, which a script in this page can't
+	 * draw on, and which the approving device's words say to compare with (#557). What Bun can't read, it names nothing
+	 * of: the box of an attempt before it goes too.
+	 */
+	async function showAttempt(begun: unknown) {
+		const { commitment, qr } = isRecord(begun) ? begun : {};
+		const made = typeof commitment === "string" ? readCommitment(commitment) : null;
+		const scanned = typeof qr === "string" ? qrBytes(qr) : null;
+		if (!made || !scanned) return notify(null);
+		notify(newDeviceNotice({ code: await approvalFingerprint(made.bytes), scan: await approvalFingerprint(scanned) }));
+	}
+
+	/**
+	 * Another account than the one this installation opened last asks the person first (#558): signing out leaves each
+	 * account's database here (decision 13), and a script in one account's page would read or delete another's. What's
+	 * open closes before the box, so a no leaves no database open. A mark Bun can't read asks too, and so does one that
+	 * isn't the account Bun opened last in this run: its write didn't go down (RM3). A second switch has words of its own.
+	 */
+	async function mayOpen(userId: string) {
+		let last: string | null | undefined;
+		try {
+			last = lastUser.read();
+		} catch (error) {
+			console.error("[e2e] the account opened last couldn't be read:", error);
+		}
+		const another =
+			last === undefined || (openedLast !== null && last !== openedLast) || (last !== null && last !== userId);
+		if (another) {
+			if (worker) unwrap(await core("close"));
+			opened = null;
+			let yes = false;
+			try {
+				yes = await confirm(otherAccountQuestion(userId, switched));
+			} catch (error) {
+				console.error("[e2e] the confirmation failed:", error);
+			}
+			if (!yes) throw refused("refused", "the person didn't confirm it");
+			switched = true;
+		}
+		if (last !== userId) lastUser.write(userId);
+		openedLast = userId;
+	}
 
 	/**
 	 * One op in the core's worker, started for it if there's none, after closing what a stopped one left open. An op
@@ -323,6 +427,9 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 		const result = await core("handle", { command: runs });
 		if (cmd === "approval_offer" && "ok" in result) underWay = offered;
 		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
+		if (cmd === "approval_begin" && "ok" in result) await showAttempt(result.ok);
+		// This device has its identity, by the transfer or another way: nothing of an attempt is compared any more.
+		if (SET_UP.has(cmd) && "ok" in result) notify(null);
 		return unwrap(result);
 	}
 
@@ -336,7 +443,11 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
+				current = null;
 				if (!start) return { state: "unsupported" };
+				await mayOpen(userId);
+				current = userId;
 				// The core's handle stays in Bun.
 				const { handle, ...opening } = unwrap(await core("open", { userId }));
 				opened = typeof handle === "number" ? handle : null;
@@ -347,14 +458,19 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
+				current = null;
 				if (worker) unwrap(await core("close"));
 				opened = null;
 				return {};
 			case "destroy": {
 				const userId = uuid(p.userId, "userId");
+				// The account the page opened: a script in its page can't delete another's (#558).
+				if (userId !== current) throw refused("refused", "only the database of the account opened here is deleted");
 				underWay = null;
 				user = null;
 				reopen = false;
+				notify(null);
 				const destroyed = await core("destroy", { userId });
 				opened = null;
 				return unwrap(destroyed);
@@ -391,6 +507,10 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			}
 			case "importShare":
 				return unwrap(await core("importShare", { shareId: text(p.shareId, "shareId") }));
+			case "endApproval":
+				// The page's attempt is over (its setup's sheet closed): its box goes, as close's does (RM5).
+				notify(null);
+				return {};
 		}
 		throw bad("op", "no such op");
 	}

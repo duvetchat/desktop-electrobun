@@ -2,11 +2,13 @@
 // holds the Web Lock `duvet-e2e:<user_id>` leads. It alone has the core's worker, the engine and the database; the
 // others wait for the lock, so the next inherits it as the leader's tab closes, and meanwhile ask the leader over the
 // BroadcastChannel of the same name, by the engine's public methods, never by the core's commands:
-//   - a request `{id, from, method, params}`, which the leader answers `{id, to, ok}` or `{id, to, error}`;
+//   - a request `{id, from, method, params}`, which the leader answers `{id, to, ok}` or `{id, to, error}`, and of a
+//     method that makes something anew says first that it took (`{id, to, taken: true}`);
 //   - `{event: "leader", tab}` from a tab that starts to lead, and `{event: "changed", conversation_id, deleted?}` from
 //     the leader, `deleted` the messages its queue deleted, and `{event: "state"}` when its engine's state changed.
 // A request left unanswered goes again when a new leader says so, and the new leader runs its own: so every method
-// must bear being run twice (a send carries its nonce). The methods are the caller's: the engine's (Task 12).
+// must bear being run twice (a send carries its nonce), but those that make something anew (`once`): one a leader took
+// fails instead, as the leader that went may have made it (#559). The methods are the caller's: the engine's (Task 12).
 import { CoreError, errorFields } from "../errors";
 
 /** What tabs.ts uses of navigator.locks. */
@@ -30,6 +32,12 @@ export const lockName = (userId: string) => `duvet-e2e:${userId}`;
 export interface BrowserTabsOptions {
 	userId: string;
 	methods: Methods;
+	/**
+	 * The methods that make something anew, which a second run would make twice (a group, a history share): the leader
+	 * says it took one (`{id, to, taken: true}`) before it runs it, and one a tab took and went without answering fails
+	 * with `internal`, as it may have been made, and goes to no other tab (#559). One no tab took goes on as any.
+	 */
+	once?: readonly string[];
 	/** Runs once this tab holds the lock, before it serves anyone: opens the core and starts the engine. */
 	lead: () => Promise<void>;
 	/** A conversation the leader says changed, with the messages its queue deleted. */
@@ -46,6 +54,7 @@ export interface BrowserTabsOptions {
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const closed = () => new CoreError("internal", "this tab left the core's tabs");
+const unknown = () => new CoreError("internal", "the tab that led went before it answered: it may have been made");
 
 export class BrowserTabs {
 	readonly tab: string;
@@ -58,10 +67,16 @@ export class BrowserTabs {
 	#channel: ChannelLike;
 	#stop = new AbortController();
 	#release: () => void = () => {};
-	/** This tab's requests without an answer, by their ID. */
+	/** This tab's requests without an answer, by their ID: `taken`, one a leader said it runs. */
 	#waiting = new Map<
 		string,
-		{ method: string; params: unknown; resolve: (value: any) => void; reject: (error: unknown) => void }
+		{
+			method: string;
+			params: unknown;
+			resolve: (value: any) => void;
+			reject: (error: unknown) => void;
+			taken?: true;
+		}
 	>();
 
 	constructor(options: BrowserTabsOptions) {
@@ -85,8 +100,10 @@ export class BrowserTabs {
 					this.#leader = true;
 					this.#post({ event: "leader", tab: this.tab });
 					options.onLeader?.(this.tab);
-					for (const [id, waiting] of this.#waiting)
-						this.#settle(id, () => this.#serve(waiting.method, waiting.params));
+					for (const [id, waiting] of this.#waiting) {
+						if (this.#madeMaybe(waiting)) this.#take(id)?.reject(unknown());
+						else this.#settle(id, () => this.#serve(waiting.method, waiting.params));
+					}
 					resolve();
 					await held;
 				})
@@ -140,6 +157,16 @@ export class BrowserTabs {
 		this.#waiting.clear();
 	}
 
+	/** Whether `method` makes something anew, and so isn't run twice. */
+	#once(method: string): boolean {
+		return this.#options.once?.includes(method) ?? false;
+	}
+
+	/** A request that makes something anew, which a tab that led took: it may have been made. */
+	#madeMaybe(waiting: { method: string; taken?: true }): boolean {
+		return waiting.taken === true && this.#once(waiting.method);
+	}
+
 	async #serve(method: string, params: unknown): Promise<any> {
 		const run = Object.hasOwn(this.#options.methods, method) ? this.#options.methods[method] : undefined;
 		if (!run) throw new CoreError("bad_command", `the tabs serve no method ${method}`, { field: "method" });
@@ -179,10 +206,11 @@ export class BrowserTabs {
 	#heard(data: unknown) {
 		if (this.#closed || !isObject(data)) return;
 		if (data.event === "leader" && typeof data.tab === "string") {
-			// A new leader: what this tab still asks goes to it. One that can't be cloned any more is refused, alone.
+			// A new leader: what this tab still asks goes to it, but what makes something anew that the tab before took,
+			// which it may have made. One that can't be cloned any more is refused, alone.
 			if (!this.#leader) {
-				for (const [id, { method, params }] of this.#waiting) {
-					const refused = this.#ask(id, method, params);
+				for (const [id, waiting] of this.#waiting) {
+					const refused = this.#madeMaybe(waiting) ? unknown() : this.#ask(id, waiting.method, waiting.params);
 					if (refused) this.#take(id)?.reject(refused);
 				}
 			}
@@ -197,6 +225,12 @@ export class BrowserTabs {
 		} else if (typeof data.id === "string" && typeof data.from === "string" && typeof data.method === "string") {
 			if (this.#leader) this.#answer(data.id, data.from, data.method, data.params);
 		} else if (typeof data.id === "string" && data.to === this.tab) {
+			// The leader took it, and answers once it's run.
+			if (data.taken === true) {
+				const waiting = this.#waiting.get(data.id);
+				if (waiting) waiting.taken = true;
+				return;
+			}
 			const waiting = this.#take(data.id);
 			if (!waiting) return;
 			if ("error" in data && isObject(data.error) && typeof data.error.code === "string") {
@@ -219,6 +253,8 @@ export class BrowserTabs {
 				});
 			}
 		};
+		// Said before it runs: once this tab goes, the asking one knows it may have been made.
+		if (this.#once(method)) this.#post({ id, to: from, taken: true });
 		this.#serve(method, params).then(
 			(ok: unknown) => reply({ ok }),
 			(error: unknown) => reply({ error: errorFields(error) }),

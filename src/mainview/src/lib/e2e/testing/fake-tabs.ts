@@ -56,6 +56,7 @@ export class FakeHub {
 	readonly posted: unknown[] = [];
 	/** What the listeners threw. */
 	readonly thrown: unknown[] = [];
+	#pending = 0;
 
 	channel(name: string): ChannelLike {
 		const self = { name, listeners: new Set<(event: { data: unknown }) => void>() };
@@ -66,7 +67,9 @@ export class FakeHub {
 				this.posted.push(message);
 				for (const other of this.#channels) {
 					if (other === self || other.name !== name) continue;
+					this.#pending++;
 					setTimeout(() => {
+						this.#pending--;
 						for (const listener of other.listeners) {
 							try {
 								listener({ data: structuredClone(data) });
@@ -80,5 +83,13 @@ export class FakeHub {
 			addEventListener: (_type, listener) => self.listeners.add(listener),
 			close: () => this.#channels.delete(self),
 		};
+	}
+
+	/**
+	 * Settles once every message posted so far has reached its listeners, and those they posted meanwhile: what a test
+	 * waits for before a tab goes, as a browser delivers a message that was posted before it (desktop-electrobun#568).
+	 */
+	async delivered(): Promise<void> {
+		while (this.#pending > 0) await new Promise((resolve) => setTimeout(resolve, 0));
 	}
 }

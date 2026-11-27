@@ -94,11 +94,25 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
      QR) has the Windows app ask «Is this device yours?»; after It's mine, and the new device's yes to the code, Confirm
      opens Windows' dialog, which names the fingerprint the new device shows;
    - **changing keys:** Settings → Devices → Change security keys;
-   - **starting over:** a new device's setup, Start over.
+   - **starting over:** a new device's setup, Start over;
+   - **being approved:** with the Windows app as alice's new device (her web set up first), its Set up opens Windows'
+     own box, «Set up this device», with a fingerprint for a code and one for a phone's scan. The web's «Is this device
+     yours?» shows the first. The box asks nothing: the window takes the code while it's open, and it goes once the
+     device is set up or the setup's sheet closes. Left open on its QR, the sheet renews the QR every 9 minutes: the
+     new box takes the old one's place without coming to the front (desktop-electrobun#557);
+   - **another account:** sign out of alice and in as bob on the same app. Before bob's encrypted conversations open,
+     Windows' box asks to open another account's. Cancel leaves the bar saying they couldn't open, until the app starts
+     again; OK opens them, and signing in as bob again asks nothing (desktop-electrobun#558).
 4. **The window keeps up while a large history is shared.** In a DM with a few hundred messages, Share history with a
    member's new device, and pick «the conversation's history». While it goes, drag the window by its title bar, snap it
    with Win+Left and Win+Right, and type in another chat: none of it should stall.
-5. **The rest, with the web and with the Pixel:**
+5. **A player's frame holds nothing of the window's RPC.** In a dev build, play a YouTube and a TikTok embed in a
+   room. In DevTools' console (F12), pick each of the player's frames in the context menu at the top (top ▾), and run
+   `[typeof __electrobunSecretKeyBytes, typeof __electrobunRpcSocketPort]`: every frame says
+   `['undefined', 'undefined']`, where the top one says `['object', 'number']` (desktop-electrobun#556). Then, in each
+   frame, `[typeof __electrobunBunBridge, typeof __electrobunInternalBridge, typeof __electrobunEventBridge]` says
+   `undefined` three times: the bun bridge carries the RPC with no key at all.
+6. **The rest, with the web and with the Pixel:**
    - conversing: a message, a reply, an edit, a deletion, in a DM and in a group;
    - attachments: a picture, a file, a voice note;
    - recovery: a new device set up with the recovery key;

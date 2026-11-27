@@ -212,6 +212,8 @@ export class Approvals {
 		this.#attempt?.stop();
 		this.#attempt = null;
 		this.#changed();
+		// On the desktop, Bun's box of the attempt's fingerprints goes with it (#557).
+		this.#parts.host.endApproval?.().catch((error: unknown) => console.warn("[e2e] The attempt's box stays:", error));
 	}
 
 	/** An attempt not done in its ten minutes starts over, with a new QR. */

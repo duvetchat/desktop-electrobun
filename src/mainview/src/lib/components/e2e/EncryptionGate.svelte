@@ -232,6 +232,7 @@
 	<Sheet open={setupShown} onOpenChange={setupOpenChange} title={t("e2e_setup_title")} class="max-w-[440px]">
 		<DeviceSetupCard
 			setup={encryption.setup}
+			{web}
 			onRecover={setupActions.recover}
 			onUseCode={setupActions.useCode}
 			onAcceptCode={setupActions.acceptCode}

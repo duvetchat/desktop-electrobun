@@ -26,6 +26,7 @@ let
     fileset = lib.fileset.unions [
       ../package.json
       ../bun.lock
+      ../patches
       ../src/mainview/package.json
       ../src/mainview/bun.lock
       ../src/mainview/.npmrc
@@ -34,8 +35,8 @@ let
   };
 
   # Fixed-output: network is allowed here, and only here. Update `outputHash` after changing
-  # either bun.lock or a patch in src/mainview/patches (set it to lib.fakeHash, build, copy the
-  # hash from the error).
+  # either bun.lock or a patch in patches or src/mainview/patches (set it to lib.fakeHash, build,
+  # copy the hash from the error).
   nodeModules = stdenv.mkDerivation {
     pname = "duvet-desktop-node-modules";
     inherit (pkg) version;
@@ -66,7 +67,7 @@ let
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-WMtdfU/Hmn7m14moO8qsJ5eEAtqtf9jBCoU9hRrhDSM=";
+    outputHash = "sha256-Kme3vOLtk+vMQ0Cn0AxJ95SAtpjvSXlp+AeuM6cPDDY=";
   };
 
   src = lib.cleanSourceWith {
