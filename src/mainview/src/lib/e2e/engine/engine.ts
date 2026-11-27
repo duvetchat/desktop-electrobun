@@ -121,6 +121,13 @@ export interface EngineParts {
 	/** The session is bound to this device, which every identify names from now on (Ruling 30). */
 	registered(deviceId: string): void;
 	/**
+	 * The conversation as the page draws it (its own listing, which READY and the conversations' events keep), read again
+	 * from a new listing when `fresh`; null where it draws none (#574). A group this device founds without a record holds
+	 * the people it shows, and a group's own members are held to it as it goes on. Without it (the engine's tests), the
+	 * engine's own listing stands for it.
+	 */
+	shown?: (conversationId: string, fresh: boolean) => Promise<Conversation | null>;
+	/**
 	 * The engine's contacts (contacts.ts), set by the engine itself: what the core answers of each other user observed,
 	 * whichever flow observes them (identity.ts' observeUsers), and whose changed key holds what goes to them.
 	 */

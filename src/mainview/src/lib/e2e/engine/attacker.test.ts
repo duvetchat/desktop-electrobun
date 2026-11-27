@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
-import type { DirectMessage } from "$lib/api/conversations";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { Identity } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import { MAX_FILE_NAME } from "../conventions";
@@ -439,6 +439,73 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 				expect(a.engine.conversationState(id)).toEqual({ name: "members_changed" });
 			}
 			expect(claimed).not.toContain(eve);
+		},
+		SLOW,
+	);
+
+	// #574, as both apps hold it: a device without a record (the owner's other device) founds with the conversation as
+	// its page draws it, which the person sees. A listing that differs from it founds nothing, and says so.
+	test(
+		"a device without a record founds with the conversation as drawn, and nothing when the listing differs from it",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed: string[] = [];
+			useFake(fake, (request) => {
+				const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+				if (claim?.[1]) claimed.push(claim[1]);
+			});
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			fake.befriend(ana, eve);
+			let drawn: Conversation[] = [];
+			const a = await firstDevice(fake, ana, { shown: async (id) => drawn.find((conv) => conv.id === id) ?? null });
+			const b = await firstDevice(fake, bo);
+			await firstDevice(fake, eve);
+			drawn = await a.api.conversations();
+			// The engine's listings add Eve; the page draws the group as the API made it.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== ana || view.id !== conversation) return view;
+				return { ...view, members: [...view.members, { ...view.members[0]!, id: crypto.randomUUID(), user_id: eve }] };
+			};
+			await a.engine.openConversation(conversation);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(claimed).not.toContain(eve);
+			// Listed as drawn again, the group is founded with the people the page shows.
+			fake.conversationsAs = (view) => view;
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			expect((await groupOf(a, conversation))!.members.map((member) => member.user_id).sort()).toEqual(
+				[ana, bo].sort(),
+			);
+		},
+		SLOW,
+	);
+
+	// Its own list is held to what the person sees, not to the engine's listing: a page that draws the conversation
+	// without someone its group holds says so, whatever the API lists to the engine.
+	test(
+		"a group that holds someone its page doesn't draw says so, whatever the engine's listing has",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			let drawn: Conversation[] = [];
+			// Bo's page draws Eve's group as a DM between Ana and him; the engine's listing is the API's own.
+			const shown = async (id: string) => {
+				const conv = drawn.find((one) => one.id === id);
+				return conv && { ...conv, type: 1 as const, members: conv.members.filter((m) => m.user_id !== eve) };
+			};
+			const b = await firstDevice(fake, bo, { shown: async (id) => (await shown(id)) ?? null });
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 2, name: "three", user_ids: [ana, bo] });
+			drawn = await b.api.conversations();
+			await b.engine.openConversation(id);
+			await until(() => b.engine.conversationState(id)?.name === "other_members", {
+				what: "Bo's conversation saying whom its group holds",
+			});
+			expect(await rejection(send(b, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
+			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
 		},
 		SLOW,
 	);

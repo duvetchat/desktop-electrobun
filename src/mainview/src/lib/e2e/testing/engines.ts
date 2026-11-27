@@ -11,7 +11,7 @@ import type { EnvelopeFile } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import type { CoreHost } from "../host";
-import { E2EEngine, type BackupShown, type Clock, type EngineState } from "../engine/engine";
+import { E2EEngine, type BackupShown, type Clock, type EngineParts, type EngineState } from "../engine/engine";
 import { shownFile, type ShownFile } from "../engine/files";
 import type { IdentityMade } from "../engine/identity";
 import { keepMade } from "../engine/legacy";
@@ -132,6 +132,8 @@ export function testDevice(
 		token?: string;
 		/** Which events reach the engine: all of them unless this says no. */
 		hears?: (event: GatewayEvent) => boolean;
+		/** The conversation as its page draws it (EngineParts' shown): the engine's own listing unless given. */
+		shown?: EngineParts["shown"];
 	} = {},
 ): TestDevice {
 	const host = given.host ?? testHost();
@@ -169,6 +171,7 @@ export function testDevice(
 			registered.push(device);
 			if (device !== registered.at(-2)) connect(device);
 		},
+		...(given.shown ? { shown: given.shown } : {}),
 	});
 	const states: EngineState[] = [];
 	engine.onState((state) => states.push(state));

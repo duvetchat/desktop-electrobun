@@ -68,10 +68,15 @@ export function legacyRecord(store: EngineStore, conv: Conversation): LegacyReco
 	const record = records(store).get(conv.id);
 	if (record !== undefined) return record || null;
 	if (!conv.legacy) return null;
-	const members = conv.members.map((member) => member.user_id);
-	const made = conv.type === 2 ? { owner: conv.owner_id, members } : { members };
+	const made = peopleOf(conv);
 	keep(store, conv.id, made);
 	return made;
+}
+
+/** A conversation's people as a record holds them: a group's owner and members, a DM's two users. */
+export function peopleOf(conv: Conversation): LegacyRecord {
+	const members = conv.members.map((member) => member.user_id);
+	return conv.type === 2 ? { owner: conv.owner_id, members } : { members };
 }
 
 /** The person made the conversation here: its record is this user and their picks, of the kind they asked for. */

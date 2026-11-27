@@ -20,6 +20,7 @@ Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("./engine.svelte");
 const { logout } = await import("$lib/api/auth");
 const { toastStore } = await import("$lib/stores/toast.svelte");
+const { conversations: drawnConversations } = await import("$lib/stores.svelte");
 
 // The page's engine (lib/e2e/engine.svelte.ts): one for the page on the desktop's one host, and on the web the engine of
 // the tab that leads, which the user's other tabs show and ask (Ruling 16), on task 8's tabs with a test's locks and
@@ -64,6 +65,12 @@ async function withWindow(go: () => Promise<unknown>): Promise<string> {
 		Reflect.deleteProperty(globalThis, "window");
 	}
 	return location.href;
+}
+
+/** The page draws the user's conversations, as READY's list leaves them in its store (#574: what founds a group). */
+async function drawnOnPage(): Promise<void> {
+	const api = e2eApi(sessionApi({ token: localStorage.getItem("duvet_session_token")!, sessionToken: null }));
+	drawnConversations.set(await api.conversations());
 }
 
 /** The page's engine on the desktop, on `host`, through the first device's flow: ready. */
@@ -255,6 +262,7 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 				ana,
 				platform({ desktop: true, desktopHost: async () => (await loading, host) }),
 			);
+			await drawnOnPage();
 			await page.openConversation(conversation);
 			loaded();
 			await starting;
@@ -411,6 +419,7 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
 			const b = await firstDevice(fake, bo);
 			await readyOnDesktop(ana, testHost());
+			await drawnOnPage();
 			await page.openConversation(conversation);
 			await until(async () => (await groupOf(b, conversation)) !== null);
 			fake.refuse({ method: "PUT", path: /\/history-shares\/[0-9a-f-]{36}\/parts\/\d+$/ }, 413, {

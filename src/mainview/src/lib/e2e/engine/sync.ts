@@ -19,7 +19,7 @@ import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
 import { observeUsers, withIdentities } from "./identity";
-import { dropRecord, forgetRecord, isRecord, legacyRecord, type LegacyRecord } from "./legacy";
+import { dropRecord, forgetRecord, isRecord, legacyRecord, peopleOf, type LegacyRecord } from "./legacy";
 import {
 	addition,
 	checkAddition,
@@ -696,10 +696,10 @@ export class Conversations {
 	 * loses its 409, and the device joins by external commit.
 	 */
 	async #make(conv: Conversation) {
-		const founding = this.#founding(conv);
-		if (founding === undefined || (founding && !isRecord(conv, founding))) {
-			return this.#membersChanged(conv, conv.mls?.generation ?? 0);
-		}
+		const founding = await this.#founding(conv);
+		// Not drawn yet: nothing is made until it is.
+		if (!founding) return;
+		if (!isRecord(conv, founding)) return this.#membersChanged(conv, conv.mls?.generation ?? 0);
 		if (await this.#group(conv.id)) {
 			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
 		}
@@ -719,18 +719,22 @@ export class Conversations {
 	/**
 	 * Whom this device founds the conversation's group with (#574): those it can account for, never the API's word alone
 	 * on who they are or the kind, which gives their order only. The record (the person's picks, of the kind they asked
-	 * for, as they made it here; a conversation from before the cutover as first listed); without one, a DM's two users,
-	 * this one among them; or the members listed, once the person said yes to them in this generation (null: none to
-	 * hold them to). Undefined, none it can account for: a group made on another device.
+	 * for, as they made it here; a conversation from before the cutover as first listed); without one (a DM's other
+	 * member, a group's owner on another device, or after the person's yes), the conversation as its page draws it,
+	 * which the person sees, read again when it differs from the API's. Null while it isn't drawn.
 	 */
-	#founding(conv: Conversation): LegacyRecord | null | undefined {
+	async #founding(conv: Conversation): Promise<LegacyRecord | null> {
 		const record = legacyRecord(this.#parts.store, conv);
 		if (record) return record;
-		const yes = this.#accepted.get(conv.id);
-		if (yes?.generation === (conv.mls?.generation ?? 0) && yes.members === membersKey(conv)) return null;
-		const users = conv.members.map((member) => member.user_id);
-		if (conv.type === 1 && users.length === 2 && users.includes(this.#parts.user)) return { members: users };
-		return undefined;
+		let drawn = await this.#drawn(conv.id, false);
+		if (drawn && !isRecord(conv, peopleOf(drawn))) drawn = await this.#drawn(conv.id, true);
+		return drawn && peopleOf(drawn);
+	}
+
+	/** The conversation as the page draws it (EngineParts' shown), read again when `fresh`; else the API's, as listed. */
+	async #drawn(id: string, fresh: boolean): Promise<Conversation | null> {
+		if (this.#parts.shown) return this.#parts.shown(id, fresh);
+		return fresh ? this.#fresh(id) : (this.#known.get(id) ?? this.#fresh(id));
 	}
 
 	/**
@@ -961,14 +965,18 @@ export class Conversations {
 
 	/**
 	 * Whom the group holds that the conversation doesn't show (#574): its core's users, when it holds a user, a kind or
-	 * an owner the API's conversation doesn't, listed again first, as an addition or a new owner may be newer than the
-	 * list this device read. A member who left and waits for their removal (`due`) isn't said: what goes there next
-	 * commits that removal first (encrypt's pending_proposals), and is held to the conversation once it's in.
+	 * an owner the conversation as the person sees it doesn't, drawn again from a new listing first, as an addition or a
+	 * new owner may be newer than the list the page or this device read. A member who left and waits for their removal
+	 * (`due`) isn't said: what goes there next commits that removal first (encrypt's pending_proposals), and is held to
+	 * the conversation once it's in.
 	 */
 	async #othersIn(conv: Conversation, held: Held, due: boolean): Promise<ConversationState | null> {
-		if (due || !heldBeyond(held, conv)) return null;
-		const listed = await this.#fresh(conv.id);
-		if (!listed || !heldBeyond(held, listed)) return null;
+		if (due) return null;
+		// What the person sees: the conversation as its page draws it, or the API's where it draws none.
+		const drawn = (await this.#drawn(conv.id, false)) ?? conv;
+		if (!heldBeyond(held, drawn)) return null;
+		const again = (await this.#drawn(conv.id, true)) ?? (await this.#fresh(conv.id));
+		if (!again || !heldBeyond(held, again)) return null;
 		return { name: "other_members", users: held.members.map((member) => member.user_id) };
 	}
 

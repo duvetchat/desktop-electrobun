@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { sessionApi } from "$lib/api/api";
 import { e2eApi } from "$lib/api/e2e";
 import type { MessageSearch } from "$lib/api/messages";
 import { bytesBase64 } from "$lib/staged-images";
@@ -19,7 +20,11 @@ Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("../engine.svelte");
 const { CONVERSATION_RESULTS, searchConversation, searchEverywhere } = await import("$lib/search");
 const { pinConversationMessage } = await import("$lib/api/conversations");
-const { dmMessages } = await import("$lib/stores.svelte");
+const { conversations: drawnConversations, dmMessages } = await import("$lib/stores.svelte");
+
+/** The page draws the session's conversations, as READY's list leaves them in its store (#574: what founds a group). */
+const drawnOnPage = async (token: string) =>
+	drawnConversations.set(await e2eApi(sessionApi({ token, sessionToken: null })).conversations());
 
 // A conversation's search runs on the device (PLAN-E2E-CLIENTES.md, task 20; decision 42): its words, from:, mentions:,
 // dates and has: through the core's search, its results drawn from the device's database. pinned: and has:sticker, which
@@ -80,6 +85,7 @@ async function talking(answer: (request: Request) => Response | null = () => nul
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's events are the API's, as the gateway hands them on
 	const hear = fake.connect(token, device_id, (event) => toEngine(event as EngineEvent));
 	const b = await firstDevice(fake, bo);
+	await drawnOnPage(token);
 	await page.openConversation(conversation);
 	await until(async () => !!(await b.host.handle({ cmd: "group", conversation_id: conversation }).catch(() => null)));
 	const end = async () => {
@@ -274,6 +280,7 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 			const cy = fake.addUser();
 			const other = fake.addConversation({ type: "dm", members: [ana, cy] });
 			const c = await firstDevice(fake, cy);
+			await drawnOnPage(localStorage.getItem("duvet_session_token")!);
 			await page.openConversation(other);
 			await until(async () => !!(await c.host.handle({ cmd: "group", conversation_id: other }).catch(() => null)));
 

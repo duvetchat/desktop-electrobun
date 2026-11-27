@@ -9,12 +9,17 @@ import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
 import { logout, onSignOut } from "$lib/api/auth";
-import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
+import {
+	getConversations,
+	type Conversation,
+	type ConversationMember,
+	type DirectMessage,
+} from "$lib/api/conversations";
 import { e2eApi, type NewConversationRequest } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { useDeviceSearch } from "$lib/search";
-import { dmMessages } from "$lib/stores.svelte";
+import { conversations, dmMessages } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
 import { deviceName, forgetDevice } from "./client";
@@ -93,6 +98,20 @@ const toOpen = new Set<string>();
 /** What stops the upload of each message another tab asked this leader to send, by its nonce: that tab's Cancel. */
 const othersUploads = new Map<string, AbortController>();
 
+/**
+ * The conversation as this page draws it (#574): its store's, which READY and the conversations' events keep; with
+ * `fresh`, the API's listing of it again, which the store takes too, so the person sees what the engine holds its group
+ * to. Null for one the page doesn't have.
+ */
+async function shownConversation(conversationId: string, fresh: boolean): Promise<Conversation | null> {
+	if (!fresh) return get(conversations).find((conv) => conv.id === conversationId) ?? null;
+	const listed = (await getConversations()).find((conv) => conv.id === conversationId) ?? null;
+	if (listed) {
+		conversations.update((all) => all.map((conv) => (conv.id === conversationId ? { ...conv, ...listed } : conv)));
+	}
+	return listed;
+}
+
 /** The conversation opened, by the page's engine, or by the one it's about to have. */
 function openOnEngine(conversationId: string): Promise<void> {
 	if (engine) return engine.openConversation(conversationId);
@@ -110,6 +129,7 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		user: userId,
 		deviceName: deviceName(),
 		registered: (device) => deviceRegistered(userId, device),
+		shown: shownConversation,
 	});
 	made.onState((state) => {
 		encryption.state = state;
