@@ -752,6 +752,34 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 		SLOW,
 	);
 
+	// R-M3: the server that stops listing a device can name it anew first, so its last name is the server's story. What
+	// this installation first saw of it is kept beside what it saw last, and the question names both.
+	test(
+		"a device the API names anew before it stops listing it is known as both",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const c = await approvedDevice(fake, a);
+			const { name, client, created_at } = (await a.api.devices()).find(({ id }) => id === deviceOf(c))!;
+			await turnEnded(a);
+			expect(await a.engine.alsoRemoved()).toMatchObject({ along: [], away: [] });
+			// The server names Cy's device anew, then lists Ana's devices without it.
+			const renamed = { name: "Old test phone", client: "web/1.0.0", created_at: "2026-11-20T10:00:00.000Z" };
+			fake.devicesAs = (devices) =>
+				devices.map((device) => (device.id === deviceOf(c) ? { ...device, ...renamed } : device));
+			await a.engine.alsoRemoved();
+			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(c));
+			expect(await a.engine.alsoRemoved()).toEqual({
+				...{ along: [], away: [deviceOf(c)] },
+				known: { [deviceOf(c)]: { ...renamed, first: { name, client, created_at } } },
+			});
+			await Promise.all([a, c].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
 	test(
 		"a new device of the user's is told once, never this one",
 		async () => {

@@ -205,6 +205,41 @@ describe("Settings' devices", () => {
 		expect(message).toContain(named);
 	});
 
+	// R-M3: what names a device the API no longer lists is the API's last word on it. One it named otherwise since this
+	// device first saw it is named both ways, its first first.
+	test("name a device the API named anew by what it was first and what it was listed as later", () => {
+		const first = { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" };
+		const known = {
+			[GONE]: { name: "Old test phone", client: "web/1.0.0", created_at: "2026-11-20T10:00:00Z", first },
+		};
+		const date = (at: string) => formatDate(Date.parse(at), { dateStyle: "medium" });
+		const was = `Galaxy Tab (android/1.0.0, added ${date(first.created_at)})`;
+		const later = `Old test phone (web/1.0.0, added ${date("2026-11-20T10:00:00Z")})`;
+		const named = `Duvet no longer lists ${was} (listed later as ${later}). ${CANCEL}`;
+		expect(removalNotes(PHONE, { along: [], away: [GONE], known }, [THIS, PHONE])).toContain(named);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE], known }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(named);
+	});
+
+	// R-M3, both apps' wording: «This also removes …» names each device as the no-longer-listed sentence does, by what's
+	// known of it, its first words too where the API named it otherwise since, and by the start of its ID where nothing is.
+	test("name what an earlier removal takes along as the no-longer-listed sentence names a device", () => {
+		const first = { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" };
+		const known = {
+			[GONE]: { name: "Old test phone", client: "web/1.0.0", created_at: "2026-11-20T10:00:00Z", first },
+		};
+		const date = (at: string) => formatDate(Date.parse(at), { dateStyle: "medium" });
+		const both = `Galaxy Tab (android/1.0.0, added ${date(first.created_at)}) (listed later as Old test phone (web/1.0.0, added ${date("2026-11-20T10:00:00Z")}))`;
+		const notes = removalNotes(PHONE, { along: [GONE], away: [], known }, [THIS, PHONE]);
+		expect(notes).toContain(`This also removes ${both}, whose earlier removal didn't finish.`);
+		const bare = removalNotes(PHONE, { along: [GONE], away: [] }, [THIS, PHONE]);
+		expect(bare).toContain(
+			`This also removes the device whose ID starts with ${GONE.slice(0, 8)}, whose earlier removal didn't finish.`,
+		);
+	});
+
 	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.
 	test("offer another change of keys after one that went on without devices", () => {
 		expect(drawn({ encryption: { name: "ready", keysAgain: true } })).toContain(en.e2e_keys_again);

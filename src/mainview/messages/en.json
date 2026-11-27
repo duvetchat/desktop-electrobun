@@ -133,6 +133,7 @@
 	"e2e_device_remove_changed": "What this removes changed since you were asked. Check the devices it names, then try again.",
 	"e2e_device_remove_text": "It's signed out, and reads none of your encrypted conversations from now on.",
 	"e2e_device_remove_title": "Remove {name}?",
+	"e2e_device_renamed": "{first} (listed later as {last})",
 	"e2e_device_seen": "{client} · Last seen {date}",
 	"e2e_device_unfinished": "A device you approved didn't finish setting up: approve it again from that device, or remove it here.",
 	"e2e_devices": "Devices",

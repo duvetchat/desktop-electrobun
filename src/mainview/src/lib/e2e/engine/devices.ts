@@ -85,8 +85,15 @@ export async function takenAway(
 	return held.filter((id) => id !== self && !registered.has(id));
 }
 
-/** What's known of a device of the user's (#575, N-M7): its name, its client and when it was added. */
-export type KnownDevice = Pick<UserDevice, "name" | "client" | "created_at">;
+/** What names a device of the user's (#575, N-M7): its name, its client and when it was added. */
+type DeviceWords = Pick<UserDevice, "name" | "client" | "created_at">;
+
+/**
+ * What's known of a device of the user's: its words as the API last gave them, and as this installation first saw them
+ * (`first`) when the API has named it otherwise since (R-M3), as a server that stops listing a device can name it anew
+ * first.
+ */
+export type KnownDevice = DeviceWords & { first?: DeviceWords };
 
 /** How many devices' records KNOWN_DEVICES keeps: those seen last. */
 const KNOWN_KEPT = 100;
@@ -96,8 +103,11 @@ export function knowDevices(store: EngineStore, devices: readonly UserDevice[]) 
 	if (!devices.length) return;
 	const kept = knownDevices(store);
 	for (const { id, name, client, created_at } of devices) {
+		const now = { name, client, created_at };
+		const seen = kept[id];
+		const first = seen && wordsIn(seen.first ?? seen);
 		delete kept[id];
-		kept[id] = { name, client, created_at };
+		kept[id] = first && !sameWords(first, now) ? { ...now, first } : now;
 	}
 	store.write(KNOWN_DEVICES, Object.fromEntries(Object.entries(kept).slice(-KNOWN_KEPT)));
 }
@@ -108,15 +118,25 @@ export function knownDevices(store: EngineStore): Record<string, KnownDevice> {
 	const read: Record<string, KnownDevice> = {};
 	if (typeof kept !== "object" || kept === null) return read;
 	for (const [id, value] of Object.entries(kept)) {
-		if (typeof value !== "object" || value === null) continue;
-		if (!("name" in value) || !("client" in value) || !("created_at" in value)) continue;
-		const { name, client, created_at } = value;
-		if (typeof name === "string" && typeof client === "string" && typeof created_at === "string") {
-			read[id] = { name, client, created_at };
-		}
+		const words = wordsIn(value);
+		if (!words) continue;
+		const first = typeof value === "object" && value !== null && "first" in value ? wordsIn(value.first) : null;
+		read[id] = first ? { ...words, first } : words;
 	}
 	return read;
 }
+
+/** A device's words as a record kept them, checked as they're read: null for anything else. */
+function wordsIn(value: unknown): DeviceWords | null {
+	if (typeof value !== "object" || value === null) return null;
+	if (!("name" in value) || !("client" in value) || !("created_at" in value)) return null;
+	const { name, client, created_at } = value;
+	if (typeof name !== "string" || typeof client !== "string" || typeof created_at !== "string") return null;
+	return { name, client, created_at };
+}
+
+const sameWords = (a: DeviceWords, b: DeviceWords) =>
+	a.name === b.name && a.client === b.client && a.created_at === b.created_at;
 
 /** The devices the list this device holds of its user names. */
 const heldDevices = (status: CoreStatus) => (status.device_list && listDevices(status.device_list)) || [];

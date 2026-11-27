@@ -24,21 +24,21 @@
 		removeThisDevice(): Promise<void>;
 	}
 
-	/** Devices by their names: as listed now, or as this device last saw them, else by the start of their IDs. */
-	const namesOf = (ids: readonly string[], devices: readonly Device[] | null, known: Drops["known"]) =>
-		formatList(
-			ids.map((id) => devices?.find((device) => device.id === id)?.name ?? known?.[id]?.name ?? id.slice(0, 8)),
-		);
+	/** A device by its name, its client and when it was added. */
+	function knownWords({ name, client, created_at }: { name: string; client: string; created_at: string }): string {
+		return t("e2e_device_known", { name, client, date: formatDate(Date.parse(created_at), { dateStyle: "medium" }) });
+	}
 
 	/**
-	 * A device the API no longer lists, by what's known of it (#575, N-M7): its name, its client and when it was added,
-	 * as listed now or as this device last saw it; by the start of its ID only when nothing else is.
+	 * A device a list leaves out, by what's known of it (#575, N-M7): its name, its client and when it was added, as
+	 * listed now or as this device last saw it, and as it first saw it too when the API named it otherwise since (R-M3:
+	 * the last name is the API's word); by the start of its ID only when nothing else is.
 	 */
 	function deviceWords(id: string, devices: readonly Device[] | null, known: Drops["known"]): string {
 		const seen = devices?.find((device) => device.id === id) ?? known?.[id];
 		if (!seen) return t("e2e_device_by_id", { id: id.slice(0, 8) });
-		const date = formatDate(Date.parse(seen.created_at), { dateStyle: "medium" });
-		return t("e2e_device_known", { name: seen.name, client: seen.client, date });
+		const first = known?.[id]?.first;
+		return first ? t("e2e_device_renamed", { first: knownWords(first), last: knownWords(seen) }) : knownWords(seen);
 	}
 
 	/**
@@ -48,7 +48,9 @@
 	 */
 	function dropLines({ along, away, known }: Drops, devices: readonly Device[] | null): string[] {
 		return [
-			...(along.length ? [t("e2e_device_remove_along", { names: namesOf(along, devices, known) })] : []),
+			...(along.length
+				? [t("e2e_device_remove_along", { names: formatList(along.map((id) => deviceWords(id, devices, known))) })]
+				: []),
 			...away.map((id) => t("e2e_device_remove_away", { device: deviceWords(id, devices, known) })),
 		];
 	}
