@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, fetchImageBytes, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { COPY_FETCH_MS, MAX_COPIED_BYTES, pictureToCopy } from "./copy-image";
-import { copySecret, windowsClipboard } from "./secret-clipboard";
+import { copySecret, macPasteboard, windowsClipboard } from "./secret-clipboard";
 import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
@@ -217,8 +217,14 @@ const pictureForCopy = (imageUrl: string): Promise<string | null> =>
 			return null;
 		});
 
-// The recovery key's Copy (#569), on Windows: the main window owns the clipboard, as SetClipboardData needs an owner.
-const secretClipboard = process.platform === "win32" ? windowsClipboard(() => win.ptr) : null;
+// The recovery key's Copy (#569), on Windows: the main window owns the clipboard, as SetClipboardData needs an owner. On
+// macOS the app's own library writes the pasteboard; on Linux the page copies, and takes it off itself.
+const secretClipboard =
+	process.platform === "win32"
+		? windowsClipboard(() => win.ptr)
+		: process.platform === "darwin"
+			? macPasteboard(nativeLibraryPath("libPasteboard.dylib"))
+			: null;
 const copySecretHere = (text: string): Promise<boolean> | null =>
 	secretClipboard &&
 	copySecret(text, secretClipboard).catch((err: unknown) => {

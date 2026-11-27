@@ -3,7 +3,9 @@
 // libraries, one from each source in native/macos:
 //   - libLiquidGlass.dylib, the glass behind the main window (liquid_glass.mm, src/bun/liquid-glass.ts, #374);
 //   - libWindowButtons.dylib, the traffic lights' place in the title line (window_buttons.mm,
-//     src/bun/window-buttons.ts, #406).
+//     src/bun/window-buttons.ts, #406);
+//   - libPasteboard.dylib, the recovery key's Copy, for this Mac alone and concealed (pasteboard.mm,
+//     src/bun/secret-clipboard.ts, PLAN-E2E-PLATAFORMAS.md's Task 6).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 
@@ -11,6 +13,7 @@ const OUT_DIR = "native/macos/build";
 const LIBRARIES = [
 	{ name: "libLiquidGlass.dylib", source: "native/macos/liquid_glass.mm", frameworks: ["Cocoa", "WebKit"] },
 	{ name: "libWindowButtons.dylib", source: "native/macos/window_buttons.mm", frameworks: ["Cocoa"] },
+	{ name: "libPasteboard.dylib", source: "native/macos/pasteboard.mm", frameworks: ["Cocoa"] },
 ];
 const targetOS = process.env.ELECTROBUN_OS ?? (process.platform === "darwin" ? "macos" : process.platform);
 const targetArch = process.env.ELECTROBUN_ARCH === "x64" ? "x86_64" : "arm64";

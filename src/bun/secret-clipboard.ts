@@ -3,6 +3,7 @@
 // (learn.microsoft.com, Clipboard Formats, "Cloud Clipboard and Clipboard History Formats"), which the page's
 // navigator.clipboard can't set. A minute later it's taken off the clipboard, while its sequence number says nothing was
 // copied since. The calls are user32's and kernel32's, through bun:ffi; the rest takes any clipboard (`ClipboardCalls`).
+// On macOS it's the pasteboard, through the app's own library (macPasteboard; PLAN-E2E-PLATAFORMAS.md, Task 6).
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
 
 /** How long a copied secret stays on the clipboard (the page's own copy waits as long: lib/e2e/secret-copy.ts). */
@@ -57,6 +58,42 @@ export async function copySecret(
 		);
 	});
 	return true;
+}
+
+/**
+ * macOS's general pasteboard, through the app's own library (native/macos/pasteboard.mm, built by
+ * scripts/build-native.ts): the text alone goes on it, for this Mac alone and concealed, which stand for Windows'
+ * formats, and its changeCount is the sequence number. `name`, a pasteboard of a test's own. Null when the library
+ * doesn't load: Bun then doesn't copy, and the page does, as on Linux.
+ */
+export function macPasteboard(library: string, name?: string): ClipboardCalls | null {
+	let pasteboard;
+	try {
+		pasteboard = dlopen(library, {
+			pb_copySecret: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+			pb_changeCount: { args: [FFIType.ptr], returns: FFIType.i64 },
+			pb_clearIfUnchanged: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
+		}).symbols;
+	} catch (err) {
+		console.error("[clipboard] The pasteboard's library didn't load:", err);
+		return null;
+	}
+	const { pb_copySecret, pb_changeCount, pb_clearIfUnchanged } = pasteboard;
+	const board = name === undefined ? null : Buffer.from(`${name}\0`, "utf8");
+	return {
+		async put(items) {
+			// The text as copySecret hands it to Windows: UTF-16, with its NUL.
+			const text = items.find(({ format }) => format === CF_UNICODETEXT);
+			if (!text) return false;
+			const utf8 = Buffer.from(`${Buffer.from(text.bytes).toString("utf16le").replace(/\0$/, "")}\0`, "utf8");
+			return Number(pb_copySecret(utf8, board)) >= 0;
+		},
+		sequence: () => Number(pb_changeCount(board)),
+		async empty(copied) {
+			pb_clearIfUnchanged(copied, board);
+			return true;
+		},
+	};
 }
 
 const GMEM_MOVEABLE = 0x0002;
