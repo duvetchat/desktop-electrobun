@@ -9,6 +9,7 @@
 //   (its CEF wrapper's default), and the notice only 100 ms later.
 // - **It goes nowhere else:** once its page is in (dom-ready), `^*` is its only navigation rule: no link, dropped file or
 //   other page.
+// - **The page's window can't cover it:** it's kept above other windows, as Windows' box is (MB_TOPMOST).
 // - **Only the first takes the foreground:** Electrobun brings every window it makes to the front, with the keyboard (its
 //   showWindow), so a notice that replaces the one shown (the QR's renewal, every 9 minutes: RM5) is written into the same
 //   window, as text, by a script of Bun's: the page itself has none. A window the person closed stays closed for the rest
@@ -30,6 +31,7 @@ export interface NoticeWindowOptions {
 /** What a notice needs of the window made for it (Electrobun's BrowserWindow, or a test's). */
 export interface NoticeWindow {
 	setTitle(title: string): void;
+	setAlwaysOnTop(on: boolean): void;
 	close(): void;
 	on(event: "close", run: () => void): void;
 	webview: {
@@ -76,6 +78,12 @@ export function noticeWindow(
 			console.error("[e2e] the main window's place wasn't read for a notice:", error);
 		}
 		const window = make({ title: notice.title, url: noticePage(notice), sandbox: true, frame });
+		// One that can't be kept above still shows: the person can bring it back to compare.
+		try {
+			window.setAlwaysOnTop(true);
+		} catch (error) {
+			console.error("[e2e] a notice's window couldn't be kept above the others:", error);
+		}
 		let shown = notice;
 		let loaded = false;
 		let open = true;

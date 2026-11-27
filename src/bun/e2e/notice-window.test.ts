@@ -13,6 +13,7 @@ function windows() {
 	const made: {
 		options: NoticeWindowOptions;
 		titles: string[];
+		onTop: boolean;
 		scripts: string[];
 		rules: string[][];
 		closed: boolean;
@@ -26,6 +27,7 @@ function windows() {
 		const record = {
 			options,
 			titles: [] as string[],
+			onTop: false,
 			scripts: [] as string[],
 			rules: [] as string[][],
 			closed: false,
@@ -38,6 +40,7 @@ function windows() {
 		made.push(record);
 		return {
 			setTitle: (title) => void record.titles.push(title),
+			setAlwaysOnTop: (kept) => void (record.onTop = kept),
 			close: () => record.closedByPerson(),
 			on: (event, run) => void (event === "close" && (on.close = run)),
 			webview: {
@@ -156,6 +159,14 @@ describe("a notice's window", () => {
 		show(null);
 		show(first);
 		expect(made).toHaveLength(2);
+	});
+
+	// Review Focus 5: the page's window can't cover it, as Windows' box is kept above (MB_TOPMOST).
+	test("stays above the main window, which can't cover it", () => {
+		const { made, make } = windows();
+		const show = nativeNotice({ platform: "linux", open: noticeWindow(make, () => MAIN) });
+		show(first);
+		expect(made[0]?.onTop).toBe(true);
 	});
 
 	test("goes where the main window is, or where the system puts it without one", () => {
