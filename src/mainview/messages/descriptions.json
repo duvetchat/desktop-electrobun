@@ -118,6 +118,8 @@
 	"e2e_device_not_set_up": "[short] A tag on a device's row in Settings → Devices: it's signed in, but wasn't set up to read encrypted conversations.",
 	"e2e_device_remove": "[short] A button on a device's row in Settings → Devices: takes that device off the person's account (a verb).",
 	"e2e_device_remove_along": "In the dialog of e2e_device_remove_title and the confirmation of e2e_change_keys: other devices ({names}, a list of their names) that an earlier removal took off but never finished, which this one takes off too.",
+	"e2e_device_remove_away": "In the dialog of e2e_device_remove_title and the confirmation of e2e_change_keys: other devices ({names}, a list of the start of their IDs) that Duvet no longer lists on the account, which the device list this removal signs takes off too.",
+	"e2e_device_remove_changed": "Under the dialog of e2e_device_remove_title, or as the confirmation of e2e_change_keys fails: the devices the removal or change of keys would take off are others than the dialog named, so nothing was done; the dialog names them again.",
 	"e2e_device_remove_text": "In the dialog of e2e_device_remove_title: what removing the device does to it.",
 	"e2e_device_remove_title": "The title of the dialog that asks before a device is taken off the account. {name} is that device's name.",
 	"e2e_device_seen": "Under a device's name in Settings → Devices. {client} is the app and version it signed in with, as Duvet writes it (desktop-windows/1.2.0, web/1.2.0); {date} is the day it last connected, written out.",

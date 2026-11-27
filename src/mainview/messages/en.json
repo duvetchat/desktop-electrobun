@@ -127,6 +127,8 @@
 	"e2e_device_not_set_up": "Not set up",
 	"e2e_device_remove": "Remove",
 	"e2e_device_remove_along": "This also removes {names}, whose earlier removal didn't finish.",
+	"e2e_device_remove_away": "This also removes {names}, which Duvet no longer lists on your account.",
+	"e2e_device_remove_changed": "What this removes changed since you were asked. Check the devices it names, then try again.",
 	"e2e_device_remove_text": "It's signed out, and reads none of your encrypted conversations from now on.",
 	"e2e_device_remove_title": "Remove {name}?",
 	"e2e_device_seen": "{client} · Last seen {date}",

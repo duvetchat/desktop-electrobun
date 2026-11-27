@@ -321,8 +321,9 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			search: (request: DeviceSearch) => live().search(request),
 			heldBefore: ({ conversationId, seq }: MessageParams) => live().heldBefore(conversationId, seq ?? 0),
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
-			removeDevice: ({ deviceId, changeKeys }: DeviceParams) => live().removeDevice(deviceId, { changeKeys }),
-			changeKeys: () => live().changeKeys(),
+			removeDevice: ({ deviceId, changeKeys, named }: DeviceParams) =>
+				live().removeDevice(deviceId, { changeKeys, named }),
+			changeKeys: (named?: string[]) => live().changeKeys([], named),
 			finishKeysWithout: () => live().finishKeysWithout(),
 			alsoRemoved: () => live().alsoRemoved(),
 			removeThisDevice: async () => {
@@ -639,6 +640,8 @@ export async function stopEngine(): Promise<void> {
 interface DeviceParams {
 	deviceId: string;
 	changeKeys: boolean;
+	/** What the list leaves out beside the device that the person was shown (#575). */
+	named?: string[];
 }
 
 /** The person's act on their devices, by this page's engine or the tab that leads: the state it leaves, shown. */
@@ -648,14 +651,26 @@ function onDevices<T>(method: string, params: unknown, run: (made: E2EEngine) =>
 	return engine ? run(engine) : Promise.reject(new Error("encrypted conversations aren't ready on this device"));
 }
 
-/** Another device of the person's, taken off their account; with new keys for one that was lost (Settings → Devices). */
-export const removeDevice = (deviceId: string, changeKeys = false) =>
-	onDevices("removeDevice", { deviceId, changeKeys }, (made) => made.removeDevice(deviceId, { changeKeys }));
-/** Change security keys, or Finish a change made before the app closed: its new recovery key shows next. */
-export const changeKeys = () => onDevices("changeKeys", undefined, (made) => made.changeKeys());
+/**
+ * Another device of the person's, taken off their account; with new keys for one that was lost (Settings → Devices).
+ * `named`, what the list leaves out beside it that the person was shown (alsoRemoved, #575): nothing else goes.
+ */
+export const removeDevice = (deviceId: string, changeKeys = false, named: string[] = []) =>
+	onDevices("removeDevice", { deviceId, changeKeys, named }, (made) =>
+		made.removeDevice(deviceId, { changeKeys, named }),
+	);
+/**
+ * Change security keys, leaving out only what the person was shown (`named`, #575), or Finish a change made before the
+ * app closed: its new recovery key shows next.
+ */
+export const changeKeys = (named: string[] = []) =>
+	onDevices("changeKeys", named, (made) => made.changeKeys([], named));
 /** A change of keys that can't finish, gone on with without the devices another device took off (duvetchat/e2e#49). */
 export const finishKeysWithout = () => onDevices("finishKeysWithout", undefined, (made) => made.finishKeysWithout());
-/** What an earlier removal that never went up takes along with the next list or change of keys (M3). */
+/**
+ * What the next list or change of keys leaves out beside what's asked: what an earlier removal that never went up takes
+ * along (M3), and the devices the API no longer lists (#575).
+ */
 export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 
 /** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */

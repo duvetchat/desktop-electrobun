@@ -556,7 +556,8 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
 			fake.refuse(LIST, 500, { error: "internal server error" });
 			await rejection(a.engine.removeDevice(deviceOf(b)));
-			await a.engine.removeDevice(deviceOf(c), { changeKeys: true });
+			// The change takes along the device the earlier removal left out, which the person is shown.
+			await a.engine.removeDevice(deviceOf(c), { changeKeys: true, named: [deviceOf(b)] });
 			const key = rotationKey(a.engine.state);
 			expect((await statusOf(a)).waiting_remove).toEqual([deviceOf(c)]);
 			// The app closes before the key was saved, and the page's storage loses the change's record.
@@ -586,14 +587,14 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			useFake(fake);
 			const a = await firstDevice(fake, ana);
 			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
-			expect(await a.engine.alsoRemoved()).toEqual([]);
+			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [] });
 			fake.refuse(LIST, 500, { error: "internal server error" });
 			await rejection(a.engine.removeDevice(deviceOf(b)));
-			expect(await a.engine.alsoRemoved()).toEqual([deviceOf(b)]);
-			// The next removal takes it along, and then nothing waits.
-			await a.engine.removeDevice(deviceOf(c));
+			expect(await a.engine.alsoRemoved()).toEqual({ along: [deviceOf(b)], away: [] });
+			// The next removal takes it along, once the person was shown it, and then nothing waits.
+			await a.engine.removeDevice(deviceOf(c), { named: [deviceOf(b)] });
 			expect(await deviceIds(a)).toEqual([deviceOf(a)]);
-			expect(await a.engine.alsoRemoved()).toEqual([]);
+			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [] });
 			await Promise.all([a, b, c].map((device) => device.engine.stop()));
 		},
 		SLOW,
@@ -693,17 +694,53 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			const [b, c, d] = [await approvedDevice(fake, a), await approvedDevice(fake, a), await approvedDevice(fake, a)];
 
 			fake.dropDevice(deviceOf(c));
-			await a.engine.removeDevice(deviceOf(b));
+			await a.engine.removeDevice(deviceOf(b), { named: [deviceOf(c)] });
 			expect(listDevices((await a.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(d)].sort());
 
 			// A rotation too: the device it would hand the keys to has no certificate the API serves.
 			fake.dropDevice(deviceOf(d));
-			await a.engine.changeKeys();
+			await a.engine.changeKeys([], [deviceOf(d)]);
 			await a.engine.keySaved();
 			const after = await a.api.identity(ana);
 			expect(after.identity_key).toBe((await statusOf(a)).identity_key!);
 			expect(listDevices(after.device_list)).toEqual([deviceOf(a)]);
 			await Promise.all([a, b, c, d].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// #575 (I2): on the web nothing but the page asks before a list is signed. What a list would drop beside the device
+	// asked for, those GET …/devices leaves out among them, is worked out before the question, which names them, and a
+	// list is signed only with what the person was shown: on the desktop, Bun's box names the same set.
+	test(
+		"a short GET …/devices changes no list without those devices named",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const removed: unknown[] = [];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd === "sign_device_list" || cmd === "rotate_keys") removed.push(command.remove);
+				return null;
+			});
+			const a = await firstDevice(fake, ana, { host });
+			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
+			const listed = async () => listDevices((await a.api.identity(ana)).device_list)?.sort();
+			const all = [deviceOf(a), deviceOf(b), deviceOf(c)].sort();
+			// The server lists Ana's devices without Cy's.
+			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(c));
+			// The person was shown B's removal alone, and new keys that take nothing off: no list changes.
+			expect(await rejection(a.engine.removeDevice(deviceOf(b)))).toMatchObject({ code: "devices_changed" });
+			expect(await rejection(a.engine.changeKeys())).toMatchObject({ code: "devices_changed" });
+			expect(removed).toEqual([]);
+			expect(await listed()).toEqual(all);
+			// What the question names beside the device asked for: Cy's, which GET …/devices leaves out.
+			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [deviceOf(c)] });
+			// Shown Cy's too, the yes takes off exactly those two.
+			await a.engine.removeDevice(deviceOf(b), { named: [deviceOf(c)] });
+			expect(removed).toEqual([[deviceOf(b), deviceOf(c)]]);
+			expect(await listed()).toEqual([deviceOf(a)]);
+			await Promise.all([a, b, c].map((device) => device.engine.stop()));
 		},
 		SLOW,
 	);

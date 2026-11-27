@@ -81,6 +81,27 @@ export async function takenAway(api: E2eApi, held: readonly string[], self: stri
 /** The devices the list this device holds of its user names. */
 const heldDevices = (status: CoreStatus) => (status.device_list && listDevices(status.device_list)) || [];
 
+/**
+ * What a list signed now would leave out beside the devices asked for (#575): those the served list names that the list
+ * this device holds doesn't (`along`: an earlier list of its own the API never took, which the next one is signed on
+ * top of), and those the held list names that the API no longer registers (`away`, takenAway). The person is shown
+ * each of them before a list goes.
+ */
+export interface Drops {
+	along: string[];
+	away: string[];
+}
+
+/**
+ * A list goes only with what the person was shown (#575): any device it would leave out that's neither asked for nor
+ * named (`shown`), as GET …/devices or the lists changed since the question, and nothing is signed.
+ */
+function shownAll(dropped: readonly string[], shown: readonly string[]) {
+	if (dropped.some((id) => !shown.includes(id))) {
+		throw new CoreError("devices_changed", "the list would leave out a device the person wasn't shown");
+	}
+}
+
 /** The own user, as served now, observed: after an upload, taken or not, before another is signed. */
 async function observeServed(parts: EngineParts): Promise<void> {
 	const served = await servedIdentity(parts);
@@ -98,10 +119,15 @@ async function confirmList(parts: EngineParts, version: number): Promise<void> {
  * top of the version it was signed from, and is confirmed only after its 200 (Review Focus 11); one that lost its race
  * (409) is observed, and signed again. A list of this device's that the API never took, already without it, goes up as
  * it is (the core signs none on top of it without what it lacks). Taken or not, the own user is observed after.
- * `alone` signs off that device and no other: an approval's way out, which takes nothing off on the API's word
- * (desktop-electrobun#542).
+ * Nothing goes that leaves out a device the person wasn't shown beside it (`named`, #575): the question names what
+ * alsoDropped gives. `alone` signs off that device and no other: an approval's way out, which takes nothing off on the
+ * API's word (desktop-electrobun#542).
  */
-export async function signWithout(parts: EngineParts, device: string, { alone = false } = {}): Promise<void> {
+export async function signWithout(
+	parts: EngineParts,
+	device: string,
+	{ alone = false, named = [] }: { alone?: boolean; named?: readonly string[] } = {},
+): Promise<void> {
 	const { api, host } = parts;
 	for (let round = 1; ; round++) {
 		const served = await servedIdentity(parts);
@@ -114,6 +140,7 @@ export async function signWithout(parts: EngineParts, device: string, { alone = 
 		// On neither list: done. On this device's alone, an approval of its own that never finished (task 26's I1).
 		if (!listed.includes(device) && !held.includes(device)) return;
 		const away = alone ? [] : await takenAway(api, held, status.device_id);
+		if (!alone) shownAll([...away, ...listed.filter((id) => !held.includes(id))], [device, ...named]);
 		const off = [...new Set([device, ...away])].filter((id) => held.includes(id));
 		const device_list = off.length
 			? (await host.handle<{ device_list: string }>({ cmd: "sign_device_list", remove: off })).device_list
@@ -134,25 +161,28 @@ export async function signWithout(parts: EngineParts, device: string, { alone = 
 }
 
 /**
- * The devices the served list names that the list this device holds doesn't, the own user observed first: an earlier
- * list of its own that the API never took leaves them out, and the core signs the next list or change of keys on top of
- * it, so it takes them along (M3). None while a change of keys waits, whose list is another identity's.
+ * What the next list or change of keys would leave out beside the devices asked for (Drops), the own user observed
+ * first: the devices the served list names that the list this device holds doesn't, as an earlier list of its own that
+ * the API never took left them out and the core signs on top of it (M3), and those the API no longer registers (#575).
+ * None while a change of keys waits, whose list is another identity's.
  */
-export async function devicesAlong(parts: EngineParts): Promise<string[]> {
+export async function alsoDropped(parts: EngineParts): Promise<Drops> {
 	const served = await servedIdentity(parts);
-	if (!served) return [];
+	if (!served) return { along: [], away: [] };
 	await observeOwn(parts, served);
 	const status = await coreStatus(parts.host);
-	if (status.waiting_upload === "rotate_keys") return [];
+	if (status.waiting_upload === "rotate_keys") return { along: [], away: [] };
 	const held = heldDevices(status);
-	return (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
+	const along = (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
+	return { along, away: await takenAway(parts.api, held, status.device_id) };
 }
 
 /**
  * Takes another device of the user's off their account: one off the list by its registration, which the API deletes
- * (one listed meanwhile, 409, goes by a list), and one on it by a list without it.
+ * (one listed meanwhile, 409, goes by a list), and one on it by a list without it, which leaves out nothing beside it
+ * that the person wasn't shown (`named`).
  */
-export async function removeDevice(parts: EngineParts, device: Device): Promise<void> {
+export async function removeDevice(parts: EngineParts, device: Device, named: readonly string[] = []): Promise<void> {
 	if (!device.listed) {
 		try {
 			return await parts.api.deleteDevice(device.id);
@@ -161,7 +191,7 @@ export async function removeDevice(parts: EngineParts, device: Device): Promise<
 			if (statusOf(error) !== 409) throw error;
 		}
 	}
-	await signWithout(parts, device.id);
+	await signWithout(parts, device.id, { named });
 }
 
 /** What rotate_keys answers (the core's contract): what goes up, a transfer for each device that stays, and the new
@@ -207,9 +237,9 @@ export async function goneDevices(parts: EngineParts): Promise<string[]> {
 }
 
 /**
- * New keys (rotate_keys), taking `remove` off the list, with the devices the API took away: the own user observed
- * first, so the new list leaves out no device listed since, and each device that stays sealed to as its certificate is
- * served. The devices it takes off are kept in the record until its upload is confirmed, as only the same ones run it
+ * New keys (rotate_keys), taking `remove` off the list, with the devices the API took away, only once the person was
+ * shown each device it leaves out (`named`, #575): the own user observed first, so the new list leaves out no device
+ * listed since, and each device that stays sealed to as its certificate is served. The devices it takes off are kept in the record until its upload is confirmed, as only the same ones run it
  * again. While a change of keys waits for its upload, it's that one again, whatever `remove` says (Review Focus 3); run
  * so with `gone` (goneDevices, which the person said yes to), its list is signed again without them, the list the API
  * serves its proof (duvetchat/e2e#49).
@@ -218,6 +248,7 @@ export async function makeKeys(
 	parts: EngineParts,
 	remove: readonly string[],
 	gone: readonly string[] = [],
+	named: readonly string[] = [],
 ): Promise<KeysMade> {
 	const { host, store } = parts;
 	const served = await servedIdentity(parts);
@@ -231,7 +262,10 @@ export async function makeKeys(
 		status = await coreStatus(host);
 		const held = heldDevices(status);
 		const asked = remove.filter((id) => held.includes(id));
-		removing = [...new Set([...asked, ...(await takenAway(parts.api, held, status.device_id))])];
+		const away = await takenAway(parts.api, held, status.device_id);
+		const along = (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
+		shownAll([...away, ...along], [...remove, ...named]);
+		removing = [...new Set([...asked, ...away])];
 		store.write(KEPT_ROTATION, { remove: removing });
 	}
 	const made = await host.handle<Omit<KeysMade, "replaces">>({

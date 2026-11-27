@@ -17,12 +17,13 @@ import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import {
 	addedToTell,
 	confirmKeys,
-	devicesAlong,
+	alsoDropped,
 	goneDevices,
 	inactiveToTell,
 	makeKeys,
 	publishKeys,
 	removeDevice,
+	type Drops,
 	type KeysMade,
 } from "./devices";
 import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
@@ -454,9 +455,14 @@ export class E2EEngine {
 	/**
 	 * The person's removal of another device of theirs (Settings → Devices): by its registration when it's off the list,
 	 * by a list without it when it's on it, or, for one that was lost (`changeKeys`), with new keys whose recovery key the
-	 * views show next. On the desktop Bun asks in its own box first, and its no changes nothing.
+	 * views show next. What it leaves out beside it goes only if the person was shown it (`named`: what alsoRemoved
+	 * gave, #575), else `devices_changed` and nothing is signed. On the desktop Bun asks in its own box first, naming
+	 * the same devices, and its no changes nothing.
 	 */
-	removeDevice(deviceId: string, { changeKeys = false }: { changeKeys?: boolean } = {}): Promise<void> {
+	removeDevice(
+		deviceId: string,
+		{ changeKeys = false, named = [] }: { changeKeys?: boolean; named?: readonly string[] } = {},
+	): Promise<void> {
 		return this.#act(async () => {
 			// A list now would be the new identity's, which the API doesn't have yet.
 			if (this.state.name === "ready" && this.state.rotation)
@@ -465,9 +471,9 @@ export class E2EEngine {
 			const device = (await this.#parts.api.devices()).find(({ id }) => id === deviceId);
 			if (!device) return;
 			if (device.current) throw new Error("this device goes with its data, never by its own list");
-			if (changeKeys && device.listed) return this.#makeKeys([deviceId]);
+			if (changeKeys && device.listed) return this.#makeKeys([deviceId], [], named);
 			try {
-				await removeDevice(this.#parts, device);
+				await removeDevice(this.#parts, device, named);
 			} catch (error) {
 				if (!(error instanceof CoreError && error.code === "refused")) throw error;
 			}
@@ -475,13 +481,14 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The person's Change security keys (rotate_keys), taking off the devices `remove` names, or Finish of a change made
-	 * before the app closed, which is that one again: its recovery key, which the views show next, goes up once saved.
+	 * The person's Change security keys (rotate_keys), taking off the devices `remove` names, and those it leaves out that
+	 * the person was shown (`named`, #575), or Finish of a change made before the app closed, which is that one again:
+	 * its recovery key, which the views show next, goes up once saved.
 	 */
-	changeKeys(remove: string[] = []): Promise<void> {
+	changeKeys(remove: string[] = [], named: readonly string[] = []): Promise<void> {
 		return this.#act(() => {
 			this.#holdForApproval();
-			return this.#makeKeys(remove);
+			return this.#makeKeys(remove, [], named);
 		});
 	}
 
@@ -520,11 +527,12 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The devices of the user's that a list of this device's the API never took leaves out (M3): the next list or change
-	 * of keys takes them along, which the page names before it asks.
+	 * What the next list or change of keys would leave out beside the devices asked for, which the page names before it
+	 * asks, and only those named go (#575): the devices a list of this device's the API never took leaves out (M3), and
+	 * those the API no longer registers.
 	 */
-	alsoRemoved(): Promise<string[]> {
-		return this.#act(() => devicesAlong(this.#parts));
+	alsoRemoved(): Promise<Drops> {
+		return this.#act(() => alsoDropped(this.#parts));
 	}
 
 	/**
@@ -1054,11 +1062,15 @@ export class E2EEngine {
 	 * change, not the Finish of one that waits, takes up the offer of one after a gone once it's made, as the change that
 	 * waits then carries it (task 27's review, M1).
 	 */
-	async #makeKeys(remove: readonly string[], gone: readonly string[] = []): Promise<void> {
+	async #makeKeys(
+		remove: readonly string[],
+		gone: readonly string[] = [],
+		named: readonly string[] = [],
+	): Promise<void> {
 		if (this.#keys) return;
 		const fresh = !(this.state.name === "ready" && this.state.rotation);
 		try {
-			this.#keys = await makeKeys(this.#parts, remove, gone);
+			this.#keys = await makeKeys(this.#parts, remove, gone, named);
 		} catch (error) {
 			if (!(error instanceof CoreError)) throw error;
 			if (error.code === "refused") return;

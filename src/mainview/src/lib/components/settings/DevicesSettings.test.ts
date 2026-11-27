@@ -17,6 +17,7 @@ const {
 	default: DevicesSettings,
 	askToChangeKeys,
 	askToDeleteThisDevice,
+	dropped,
 	removalNotes,
 	removalProblem,
 } = await import("./DevicesSettings.svelte");
@@ -167,11 +168,23 @@ describe("Settings' devices", () => {
 
 	// M7 and M3: the dialog names the device as Bun's box does, by its ID, and what an earlier removal takes along.
 	test("name a device in its removal by its ID's start, and what an earlier removal takes along", () => {
-		const alone = removalNotes(PHONE, [], [THIS, PHONE, BROWSER]).join(" ");
+		const alone = removalNotes(PHONE, { along: [], away: [] }, [THIS, PHONE, BROWSER]).join(" ");
 		expect(alone).toContain(PHONE.id.slice(0, 8));
 		expect(alone).not.toContain(BROWSER.name);
-		const along = removalNotes(PHONE, [BROWSER.id], [THIS, PHONE, BROWSER]).join(" ");
+		const along = removalNotes(PHONE, { along: [BROWSER.id], away: [] }, [THIS, PHONE, BROWSER]).join(" ");
 		expect(along).toContain(BROWSER.name);
+	});
+
+	// #575 (I2): on the web the dialog is the only question. A device the server no longer lists, which the list this
+	// removal signs takes off too, is named there, by its ID's start, and is what goes with the person's yes.
+	test("name the devices the server no longer lists, which the list takes off too", () => {
+		const notes = removalNotes(PHONE, { along: [], away: [GONE, PHONE.id] }, [THIS, PHONE, BROWSER]);
+		expect(notes).toContain(en.e2e_device_remove_away.replace("{names}", GONE.slice(0, 8)));
+		expect(dropped({ along: [BROWSER.id], away: [GONE, PHONE.id] }, PHONE.id)).toEqual([BROWSER.id, GONE]);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE] }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(en.e2e_device_remove_away.replace("{names}", GONE.slice(0, 8)));
 	});
 
 	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.
@@ -182,10 +195,10 @@ describe("Settings' devices", () => {
 	});
 
 	test("ask before changing the keys, naming what an earlier removal takes along", () => {
-		void askToChangeKeys([THIS, PHONE, BROWSER], [], async () => {});
+		void askToChangeKeys([THIS, PHONE, BROWSER], { along: [], away: [] }, async () => {});
 		expect(confirmStore.pending?.message).toBe(en.e2e_change_keys_confirm);
 		confirmStore.cancel();
-		void askToChangeKeys([THIS, PHONE, BROWSER], [PHONE.id], async () => {});
+		void askToChangeKeys([THIS, PHONE, BROWSER], { along: [PHONE.id], away: [] }, async () => {});
 		const message = confirmStore.pending?.message ?? "";
 		confirmStore.cancel();
 		expect(message).toContain(en.e2e_change_keys_confirm);
@@ -247,7 +260,7 @@ describe("Settings' devices", () => {
 			field: "certificates",
 		});
 		expect(removalProblem(unfinished)).toBe(en.e2e_device_unfinished);
-		void askToChangeKeys([THIS, PHONE], [], () => Promise.reject(unfinished));
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [] }, () => Promise.reject(unfinished));
 		await confirmStore.execute();
 		const said = confirmStore.error;
 		confirmStore.cancel();
