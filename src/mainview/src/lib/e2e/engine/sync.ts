@@ -448,11 +448,13 @@ export class Conversations {
 	}
 
 	/**
-	 * At the start and at each READY: the API's conversations, each one's record made the first time it's seen, the queue
-	 * of each with a group, those without one as #groupless says, and the commits whose requests had no answer sent again.
+	 * At the start and at each READY: the API's conversations, the core's records of forgotten groups of those it no
+	 * longer lists let go, each one's record made the first time it's seen, the queue of each with a group, those
+	 * without one as #groupless says, and the commits whose requests had no answer sent again.
 	 */
 	async all(): Promise<void> {
 		await this.#list();
+		await this.#dropUnlisted();
 		for (const conv of [...this.#known.values()]) {
 			legacyRecord(this.#parts.store, conv);
 			try {
@@ -533,6 +535,9 @@ export class Conversations {
 		const conv = await this.#fresh(conversationId);
 		if (!conv) return this.#drop(conversationId);
 		keepChosen(this.#parts.store, conversationId, people);
+		// The core's record of the group let go goes too, before the comeback held to the yes (#594): a start before that
+		// comeback takes back nothing from before the yes.
+		await this.#dropForgotten(conversationId);
 		this.#unrefuse(conversationId);
 		this.#accepted.set(conversationId, { generation, people });
 		this.#set(conversationId, null);
@@ -616,7 +621,7 @@ export class Conversations {
 			const status = statusOf(error);
 			if ((status !== 403 && status !== 404) || (await this.#fresh(conv.id)) !== null) throw error;
 		}
-		this.#drop(conv.id);
+		await this.#drop(conv.id);
 	}
 
 	/**
@@ -1528,12 +1533,15 @@ export class Conversations {
 		if (status !== 403 && status !== 404) return false;
 		const listed = await this.#fresh(id).catch(() => undefined);
 		if (listed !== null) return false;
-		this.#drop(id);
+		await this.#drop(id);
 		return true;
 	}
 
-	/** A conversation this device is no longer in: nothing waits for it, its retries and its commits' with it. */
-	#drop(id: string) {
+	/**
+	 * A conversation this device is no longer in: nothing waits for it, its retries and its commits' with it, and the
+	 * core lets go of a record it keeps of its forgotten group (#594). This device's own record of it stays.
+	 */
+	async #drop(id: string) {
 		this.#retries.get(id)?.cancel();
 		this.#inFlight.get(id)?.cancel?.();
 		this.#due.get(id)?.();
@@ -1549,6 +1557,35 @@ export class Conversations {
 		this.#catchUps.forget(id);
 		this.#dropped(id);
 		this.#set(id, null);
+		await this.#dropForgotten(id);
+	}
+
+	/**
+	 * The core lets go of the record it keeps of the conversation's forgotten group (drop_forgotten, #594). One that fails
+	 * is logged: a listing that leaves the conversation out lets it go later, and the record goes once the device holds
+	 * the group again; meanwhile a person's yes stands over it, as a forget's record never takes a yes's place.
+	 */
+	async #dropForgotten(id: string) {
+		await this.#parts.host.handle({ cmd: "drop_forgotten", conversation_id: id }).catch((error: unknown) => {
+			console.error("[e2e] A forgotten group's record waits to go:", error);
+		});
+	}
+
+	/**
+	 * The core's records of conversations the API no longer lists for this user (it left, was taken out, or the API
+	 * deleted them), as one deleted while the app was closed, which nothing lets go otherwise: let go there too (#594).
+	 * One the core can't list waits for the next listing.
+	 */
+	async #dropUnlisted() {
+		const kept = await this.#parts.host
+			.handle<{ records: KeptForgotten[] }>({ cmd: "forgotten" })
+			.catch((error: unknown) => {
+				console.error("[e2e] The records of the conversations gone wait for the next listing:", error);
+				return { records: [] };
+			});
+		for (const { conversation_id } of kept.records) {
+			if (!this.#known.has(conversation_id)) await this.#dropForgotten(conversation_id);
+		}
 	}
 
 	#set(id: string, state: ConversationState | null) {
