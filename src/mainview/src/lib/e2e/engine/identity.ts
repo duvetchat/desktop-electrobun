@@ -129,11 +129,14 @@ export const firstListWaits = (served: Identity, status: CoreStatus, store: Engi
 	served.identity_key === status.identity_key &&
 	!listDevices(served.device_list)?.includes(status.device_id);
 
-/** What this device is by the list its core holds of its user: ready while it names the device, else removed. */
-const byHeldList = ({ device_id, device_list }: CoreStatus): EngineState =>
-	device_id !== undefined && device_list !== undefined && listDevices(device_list)?.includes(device_id)
-		? { name: "ready" }
-		: { name: "removed" };
+/**
+ * What this device is by the list its core holds of its user: removed once that list leaves the device out, else ready.
+ * A list that doesn't read says nothing of it, as in firstListWaits.
+ */
+const byHeldList = ({ device_id, device_list }: CoreStatus): EngineState => {
+	const held = listDevices(device_list ?? "");
+	return held && !held.includes(device_id ?? "") ? { name: "removed" } : { name: "ready" };
+};
 
 /**
  * What the user's identity, as served, makes of this device (step 5): none yet, a first device; one this device

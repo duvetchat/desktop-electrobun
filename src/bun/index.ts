@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, fetchImageBytes, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { COPY_FETCH_MS, MAX_COPIED_BYTES, pictureToCopy } from "./copy-image";
+import { copySecret, windowsClipboard } from "./secret-clipboard";
 import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
@@ -103,6 +104,10 @@ type AppRPCSchema = {
 			// Copy image, from the page's own right-click menu (#423, #450): the picture at the URL, fetched here
 			// (copy-image.ts), in base64, for the page to put on the clipboard itself; null when it can't be had.
 			pictureForCopy: { params: { url: string }; response: string | null };
+			// The recovery key's Copy (#569): on Windows, put on the clipboard here, out of its history and the cloud
+			// clipboard, and taken off a minute later (secret-clipboard.ts): true once it's there, false when the clipboard
+			// took nothing. Null elsewhere, where the page copies it itself.
+			copySecret: { params: { text: string }; response: boolean | null };
 			// What the title bar offers of the app's own updates (updates.ts, #456); null for nothing. A page asks as it
 			// starts, as updateReady may have gone out before it loaded.
 			pendingUpdate: { params: void; response: UpdateOffer | null };
@@ -211,6 +216,15 @@ const pictureForCopy = (imageUrl: string): Promise<string | null> =>
 			return null;
 		});
 
+// The recovery key's Copy (#569), on Windows: the main window owns the clipboard, as SetClipboardData needs an owner.
+const secretClipboard = process.platform === "win32" ? windowsClipboard(() => win.ptr) : null;
+const copySecretHere = (text: string): Promise<boolean> | null =>
+	secretClipboard &&
+	copySecret(text, secretClipboard).catch((err: unknown) => {
+		console.error("[clipboard] A secret wasn't copied:", err);
+		return false;
+	});
+
 // Track activities per IPC client, each with its images inline: a URL would reach nobody (gateway#134). Declared
 // before the RPC, whose setSpotifyActivity sends them too: on macOS and Linux an await comes before the IPC server,
 // and the webview could ask meanwhile.
@@ -278,6 +292,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			// The main window's page answers commands, and sends none.
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 			pictureForCopy: ({ url: imageUrl }) => pictureForCopy(String(imageUrl)),
+			copySecret: ({ text }) => copySecretHere(String(text)),
 			pendingUpdate: () => updates.offer,
 			playerRelay: () => playerRelay?.origin ?? null,
 		},

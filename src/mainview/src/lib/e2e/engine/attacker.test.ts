@@ -536,13 +536,15 @@ describe.skipIf(!coreLibrary)("a 2xx that stored nothing loses nothing", () => {
 
 	// The API's own answers from here on, with nothing kept and no event sent (forget).
 	//
-	// A finding left for an issue: once the core confirmed its creation (commit_result accepted), the API listing the
-	// conversation with no group makes #make tell the core no answer came, which the core answers not_found (nothing
-	// waits), so every open and send there throws before anything is encrypted. And once another member makes the API's
-	// group, this device stays in its own, at the same numbers: its next message goes to the API, which takes it by them,
-	// and no one can read it, nor it theirs, with no notice. What the person typed meanwhile isn't kept.
+	// desktop-electrobun#553, skipped until the core can let go of a group (the design is in step 5's fixes, desktop
+	// batch 4's report). The API's queue is the truth: a device whose group the API doesn't hold leaves its own and
+	// takes the API's, made again where the API has none, and what its person typed goes in the group it ends in. The
+	// core holds on to its own: create_group answers exists, commit_result {accepted: false} not_found (nothing waits),
+	// and reset_group founds generation 1, which an API without a group refuses (409, no group yet). Nor does it take
+	// another member's group at the generation it holds: the queue's welcome is ignored there, its key package spent,
+	// and join_external takes the API's group only from the epoch its own reached (stale_group_info below it).
 	test.skip(
-		"a group the API answered for and never kept leaves its maker's message waiting, and the device goes on",
+		"a group the API answered for and never kept is made again, and what its maker typed goes in the group they end in",
 		async () => {
 			const fake = new FakeApi();
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
@@ -552,16 +554,12 @@ describe.skipIf(!coreLibrary)("a 2xx that stored nothing loses nothing", () => {
 			const b = await firstDevice(fake, bo);
 			fake.forget({ method: "POST", path: `/api/users/@me/conversations/${conversation}/mls/commits` });
 			await a.engine.openConversation(conversation);
-			const nonce = crypto.randomUUID();
-			await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "kept here" }).catch(() => null);
-			await turnEnded(a);
-			expect((await a.engine.pendingMessages(conversation)).map((one) => one.nonce)).toEqual([nonce]);
-			// Bo's device makes the group the API keeps: Ana's goes into it, and what waited goes.
+			const kept = await send(a, conversation, "kept here");
 			await b.engine.openConversation(conversation);
-			await until(async () => (await a.engine.pendingMessages(conversation)).length === 0, {
-				what: "Ana's waiting message sent",
-			});
 			await sameGroup([a, b], conversation);
+			await until(async () => (await textOn(b, conversation, kept.id)) === "kept here", {
+				what: "Ana's message read on Bo's device",
+			});
 		},
 		SLOW,
 	);

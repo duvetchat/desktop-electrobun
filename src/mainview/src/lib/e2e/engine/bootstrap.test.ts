@@ -3,7 +3,17 @@ import { base64Bytes } from "$lib/activity-thumbnail";
 import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, resetFrom, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
+import {
+	answeringHost,
+	firstDevice,
+	resetFrom,
+	testDevice,
+	testHost,
+	until,
+	useFake,
+	watchedHost,
+} from "../testing/engines";
+import type { CoreStatus } from "./bootstrap";
 import { DEVICE_KEYS } from "./store";
 
 // The engine's start (PLAN-E2E-CLIENTES.md, «El motor», «Arranque»): the API's configuration, the user's database,
@@ -323,6 +333,31 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			await b.api.deleteDevice(a.registered[0]!);
 			await until(() => a.engine.state.name === "removed");
 			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// The Android app's reading (step 5's mobile attacker report): removed would offer a start-over on a reading no real
+	// core gives, which reports its list with every identity.
+	test(
+		"a list the core holds that doesn't read says nothing of the device, which stays ready",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			await a.engine.stop();
+			for (const unread of [{ device_list: "not a device list" }, { device_list: undefined }]) {
+				const host = answeringHost(a.host, (command) =>
+					command.cmd === "status"
+						? a.host.handle<CoreStatus>({ cmd: "status" }).then((status) => ({ ...status, ...unread }))
+						: undefined,
+				);
+				const again = testDevice(fake, ana, { host, store: a.store, token: a.token });
+				await again.engine.start();
+				expect(again.engine.state).toEqual({ name: "ready" });
+				await again.engine.stop();
+			}
 		},
 		SLOW,
 	);
