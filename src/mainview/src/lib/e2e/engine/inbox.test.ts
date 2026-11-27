@@ -1,11 +1,56 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { FetchError } from "$lib/api/api";
+import type { InboxMessage } from "$lib/api/e2e";
 import { certificateDevice } from "../cbor";
 import { approvalFrameMessage } from "../conventions";
 import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
+import { firstDevice, memoryStore, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
+import type { EngineParts } from "./engine";
+import { takeInbox } from "./inbox";
 import { pageStore } from "./store";
+
+// #555 (found by step 5's fuzzing of the Android app, mobile#362): a server serving one full page of the inbox whatever
+// `after` is asked kept the round reading it for good, and the engine's one turn with it. A page that doesn't go past
+// where its read began ends the round, as a queue page does (#546), and the next round reads the inbox again.
+describe("the inbox's pages", () => {
+	test("a full page served again whatever after is asked ends the round", async () => {
+		const [user, other] = ["0193a4b2-0000-7000-8000-00000000a0a0", "0193a4b2-0000-7000-8000-00000000b0b0"];
+		const page: InboxMessage[] = Array.from({ length: 100 }, (_, i) => ({
+			id: `0193a4b2-0000-7000-8000-${String(i + 1).padStart(12, "0")}`,
+			...{ from_user_id: other, from_device_id: other, message: "bWVzc2FnZQ==", created_at: "2026-11-26T10:00:00Z" },
+		}));
+		const asked: (string | undefined)[] = [];
+		const cleared: string[] = [];
+		let handled = 0;
+		const noIdentity = new FetchError(
+			"no identity",
+			{},
+			{
+				...{ data: { error: "identity not found" }, status: 404, statusText: "Not Found", headers: new Headers() },
+			},
+		);
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parts the inbox reads, and nothing else
+		const parts = {
+			user,
+			store: memoryStore(),
+			api: {
+				inbox: async (after?: string) => {
+					if (asked.push(after) > 10) throw new Error("the inbox was read for good");
+					return page;
+				},
+				clearInbox: async (through: string) => void cleared.push(through),
+				identity: async () => Promise.reject(noIdentity),
+			},
+			host: { handle: async () => (handled++, { type: "direct" }) },
+		} as unknown as EngineParts;
+		await takeInbox(parts, new Map());
+		expect(asked).toEqual([undefined, page.at(-1)!.id]);
+		expect(cleared).toEqual([page.at(-1)!.id]);
+		expect(handled).toBe(100);
+	});
+});
 
 // The inbox (PLAN-E2E-CLIENTES.md, «El buzón»): what other devices sent this one, read at start, at each READY and on
 // DEVICE_MESSAGE; each message deleted only once it's handled.

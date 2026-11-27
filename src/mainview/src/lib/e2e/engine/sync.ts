@@ -14,7 +14,7 @@ import type { MlsEntry, MlsEventEntry } from "$lib/types";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import { sendCommit, type Sent } from "./commits";
-import { CatchUps, withoutDevices } from "./deviceless";
+import { CatchUps, joinedUsers, withoutDevices } from "./deviceless";
 import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
@@ -241,8 +241,9 @@ export class Conversations {
 	/** Groups under an external sender other than the pinned one: this device never goes in (Ruling 32). */
 	readonly #otherSender = new Set<string>();
 	/**
-	 * Restarts the core refused (a successor's, without a statement it needs), by conversation, with the queue's last
-	 * number then: Restart is off until a newer entry comes (task 22's review, M8).
+	 * Restarts the core refused (a successor's, without a statement it needs), or whose commit the API's validator did
+	 * (#550), by conversation, with the queue's last number then: Restart is off until a newer entry comes (task 22's
+	 * review, M8).
 	 */
 	readonly #cantRestart = new Map<string, number>();
 	/**
@@ -259,9 +260,10 @@ export class Conversations {
 	readonly #accepted = new Map<string, { generation: number; members: string }>();
 	/**
 	 * Each conversation's members without a device, as this device last told its core (deviceless.ts), and the core's
-	 * members they were worked out from: when those change, they're asked again (task 22's review, I2).
+	 * members they were worked out from, with those of them that had a device in the group: when those change, they're
+	 * asked again (task 22's review, I2; #537).
 	 */
-	readonly #deviceless = new Map<string, { users: string[]; from: string[] }>();
+	readonly #deviceless = new Map<string, { users: string[]; from: string[]; joined: string[] }>();
 	readonly #catchUps: CatchUps;
 	/** A conversation this device is no longer in: what else waits for it goes too (the packages it was handed). */
 	readonly #dropped: (conversationId: string) => void;
@@ -417,8 +419,9 @@ export class Conversations {
 	 * The person's restart of the conversation's blocked group, which only its owner (in a DM, either member) makes, with
 	 * the members and owner the API has (reset_group). Whom it leaves out, those the core's group holds that the API no
 	 * longer lists, the person confirms first (#46's client rule): while `leaving` isn't them, nothing is made, and they're
-	 * what this answers. A reset the core refuses (a successor's, without a statement it needs) leaves the group blocked,
-	 * and isn't offered again before a new entry comes, which may bring what it needs.
+	 * what this answers. A reset the core refuses (a successor's, without a statement it needs), or whose commit the
+	 * API's validator refuses (422, said as the core's refusal, #550), leaves the group blocked, and isn't offered again
+	 * before a new entry comes, which may bring what it needs.
 	 */
 	async restart(conversationId: string, leaving: readonly string[] = []): Promise<string[]> {
 		if (this.#inFlight.has(conversationId) || this.#otherSender.has(conversationId)) return [];
@@ -432,14 +435,20 @@ export class Conversations {
 		try {
 			commit = await restartGroup(this.#parts, conv);
 		} catch (error) {
-			if (error instanceof CoreError && error.code === "rule_violation") {
-				this.#cantRestart.set(conv.id, conv.mls?.last_seq ?? 0);
-				this.#set(conv.id, this.#blocked(conv));
-			}
+			if (error instanceof CoreError && error.code === "rule_violation") this.#refuseRestart(conv);
 			throw error;
 		}
-		await this.#commit(conv, "restart", commit);
+		if ((await this.#commit(conv, "restart", commit)) === "invalid") {
+			this.#refuseRestart(conv);
+			throw new CoreError("rule_violation", "the API refused the restart", { rule: "restart_refused" });
+		}
 		return [];
+	}
+
+	/** A restart refused: Restart is off until a new entry comes, so no tap claims key packages for nothing. */
+	#refuseRestart(conv: Conversation) {
+		this.#cantRestart.set(conv.id, conv.mls?.last_seq ?? 0);
+		this.#set(conv.id, this.#blocked(conv));
 	}
 
 	/**
@@ -549,8 +558,8 @@ export class Conversations {
 		const held = conv?.mls ? await this.#group(conversationId) : null;
 		if (!conv || !held) return;
 		const from = held.members.map((member) => member.user_id);
-		const users = await withoutDevices(this.#parts, conv, from);
-		this.#deviceless.set(conv.id, { users, from });
+		const users = await withoutDevices(this.#parts, conv, held);
+		this.#deviceless.set(conv.id, { users, from, joined: joinedUsers(held) });
 		const now = this.#states.get(conv.id);
 		if (!now || now.name === "no_device") this.#set(conv.id, this.#goingOn(conv.id));
 	}
@@ -569,6 +578,17 @@ export class Conversations {
 	/** The conversation's members as the API listed them last: none for one it doesn't know. */
 	members(conversationId: string): string[] {
 		return this.#known.get(conversationId)?.members.map((member) => member.user_id) ?? [];
+	}
+
+	/**
+	 * The API changed a conversation this device knows (CONVERSATION_UPDATE: its owner, when they left): listed again, and
+	 * its turn, so what it says goes by its owner now, a group's making and a blocked group's restart both (#550). One the
+	 * user is no longer in is let go.
+	 */
+	async changed(conversationId: string): Promise<void> {
+		if (!this.#known.has(conversationId)) return;
+		if (!(await this.#fresh(conversationId))) return this.#drop(conversationId);
+		await this.sync(conversationId);
 	}
 
 	/** A user's identity changed (IDENTITY_UPDATE): their conversations' members without a device are asked again. */
@@ -909,13 +929,14 @@ export class Conversations {
 
 	/**
 	 * Who has no device, asked again in a conversation where it was asked, once the core's members are others than it
-	 * was worked out from: an addition or a removal, this device's or another's, with the API's members listed again.
-	 * One that fails is logged, and goes again at the conversation's next turn.
+	 * was worked out from, or those of them with a device in the group: an addition or a removal, a member's first device
+	 * in or last one out (#537), this device's or another's, with the API's members listed again. One that fails is
+	 * logged, and goes again at the conversation's next turn.
 	 */
 	async #devicesAgain(id: string, held: Held) {
 		const told = this.#deviceless.get(id);
 		const members = held.members.map((member) => member.user_id);
-		if (!told || sameUsers(told.from, members)) return;
+		if (!told || (sameUsers(told.from, members) && sameUsers(told.joined, joinedUsers(held)))) return;
 		await this.#fresh(id)
 			.then(() => this.checkDevices(id))
 			.catch((error: unknown) => {

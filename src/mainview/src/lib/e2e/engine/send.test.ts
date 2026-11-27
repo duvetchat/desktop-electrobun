@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CoreError } from "../errors";
 import type { CoreHost } from "../host";
 import { FakeApi, type GatewayEvent } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -787,6 +788,68 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			await until(async () => (await posts()).length === 2);
 			const [id] = await queued(a, conversation);
 			await until(async () => (await textOn(b, conversation, id!)) === "later");
+		},
+		SLOW,
+	);
+
+	// #550 (step 5's engines review, Minor 1): a sent the core refuses is a word on that message, which the API took: it
+	// stays for the person's Retry or Dismiss, and the messages after it go.
+	test(
+		"a sent that answers bad_command keeps its message, and the ones after it go",
+		async () => {
+			const one = crypto.randomUUID();
+			const host = watchedHost(testHost(), [], (cmd, command) =>
+				cmd === "sent" && command.nonce === one
+					? new CoreError("bad_command", "the row isn't that message", { field: "message_id" })
+					: null,
+			);
+			// Ana's device doesn't hear the messages' copies, whose queue entries would bind the first under its nonce.
+			const { a, b, conversation } = await dm({ aHost: host, aHears: (event) => event.type !== "DM_MESSAGE_CREATE" });
+			expect(
+				await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: one, text: "one" })),
+			).toMatchObject({ code: "bad_command", field: "message_id" });
+			const two = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "two",
+			});
+			expect(two).not.toBeNull();
+			expect(await nonces(a, conversation)).toEqual([one]);
+			await until(async () => (await textOn(b, conversation, two!.id)) === "two");
+		},
+		SLOW,
+	);
+
+	// #550: a core call cut (internal), its database failing (storage) or another instance holding it (locked) is no word
+	// on the message, as the inbox reads them: the flush stops there, so none after it goes first.
+	test(
+		"a core call cut in a flush stops it, so none after it goes first",
+		async () => {
+			const one = crypto.randomUUID();
+			let cut = false;
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (!cut || cmd !== "encrypt" || command.nonce !== one) return null;
+				cut = false;
+				return new CoreError("internal", "the call was cut");
+			});
+			const { fake, a, b, conversation, posts } = await dm({ aHost: host });
+			const path = { method: "POST", path: messagesPath(conversation) };
+			fake.cutRequest(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: one, text: "one" }));
+			// The next flush: the first message's encrypt is cut, so the second waits behind it, unsent.
+			cut = true;
+			const two = crypto.randomUUID();
+			expect(
+				await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: two, text: "two" })),
+			).toMatchObject({ code: "internal" });
+			expect((await posts()).map((post) => post.body.nonce)).toEqual([one]);
+			expect(await nonces(a, conversation)).toEqual([one, two]);
+			// The next flush sends both, in their order.
+			await a.engine.sendMessage({ conversation_id: conversation, nonce: two, text: "two" });
+			const ids = await queued(a, conversation);
+			expect(ids).toHaveLength(2);
+			await until(async () => (await textOn(b, conversation, ids[1]!)) !== null);
+			expect(await Promise.all(ids.map((id) => textOn(b, conversation, id)))).toEqual(["one", "two"]);
 		},
 		SLOW,
 	);
