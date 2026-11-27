@@ -36,8 +36,8 @@ test("each face keeps its presence in the corner, and its cloud is portalled out
 		'"people_presence_offline"',
 		"bg-duvet-card",
 		"drop-shadow",
-		"-top-3",
-		"size-5",
+		"rounded-2xl",
+		"rotate-45",
 	])
 		expect(faces, part).toContain(part);
 });

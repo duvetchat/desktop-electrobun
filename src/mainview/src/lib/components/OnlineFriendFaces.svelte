@@ -73,21 +73,19 @@
 							</Tooltip.Trigger>
 							<Tooltip.Portal>
 								<Tooltip.Content side="top" sideOffset={12} collisionPadding={8} class="animate-tip-in z-[3000]">
-									<!-- Bumps of the cloud, and the body its words sit in: one silhouette under the drop shadow.
-									     The card is opaque: the bumps overlap the body, and a tinted fill would darken where they do. -->
+									<!-- The bubble's body and the tail that points it at the face: one silhouette under the drop shadow. -->
 									<span
 										class="relative block min-w-24 text-center"
 										style="filter: drop-shadow(0 0 1px var(--duvet-sb-edge)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));"
 									>
-										<span class="bg-duvet-card absolute -top-2 left-3 size-4 rounded-full"></span>
-										<span class="bg-duvet-card absolute -top-3 left-1/2 size-5 -translate-x-1/2 rounded-full"></span>
-										<span class="bg-duvet-card absolute -top-1.5 right-4 size-3.5 rounded-full"></span>
-										<span class="bg-duvet-card relative block rounded-full px-3 py-1.5">
+										<span class="bg-duvet-card relative block rounded-2xl px-3 py-1.5">
 											<span class="block max-w-40 truncate text-[12px] leading-tight font-semibold">{friend.name}</span>
 											<span class="text-duvet-ink2 mt-0.5 block text-[11px] leading-tight"
 												>{statusLabel(friend.status)}</span
 											>
 										</span>
+										<!-- The tail that makes the cloud a speech bubble, pointing down at the face. -->
+										<span class="bg-duvet-card absolute -bottom-1 left-1/2 size-3 -translate-x-1/2 rotate-45"></span>
 									</span>
 								</Tooltip.Content>
 							</Tooltip.Portal>
