@@ -102,7 +102,7 @@
 			     words in it on one line, whole. -->
 			<span
 				{@attach marquee(option.value)}
-				class="min-w-0 overflow-hidden leading-normal {align === 'start' ? 'flex-1 text-center' : ''} {clipped[
+				class="min-w-0 overflow-hidden leading-normal {align === 'start' ? 'flex-auto text-center' : ''} {clipped[
 					option.value
 				]
 					? CLIPPED
