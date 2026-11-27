@@ -73,7 +73,21 @@ test("the profile offers Send direct message to whom the user can chat with", ()
 });
 
 test("Send direct message closes the profile and opens their direct conversation", () => {
-	expect(sendMessage).toMatch(/onclick=\{\(\) => \{\s*onOpenChange\(false\);\s*chatWith\(member\.id\);\s*\}\}/);
+	expect(sendMessage).toMatch(
+		/onclick=\{\(\) => \{\s*const \{ id \} = member;\s*onOpenChange\(false\);\s*chatWith\(id\);\s*\}\}/,
+	);
+});
+
+// What opens the card for one person (a message's author, a mention, someone in a voice room) lets go of them as it
+// closes, and member (and what's derived from it) goes with them: Send direct message read member.id after closing,
+// which threw there, and opened nothing. Whatever a button does once the card closes, it read before.
+test("no button reads the member after it closes the card", () => {
+	const handlers = [...popover.matchAll(/onclick=\{\(\) => \{([^]*?)\}\}/g)].map((m) => m[1]!);
+	const closing = handlers.filter((body) => body.includes("onOpenChange(false);"));
+	expect(closing.length).toBeGreaterThanOrEqual(3);
+	for (const body of closing) {
+		expect(body.slice(body.indexOf("onOpenChange(false);"))).not.toMatch(/\b(?:member|moderation|canMessage)\b/);
+	}
 });
 
 // A tall profile stays in the window: its details scroll in what the window leaves, less what's drawn under them,
