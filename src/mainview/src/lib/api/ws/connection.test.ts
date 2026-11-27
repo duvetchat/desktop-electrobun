@@ -619,8 +619,8 @@ describe("a live message of a chat nobody loaded", () => {
 		});
 		release();
 		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([nonce, message(89)]);
-		expect(contentOf(conv).typed(message(89))).toBeUndefined();
-		expect(contentOf(conv).typed(nonce)).toBe("my words");
+		expect(contentOf(conv, ME).typed(message(89), ALICE)).toBeUndefined();
+		expect(contentOf(conv, ME).typed(nonce, ME)).toBe("my words");
 	});
 });
 

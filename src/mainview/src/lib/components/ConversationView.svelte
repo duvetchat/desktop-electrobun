@@ -413,7 +413,7 @@
 
 	// What this device holds of the conversation's messages, the person's typed text of their own, and how far its queue
 	// is applied (PLAN-E2E-CLIENTES.md, «La vista de una conversación»).
-	const onDevice = $derived(contentOf(conversation.id));
+	const onDevice = $derived(contentOf(conversation.id, me?.id));
 
 	// Map DirectMessage → Message for MessageList: an encrypted message's text, and its quote's, are what this device's
 	// own database holds of them, asked for as they show.
@@ -483,7 +483,7 @@
 		for (const msg of raw) {
 			seen.add(msg.id);
 			const held = onDevice.held(msg.id);
-			const typed = onDevice.typed(msg.id);
+			const typed = onDevice.typed(msg.id, msg.author_id);
 			const quotedId = msg.referenced_message?.message_id;
 			const quoted = quotedId ? onDevice.held(quotedId) : undefined;
 			const through = held === null ? onDevice.through() : null;

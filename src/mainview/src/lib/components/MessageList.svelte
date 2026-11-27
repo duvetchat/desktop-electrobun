@@ -344,7 +344,7 @@
 		if (spaceId) return threadNow(threadMessages, messages);
 		const quoted = threadMessages.flatMap((m) => m.referenced_message?.message_id ?? []);
 		want(channelId, [...threadMessages.map((m) => m.id), ...quoted]);
-		const held = contentOf(channelId);
+		const held = contentOf(channelId, $currentUser?.id);
 		return threadNow(
 			threadMessages.map((m) => withHeld(m, held)),
 			messages,

@@ -276,6 +276,23 @@ describe("what a conversation draws", () => {
 		expect(pageRows(page).map(({ id }) => id)).toEqual([QUOTED, NOTICE]);
 	});
 
+	// #575 (N-M5): the person's typed text shows only under their own ID: a row naming another author, by the pending
+	// row's ID or as the send's own answer, draws none of it.
+	test("typed text shows only under the person's own ID", () => {
+		const conversation = "0193a4b2-0000-7000-8000-0000000000c5";
+		const [me, other] = ["0193a4b2-0000-7000-8000-0000000000a1", "0193a4b2-0000-7000-8000-0000000000b2"];
+		try {
+			content.keepTyped(conversation, ID, "what I typed");
+			const reader = content.contentOf(conversation, me);
+			expect(reader.typed(ID, me)).toBe("what I typed");
+			expect(reader.typed(ID, other)).toBeUndefined();
+			expect(directMessageToMessage(row(ID, { author_id: other }), members, reader)?.content).toBeNull();
+			expect(directMessageToMessage(row(ID, { author_id: me }), members, reader)?.content).toBe("what I typed");
+		} finally {
+			content.dropTyped(conversation, ID);
+		}
+	});
+
 	test("a row the engine hasn't applied yet is loading, neither empty nor waiting", () => {
 		const late = row(ID, { seq: 7 });
 		expect(directMessageToMessage(late, members, holding(held({}), {}, 5))).toMatchObject({
@@ -351,7 +368,7 @@ describe("what a conversation draws", () => {
 		content.refresh("C", [], 9);
 		answer({ rows: [], through: 5 });
 		await settled();
-		expect(content.contentOf("C").through()).toBe(9);
+		expect(content.contentOf("C", "a").through()).toBe(9);
 		content.useReader(null);
 	});
 
@@ -363,24 +380,24 @@ describe("what a conversation draws", () => {
 			through: 9,
 		}));
 		const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
-		const d = content.contentOf("D");
+		const d = content.contentOf("D", "a");
 		content.keepTyped("D", "nonce", "typed");
-		expect(d.typed("nonce")).toBe("typed");
-		expect(content.contentOf("E").typed("nonce")).toBeUndefined();
+		expect(d.typed("nonce", "a")).toBe("typed");
+		expect(content.contentOf("E", "a").typed("nonce", "a")).toBeUndefined();
 		content.moveTyped("D", "nonce", "id");
-		expect(d.typed("nonce")).toBeUndefined();
-		expect(d.typed("id")).toBe("typed");
+		expect(d.typed("nonce", "a")).toBeUndefined();
+		expect(d.typed("id", "a")).toBe("typed");
 		content.want("D", ["id"]);
 		await settled();
 		expect(d.held("id")?.text).toBe("held id");
-		expect(d.typed("id")).toBeUndefined();
+		expect(d.typed("id", "a")).toBeUndefined();
 		// Its row there already, the text doesn't move on; dropped, it goes.
 		content.keepTyped("D", "again", "typed again");
 		content.moveTyped("D", "again", "id");
-		expect(d.typed("id")).toBeUndefined();
+		expect(d.typed("id", "a")).toBeUndefined();
 		content.keepTyped("D", "dismissed", "gone");
 		content.dropTyped("D", "dismissed");
-		expect(d.typed("dismissed")).toBeUndefined();
+		expect(d.typed("dismissed", "a")).toBeUndefined();
 		content.useReader(null);
 	});
 });

@@ -1537,7 +1537,7 @@ export function heldText(
 	seq?: number,
 ): Pick<Message, "content" | "waiting" | "loading" | "shared_by" | "updated_at"> {
 	const shown = shownOf(content, message.id, message.author_id);
-	const typed = shown ? undefined : content.typed(message.id);
+	const typed = shown ? undefined : content.typed(message.id, message.author_id);
 	let loading = false;
 	if (!shown && typed === undefined) {
 		const held = content.held(message.id);
@@ -1575,13 +1575,13 @@ export function directMessageToMessage(
 	members: Conversation["members"],
 	content: MessageContent = NOTHING_HELD,
 ): Message | null {
-	if (!drawnRow(msg, (id) => content.typed(id))) return null;
+	if (!drawnRow(msg, (id, author) => content.typed(id, author))) return null;
 	const member = members.find((m) => m.user_id === msg.author_id);
 	const type = msg.type ?? 0;
 	const written = type === MessageType.Text || type === MessageType.Voice;
 	let text: Partial<Message> = {};
 	if (written && msg.seq !== undefined) text = heldText(content, msg, msg.seq);
-	else if (written) text = { content: content.typed(msg.id) ?? null, updated_at: msg.created_at };
+	else if (written) text = { content: content.typed(msg.id, msg.author_id) ?? null, updated_at: msg.created_at };
 	const ref = msg.referenced_message ?? null;
 	// An encrypted message's files, and whether it's a voice note, are what this device holds of it: the API keeps sealed
 	// bytes it can't open. A row being sent keeps its own, for its upload's bars.

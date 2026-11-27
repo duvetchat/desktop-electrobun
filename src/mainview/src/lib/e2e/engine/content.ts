@@ -35,7 +35,8 @@ export type Held = ShownMessage | null | undefined;
  */
 export interface MessageContent {
 	held(id: string): Held;
-	typed(id: string): string | undefined;
+	/** The text the person typed of their own message, by its ID: only for a row naming them its author (#575, N-M5). */
+	typed(id: string, author: string): string | undefined;
 	through(): number | null | undefined;
 }
 
@@ -85,16 +86,18 @@ const NOTICE_TYPES = new Set([2, 3, 4]);
  * person's own being sent, whose typed text this client keeps. Any other is no message a member sent: it draws
  * nothing, whatever it carries.
  */
-export const drawnRow = (row: { id: string; seq?: number; type?: number }, typed: (id: string) => string | undefined) =>
-	row.seq !== undefined || NOTICE_TYPES.has(row.type ?? 0) || typed(row.id) !== undefined;
+export const drawnRow = (row: Row, typed: (id: string, author: string) => string | undefined) =>
+	row.seq !== undefined || NOTICE_TYPES.has(row.type ?? 0) || typed(row.id, row.author_id) !== undefined;
+
+/** What drawnRow reads of a row. */
+type Row = { id: string; author_id: string; seq?: number; type?: number };
 
 /**
  * The API's rows of a page as a conversation's list takes them (#575, N-M4): none that's neither numbered nor a notice,
  * whatever ID it carries, as the live event's (connection.ts), so the typed text vouches only for the row this client
  * built, never for one of the API's that names it. What's left to load goes by the page as it came.
  */
-export const pageRows = <T extends { id: string; seq?: number; type?: number }>(rows: T[]): T[] =>
-	rows.filter((row) => drawnRow(row, () => undefined));
+export const pageRows = <T extends Row>(rows: T[]): T[] => rows.filter((row) => drawnRow(row, () => undefined));
 
 /**
  * The rows a conversation draws (Ruling 15): none that's neither numbered nor a notice but the person's own being sent
@@ -102,12 +105,12 @@ export const pageRows = <T extends { id: string; seq?: number; type?: number }>(
  * doesn't hold goes, and the one notice above the chat says why (`beforeJoining`). A notice of the server's, a row
  * since, and one the device holds (shared with it) stay. Without the membership, all those stay.
  */
-export function drawnRows<T extends { id: string; seq?: number; type?: number }>(
+export function drawnRows<T extends Row>(
 	rows: T[],
 	joinedAs: string | undefined,
 	content: Pick<MessageContent, "held" | "typed">,
 ): { rows: T[]; beforeJoining: boolean } {
-	const sent = rows.filter((row) => drawnRow(row, (id) => content.typed(id)));
+	const sent = rows.filter((row) => drawnRow(row, (id, author) => content.typed(id, author)));
 	if (!joinedAs) return { rows: sent.length === rows.length ? rows : sent, beforeJoining: false };
 	const drawn = sent.filter((row) => row.seq === undefined || row.id > joinedAs || !!content.held(row.id));
 	if (drawn.length === rows.length) return { rows, beforeJoining: false };

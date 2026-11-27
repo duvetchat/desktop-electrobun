@@ -41,7 +41,8 @@
 		if (!conversationMessage || !conversationId) return roomMessage;
 		const quoted = conversationMessage.referenced_message?.message_id;
 		want(conversationId, [conversationMessage.id, ...(quoted ? [quoted] : [])]);
-		return directMessageToMessage(conversationMessage, conv?.members ?? [], contentOf(conversationId));
+		// A card is of a message sent already: it draws no typed text.
+		return directMessageToMessage(conversationMessage, conv?.members ?? [], contentOf(conversationId, undefined));
 	});
 
 	function formatTime(dateStr: string): string {
