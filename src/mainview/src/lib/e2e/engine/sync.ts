@@ -311,6 +311,8 @@ export class Conversations {
 	readonly #catchUps: CatchUps;
 	/** A conversation this device is no longer in: what else waits for it goes too (the packages it was handed). */
 	readonly #dropped: (conversationId: string) => void;
+	/** A conversation's group let go (#forget): what was made for it outside the core goes too (#584). */
+	readonly #forgot: (conversationId: string) => void;
 	/** A minute has passed since the start (SETTLE_MS). */
 	#settled = false;
 	#settleTimer: (() => void) | null = null;
@@ -322,6 +324,7 @@ export class Conversations {
 		changed: (conversationId: string, state: ConversationState | null) => void,
 		messagesChanged: (conversationId: string, ids: string[], through: number | null, deleted?: string[]) => void,
 		dropped: (conversationId: string) => void = () => {},
+		forgot: (conversationId: string) => void = () => {},
 	) {
 		this.#parts = parts;
 		this.#soon = soon;
@@ -329,6 +332,7 @@ export class Conversations {
 		this.#changed = changed;
 		this.#messagesChanged = messagesChanged;
 		this.#dropped = dropped;
+		this.#forgot = forgot;
 		this.#catchUps = new CatchUps(parts, soon);
 		this.#refused = keptGenerations(parts.store, REFUSED_GENERATIONS);
 		this.#another = keptGenerations(parts.store, ANOTHER_GROUPS);
@@ -1004,6 +1008,7 @@ export class Conversations {
 		this.#settling.delete(id);
 		this.#noteAnother(id, null);
 		keepForgotten(this.#parts.store, id, forgotten.expected);
+		this.#forgot(id);
 		return "forgotten";
 	}
 

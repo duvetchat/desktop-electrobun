@@ -1920,6 +1920,42 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// A forget lets go of the bytes kept for its conversation's changes (#584, FG-M6): a group made again is at the
+	// numbers of the one let go (generation 0, epoch 1), which a change's bytes can't be told from by them, and its next
+	// try makes them for the group the device is in.
+	test(
+		"an edit waiting across its group let go and made again at the same numbers goes with bytes made for the new one",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const tries: Promise<string>[] = [];
+			useFake(fake, (request) => {
+				if (request.method === "PATCH")
+					tries.push(request.json().then((body: { ciphertext: string }) => body.ciphertext));
+			});
+			// Bo's device is away: it makes nothing again first.
+			const b = await firstDevice(fake, bo);
+			await b.engine.stop();
+			const a = await firstDevice(fake, ana);
+			await a.engine.openConversation(conversation);
+			const lost = (await groupOf(a, conversation))!;
+			const message = await send(a, conversation, "as written");
+			fake.cutRequest({ method: "PATCH", path: `${messagesPath(conversation)}/${message.id}` });
+			await a.engine.editMessage(conversation, message.id, "edited");
+			await until(() => tries.length === 1, { what: "the edit's first try" });
+			// The API loses its group: the next READY lets Ana's go and makes it again, and the edit tries again.
+			fake.loseGroup(conversation);
+			a.connect(a.registered.at(-1)!);
+			await until(() => tries.length === 2, { what: "the edit's try in the group made again" });
+			const made = (await groupOf(a, conversation))!;
+			expect([made.generation, made.epoch, made.authenticator === lost.authenticator]).toEqual([0, lost.epoch, false]);
+			const [before, after] = await Promise.all(tries);
+			expect(after).not.toBe(before);
+		},
+		SLOW,
+	);
+
 	// The record holds the users: a DM listed with someone else once its group is let go founds nothing with them, and
 	// asks the person first, as the founding of a group with members other than its record's does.
 	test(

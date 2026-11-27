@@ -314,6 +314,7 @@ export class E2EEngine {
 			},
 			messagesChanged,
 			(id) => this.#received.forget(id),
+			(id) => this.#sends.forgot(id),
 		);
 		this.#shares = new Shares(parts, (id, shareId) => {
 			for (const listener of this.#refusedListeners) listener(id, shareId, "share");

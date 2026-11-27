@@ -426,6 +426,16 @@ export class Sends {
 		if (changes.list.length === 1) this.#soon(() => this.#drain(key));
 	}
 
+	/**
+	 * The conversation's group was let go (#553): the bytes kept for its changes are of it, and a group made again can
+	 * have its generation and epoch, which their check can't tell apart (#584). Each change's next try makes its own.
+	 */
+	forgot(id: string) {
+		for (const { list } of this.#changes.values()) {
+			for (const change of list) if (change.conversation === id) change.made = null;
+		}
+	}
+
 	/** Stops waiting: what waits stays, in the core and in the record, for the next start. */
 	stop() {
 		for (const changes of this.#changes.values()) changes.cancel?.();
