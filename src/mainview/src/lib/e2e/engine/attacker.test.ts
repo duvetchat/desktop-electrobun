@@ -26,6 +26,8 @@ import {
 	type TestDevice,
 } from "../testing/engines";
 import { useXHR } from "../testing/xhr";
+import { keepMade } from "./legacy";
+import type { EngineStore } from "./store";
 
 // Step 5: the server as an attacker, against the desktop's and the web's engine (PLAN-E2E-CLIENTES.md, «Lo que el paso
 // 5 revisa»). End-to-end encryption lets the server withhold and delay, but never read, forge, or make a device act on
@@ -613,6 +615,74 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// The record outlives the app: a restart between the creation and the founding reads the person's picks back from the
+	// store (a new page's, with nothing of the session's), and the founding is held to them still.
+	test(
+		"a restart before the founding reads the person's picks back from the store, and founds with them alone",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed: string[] = [];
+			useFake(fake, (request) => {
+				const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+				if (claim?.[1]) claimed.push(claim[1]);
+			});
+			for (const user of [bo, eve]) fake.befriend(ana, user);
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo);
+			await firstDevice(fake, eve);
+			let lying = true;
+			// The API lists Ana's new group with Eve in it, until her device has started again.
+			fake.conversationsAs = (view, viewer) => {
+				if (!lying || viewer !== ana || view.type !== 2 || view.owner_id !== ana) return view;
+				return { ...view, members: [...view.members, { ...view.members[0]!, id: crypto.randomUUID(), user_id: eve }] };
+			};
+			const { id } = await a.engine.createConversation({ type: 2, name: "two", user_ids: [bo] });
+			expect(a.engine.conversationState(id)).toMatchObject({ name: "members_changed" });
+			// The app closes before anything is founded, and opens again on the same storage, a new page's.
+			const reloaded: EngineStore = {
+				read: (key) => a.store.read(key),
+				write: (key, value) => a.store.write(key, value),
+			};
+			const again = await restarted(fake, a, { store: reloaded });
+			await again.engine.openConversation(id);
+			expect(await groupOf(again, id)).toBeNull();
+			expect(claimed).not.toContain(eve);
+			lying = false;
+			await again.engine.openConversation(id);
+			await sameGroup([again, b], id);
+			expect((await groupOf(again, id))!.members.map((member) => member.user_id).sort()).toEqual([ana, bo].sort());
+		},
+		SLOW,
+	);
+
+	// The creator's device holds its record while it has no group: a welcome into a group with others than its picks,
+	// and the join that would follow, find it held to them, and it goes in with nobody it didn't pick.
+	test(
+		"a creator's device whose record is kept takes no welcome into a group with other members",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			// The group Eve owns with Ana and Bo is, to Ana, the group she made with Bo.
+			const conversation = fake.addConversation({ type: "group", members: [eve, ana, bo], owner: eve });
+			fake.conversationsAs = (view, viewer) =>
+				viewer === ana && view.id === conversation
+					? { ...view, owner_id: ana, members: view.members.filter((member) => member.user_id !== eve) }
+					: view;
+			const a = await firstDevice(fake, ana);
+			keepMade(a.store, conversation, { owner: ana, members: [ana, bo] });
+			const [b, e] = [await firstDevice(fake, bo), await firstDevice(fake, eve)];
+			await e.engine.openConversation(conversation);
+			await sameGroup([b, e], conversation);
+			await until(() => a.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Ana's device refusing the welcome",
+			});
+			expect(await groupOf(a, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
 	// N-C1: the check holds whatever the listings leave out. The API stops listing the conversation after the welcome;
 	// the page goes on drawing it as READY's list did: what waits there doesn't go at the next start, nor anything new.
 	test(
@@ -641,6 +711,8 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			const again = await restarted(fake, b, { shown });
 			await turnEnded(again);
 			expect(await rejection(send(again, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
+			// And at a READY, which sends what waits again.
+			again.connect(again.registered.at(-1) ?? null);
 			await turnEnded(again);
 			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
 		},
