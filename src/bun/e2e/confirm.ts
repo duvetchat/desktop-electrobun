@@ -196,12 +196,14 @@ export function approvalQuestion({ device, fingerprint }: { device: string; fing
 }
 
 /**
- * What an approving device says of the new device's fingerprint, the Android app's too (mobile#363): a computer's is in
- * a box of the Duvet app's own, not in its window, which a script there could draw on.
+ * What every approving device says of the new device's fingerprint: this box, the page's (e2e_approval_fingerprint_line,
+ * the web's only gate) and the Android app's (mobile#363). A computer's is in a box of the Duvet app's own, not in its
+ * window, which a script there could draw on; a browser has no box, and its page is its only screen (decision 58).
  */
 export const COMPARE_WITH_THE_BOX =
 	"Approve it only if it's the device you're setting up now, and it shows the same 16 characters. The Duvet app on a " +
-	"computer shows them in a box of its own, outside its window.";
+	"computer shows them in a box of its own, outside its window: don't approve it if they're only in its window. Duvet " +
+	"in a browser shows them on its page.";
 
 /** What Bun shows the person, outside the page, that asks nothing. */
 export interface Notice {

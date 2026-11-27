@@ -27,10 +27,13 @@
 	// the core compares them with its own, which nothing shows. The card mounts it anew for each attempt.
 	let {
 		setup,
+		web = false,
 		onUseCode,
 		onAcceptCode,
 	}: {
 		setup: DeviceSetup;
+		/** Duvet in a browser, which has no box of its own: the Duvet app shows its fingerprints in Bun's (#557). */
+		web?: boolean;
 		onUseCode: () => Promise<void>;
 		onAcceptCode: (code: string) => Promise<void>;
 	} = $props();
@@ -70,7 +73,9 @@
 		<p class="text-duvet-ink font-mono text-[15px] tracking-[0.06em]">
 			{t("e2e_code_fingerprint", { fingerprint: setup.fingerprint })}
 		</p>
-		<p class="text-duvet-ink2 text-center text-[13px]">{t("e2e_code_fingerprint_line")}</p>
+		<p class="text-duvet-ink2 text-center text-[13px]">
+			{t(web ? "e2e_code_fingerprint_line" : "e2e_code_fingerprint_box_line")}
+		</p>
 		{#if setup.accepted}
 			<p class="text-duvet-ink text-center text-[13.5px]" role="status">{t("e2e_code_accepted")}</p>
 		{:else if setup.offered}

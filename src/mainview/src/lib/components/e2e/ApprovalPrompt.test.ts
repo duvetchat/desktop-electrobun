@@ -51,6 +51,16 @@ describe("a new device's approval, on the approving device", () => {
 		expect(buttons(html)).toEqual([en.e2e_cancel, en.e2e_approval_confirm]);
 	});
 
+	// #557's re-review, RC1: on the web these words are the only gate, and on the desktop Bun's box says the same. They
+	// send the person to the new computer's own box, and tell the Duvet app from Duvet in a browser, which has none.
+	test("says to compare with the new computer's own box, and not to approve one that shows them only in its window", () => {
+		const html = drawn(approval("asked"));
+		expect(html).toContain(en.e2e_approval_fingerprint_line);
+		expect(en.e2e_approval_fingerprint_line).toContain("The Duvet app on a computer shows them in a box of its own");
+		expect(en.e2e_approval_fingerprint_line).toContain("don't approve it if they're only in its window");
+		expect(en.e2e_approval_fingerprint_line).toContain("Duvet in a browser shows them on its page");
+	});
+
 	// Review I1: a device this one approved that never took its transfer is taken off the list first.
 	test("says a device it approved before is taken off the list first", () => {
 		const html = drawn({ ...approval("asked"), unfinished: true });

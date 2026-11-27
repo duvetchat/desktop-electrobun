@@ -6,6 +6,7 @@ import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from ".
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileMark, type BoundaryDeps, type UserMark } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import {
+	COMPARE_WITH_THE_BOX,
 	IDOK,
 	MB_DEFBUTTON2,
 	MB_OKCANCEL,
@@ -17,6 +18,7 @@ import {
 	type Question,
 } from "./confirm";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
+import en from "../../mainview/messages/en.json";
 
 // Some of its cases run real cores, which a machine busy with other work takes past Bun's 5 s (#547), as fake-api's
 // tests allow for.
@@ -345,6 +347,11 @@ describe("what asks the person first, outside the page", () => {
 			showMessageBox: () => Promise.reject(new Error("no display")),
 		});
 		expect(await broken(question)).toBe(false);
+	});
+
+	// #557's re-review, RC1: every approving device says the same of the new device's fingerprint, the web's page too.
+	test("the approver's box says what the approving page says of the new device's fingerprint", () => {
+		expect(COMPARE_WITH_THE_BOX).toBe(en.e2e_approval_fingerprint_line);
 	});
 
 	test("a notice replaces the one shown, and none takes it away; without the core's platform nothing shows", () => {

@@ -11,6 +11,7 @@
 	// which says what's lost and asks before anything runs.
 	let {
 		setup,
+		web = false,
 		onRecover,
 		onUseCode,
 		onAcceptCode,
@@ -18,6 +19,8 @@
 		onBegin,
 	}: {
 		setup: DeviceSetup | undefined;
+		/** Duvet in a browser, which shows its fingerprints on its page alone (ApprovalNew). */
+		web?: boolean;
 		onRecover: (recoveryKey: string) => Promise<void>;
 		onUseCode: () => Promise<void>;
 		onAcceptCode: (code: string) => Promise<void>;
@@ -45,7 +48,7 @@
 		<h3 id="e2e-setup-approve" class="font-serif-sm text-duvet-ink text-[15px]">{t("e2e_setup_approve_heading")}</h3>
 		{#if attempt}
 			{#key attemptKey}
-				<ApprovalNew setup={attempt} {onUseCode} {onAcceptCode} />
+				<ApprovalNew setup={attempt} {web} {onUseCode} {onAcceptCode} />
 			{/key}
 		{:else}
 			<div>

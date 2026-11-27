@@ -16,8 +16,14 @@ const code = (offered: boolean, accepted = false): DeviceSetup => ({
 	...{ way: "code", fingerprint: FINGERPRINT },
 	...{ offered, accepted },
 });
-const props = (setup: DeviceSetup) => ({ setup, onUseCode: async () => {}, onAcceptCode: async () => {} });
-const drawn = (setup: DeviceSetup) => render(ApprovalNew, { props: props(setup) }).body.replace(/<!--[^]*?-->/g, "");
+const props = (setup: DeviceSetup, web = false) => ({
+	setup,
+	web,
+	onUseCode: async () => {},
+	onAcceptCode: async () => {},
+});
+const drawn = (setup: DeviceSetup, web = false) =>
+	render(ApprovalNew, { props: props(setup, web) }).body.replace(/<!--[^]*?-->/g, "");
 const inputs = async (setup: DeviceSetup) =>
 	(await tags(ApprovalNew, props(setup))).filter((tag) => tag.name === "input");
 
@@ -52,6 +58,18 @@ describe("a new device's approval", () => {
 		const accepted = drawn(code(true, true));
 		expect(accepted).toContain(NOTICES.code_accepted);
 		expect(await inputs(code(true, true))).toEqual([]);
+	});
+
+	// #557's re-review, RC1: the Duvet app shows its fingerprints in Bun's box too, which the approving device's words
+	// send the person to; a browser has no box, and its page is the screen to compare.
+	test("by the code: the app's line points at Duvet's own box, the web's at the other device", () => {
+		expect(en.e2e_code_fingerprint_box_line).toContain("in a box of its own, outside this window");
+		const app = drawn(code(false));
+		expect(app).toContain(en.e2e_code_fingerprint_box_line);
+		expect(app).not.toContain(en.e2e_code_fingerprint_line);
+		const web = drawn(code(false), true);
+		expect(web).toContain(en.e2e_code_fingerprint_line);
+		expect(web).not.toContain(en.e2e_code_fingerprint_box_line);
 	});
 
 	test("says what went wrong in the person's words", () => {
