@@ -45,6 +45,13 @@ export const LISTED = "listed";
  */
 export const REFUSED_GENERATIONS = "refused_generations";
 /**
+ * The conversations whose queue brought a welcome to another group at the generation this device holds (sync.ts:
+ * apply's another_group, #553), with that generation, until the device let its own go or there was nothing at that
+ * generation to let go (#584): the welcome is spent as it's applied, and this note is all that's left of it. A
+ * conversation's ID and a number, nothing secret.
+ */
+export const ANOTHER_GROUPS = "another_groups";
+/**
  * The packages of history whose key this device's core holds (history.ts): their IDs, conversations, sharers and kinds,
  * as the inbox brought them, which the inbox deletes once read. Nothing secret: the key stays in the core.
  */
@@ -72,7 +79,7 @@ export const BACKUP_SET_ASIDE = "backup_set_aside";
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER, APPROVED_HERE],
 	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEYS_AGAIN, RELISTED, KEPT_RESET, LISTED, REFUSED_GENERATIONS],
-	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
+	...[ANOTHER_GROUPS, SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE, BACKUP_SET_ASIDE],
 ];
 /**

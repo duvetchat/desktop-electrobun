@@ -121,21 +121,60 @@ describe("a conversation's send", () => {
 		expect(chat).toContain("beforeSend?: () => Promise<boolean>;");
 	});
 
-	// Review, Minor 8: an edit the conversation kept from going (the person's no) keeps its box open, with its text.
+	// The edit's close once it's done: only where it's still the one open, whichever chat the view shows by then (#584).
+	const closes = String.raw`if \(chat === channelId && editingMessageId === messageId\) editingMessageId = null;\s*\}`;
+
+	// Review, Minor 8: an edit the conversation kept from going (the person's no) keeps its box open, with its text,
+	// which the box keeps as the chat's (#584: false, not nothing).
 	test("an edit its conversation says no to keeps its box, and what was typed in it", () => {
 		expect(chat).toMatch(
-			/async function saveEdit\(messageId: string, content: string\)[^{]*\{[^]*?=== false\) return;[^]*?cancelEdit\(\);\s*\}/,
+			new RegExp(
+				String.raw`async function saveEdit\(messageId: string, content: string\)[^{]*\{[^]*?=== false\) return false;[^]*?` +
+					closes,
+			),
 		);
 	});
 
 	// T-M1: one it refused keeps its box too, and hands the box what to say at the message.
 	test("an edit its conversation refuses keeps its box, with what was typed, and says why there", () => {
 		expect(chat).toMatch(
-			/async function saveEdit\(messageId: string, content: string\): Promise<string \| void> \{[^]*?if \(typeof saved === "string"\) return saved;[^]*?cancelEdit\(\);\s*\}/,
+			new RegExp(
+				String.raw`async function saveEdit\(messageId: string, content: string\): Promise<string \| false \| void> \{[^]*?if \(typeof saved === "string"\) return saved;[^]*?` +
+					closes,
+			),
 		);
 		// The box keeps the refusal's words (lib/edit-box.svelte.ts, whose tests hold them) and says them at the message.
 		const editor = source("InlineMessageEditor.svelte");
-		expect(editor).toMatch(/new EditBox\(\s*untrack\(\(\) => content\),\s*\(text\) => onSave\(text\),/);
+		expect(editor).toContain("const box = untrack(() => editBoxOf(chat, message, content));");
 		expect(editor).toMatch(/\{#if box\.refused\}\s*<p role="alert"[^>]*>\{box\.refused\}<\/p>\s*\{\/if\}/);
+	});
+});
+
+// #584 (FG-M8): the chat keeps the edit it has open while its box saves (lib/edit-box.test.ts holds the box's rule):
+// Edit on another message, Up in the empty box or Ctrl+Shift with the arrows, keyboard navigation's edit, a reply, a
+// mention, a quote, another chat, a READY's remount and the row leaving its list all leave it open.
+describe("an edit whose save waits", () => {
+	const chat = source("Chat.svelte");
+
+	test("stays the chat's, whatever unmounts its box, and nothing but its answer closes it", () => {
+		// Another chat, a remount: the edit open is the one the chat keeps, while the person opened none here.
+		expect(chat).toContain("const editing = $derived(editingMessageId ?? keptIn(channelId)?.message ?? null);");
+		// Another edit or none: refused while the edit open here saves.
+		expect(chat).toMatch(
+			/function editMessage\(id: string \| null\): boolean \{\s*const open = keptIn\(channelId\);\s*if \(open && open\.message === editing && open\.message !== id && !open\.close\(\)\) return false;\s*editingMessageId = id;\s*return true;\s*\}/,
+		);
+		// Every other way to open or close an edit goes through it: the list's Edit and Discard, Up, Ctrl+Shift with
+		// the arrows, keyboard navigation, a reply, a mention, a quote. The chat's change and the save's own close are
+		// the only other writes.
+		expect(chat).toContain("bind:editingMessageId={() => editing, (id) => void editMessage(id)}");
+		expect(chat).toContain("if (!msg || !editMessage(msg.id)) return false;");
+		expect(chat).toContain("if (editMessage(null)) editMessageIndex = null;");
+		expect(chat).toContain("else if (message.author_id === $currentUser?.id) editMessage(message.id);");
+		expect(chat).toMatch(/function cancelEdit\(\): boolean \{\s*return editMessage\(null\);\s*\}/);
+		expect([...chat.matchAll(/(?<!let )editingMessageId = /g)]).toHaveLength(3);
+		expect(chat).toContain("if (editing !== null && cancelEdit()) await tick();");
+		// Its box, mounted again, is the one kept, by the message it edits.
+		const list = source("MessageList.svelte");
+		expect(list).toMatch(/<InlineMessageEditor\s+chat=\{channelId\}\s+message=\{message\.id\}/);
 	});
 });
