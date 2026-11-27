@@ -47,6 +47,8 @@ export interface CoreHost {
 	close(): Promise<void>;
 	/** Closes, then deletes the database and its key. */
 	destroy(userId: string): Promise<void>;
+	/** An approval's attempt is over: the desktop's Bun takes its box of the attempt's fingerprints away (#557). */
+	endApproval?(): Promise<void>;
 }
 
 /** The commands `handle` refuses: each has a way of its own, which keeps its bytes out of one JSON. */
@@ -79,10 +81,11 @@ export const E2E_OPS = [
 	"importShare",
 	"close",
 	"destroy",
+	"endApproval",
 ] as const;
 export type E2eOp = (typeof E2E_OPS)[number];
 /** The ops Bun runs whatever core instance they were sent for: each names its user or needs none, and gets its reply. */
-export const STANDALONE_OPS: readonly E2eOp[] = ["open", "close", "destroy"];
+export const STANDALONE_OPS: readonly E2eOp[] = ["open", "close", "destroy", "endApproval"];
 
 /** The page's request. */
 export interface E2eMessage {

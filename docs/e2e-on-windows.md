@@ -98,7 +98,8 @@ bottom (Set up, the recovery key saved, Continue). Friends first: a DM takes a f
    - **being approved:** with the Windows app as alice's new device (her web set up first), its Set up opens Windows'
      own box, «Set up this device», with a fingerprint for a code and one for a phone's scan. The web's «Is this device
      yours?» shows the first. The box asks nothing: the window takes the code while it's open, and it goes once the
-     device is set up (desktop-electrobun#557);
+     device is set up or the setup's sheet closes. Left open on its QR, the sheet renews the QR every 9 minutes: the
+     new box takes the old one's place without coming to the front (desktop-electrobun#557);
    - **another account:** sign out of alice and in as bob on the same app. Before bob's encrypted conversations open,
      Windows' box asks to open another account's. Cancel leaves the bar saying they couldn't open, until the app starts
      again; OK opens them, and signing in as bob again asks nothing (desktop-electrobun#558).

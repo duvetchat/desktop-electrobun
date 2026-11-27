@@ -168,6 +168,10 @@ export class DesktopCoreHost implements CoreHost {
 	async destroy(userId: string): Promise<void> {
 		await this.#ask("destroy", { userId });
 	}
+
+	async endApproval(): Promise<void> {
+		await this.#ask("endApproval");
+	}
 }
 
 /** The desktop's host over the main window's RPC, or null outside the desktop app. */

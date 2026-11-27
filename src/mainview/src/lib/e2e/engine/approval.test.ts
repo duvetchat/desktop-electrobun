@@ -291,6 +291,28 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 		await Promise.all([a.engine.stop(), n.engine.stop()]);
 	});
 
+	// #557's re-review, RM5: on the desktop the host takes Bun's box away as the attempt ends, which only it can tell.
+	test("an attempt that ends tells the host", async () => {
+		const fake = new FakeApi();
+		const ana = fake.addUser();
+		useFake(fake);
+		const a = await firstDevice(fake, ana);
+		let ended = 0;
+		const host = new Proxy(testHost(), {
+			get(target, name) {
+				if (name === "endApproval") return async () => void ended++;
+				const value = Reflect.get(target, name);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+		const n = await newDevice(fake, ana, { host });
+		await n.engine.beginApproval();
+		expect(ended).toBe(0);
+		await n.engine.endApproval();
+		expect(ended).toBe(1);
+		await Promise.all([a.engine.stop(), n.engine.stop()]);
+	});
+
 	test(
 		"approval by QR needs no code",
 		async () => {

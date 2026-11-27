@@ -99,10 +99,15 @@ export interface NoticeBox {
  * Bun's thread, as a confirmation's does: the person keeps it open while Duvet goes on. Only Windows has the core (38,
  * 39), and so begins an approval: elsewhere nothing shows, and an approving device's words say to compare with a box.
  */
-export function nativeNotice(deps: { platform: string; open?: (notice: Notice) => NoticeBox }): Show {
+export function nativeNotice(deps: {
+	platform: string;
+	open?: (notice: Notice, foreground: boolean) => NoticeBox;
+}): Show {
 	const open = deps.open ?? (deps.platform === "win32" ? windowsNotice : null);
 	let shown: NoticeBox | null = null;
 	return (notice) => {
+		// Only the first box of a run takes the foreground: the QR's renewal replaces it every 9 minutes (RM5).
+		const replacing = shown !== null;
 		try {
 			shown?.close();
 		} catch (error) {
@@ -111,7 +116,7 @@ export function nativeNotice(deps: { platform: string; open?: (notice: Notice) =
 		shown = null;
 		if (!notice || !open) return;
 		try {
-			shown = open(notice);
+			shown = open(notice, !replacing);
 		} catch (error) {
 			console.error("[e2e] a notice couldn't be shown:", error);
 		}
@@ -125,9 +130,11 @@ const CLOSE_TRIES = 50;
  * A notice on Windows: MessageBoxW in a worker of its own, with no owner, so the window and Bun's thread go on while it
  * shows. Closing it finds it by its title, which names its fingerprint, and sends it WM_CLOSE.
  */
-function windowsNotice(notice: Notice): NoticeBox {
+function windowsNotice(notice: Notice, foreground: boolean): NoticeBox {
 	const url = URL.createObjectURL(
-		new Blob([`(${noticeWorker.toString()})(${JSON.stringify(notice)});`], { type: "application/javascript" }),
+		new Blob([`(${noticeWorker.toString()})(${JSON.stringify({ ...notice, foreground })});`], {
+			type: "application/javascript",
+		}),
 	);
 	const worker = new Worker(url);
 	let up = true;
@@ -167,7 +174,7 @@ function windowsNotice(notice: Notice): NoticeBox {
  * A notice's worker, run from its own source (windowsNotice), as core.ts runs the core's: every name it uses is in it,
  * or a global. It shows the box, then says it closed, or what failed: the library, or the box (MessageBoxW answers 0).
  */
-export function noticeWorker({ title, message }: Notice): void {
+export function noticeWorker({ title, message, foreground }: Notice & { foreground: boolean }): void {
 	void (async () => {
 		let failed: string | null = null;
 		try {
@@ -181,8 +188,8 @@ export function noticeWorker({ title, message }: Notice): void {
 			const { MessageBoxW } = ffi.dlopen("user32.dll", {
 				MessageBoxW: { args: [ptr, ptr, ptr, u32], returns: i32 },
 			}).symbols;
-			// MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST: above the window, which stays usable.
-			if (MessageBoxW(null, utf16(message), utf16(title), 0x40 | 0x10000 | 0x40000) === 0) {
+			// MB_OK | MB_ICONINFORMATION | MB_TOPMOST: above the window, which stays usable; MB_SETFOREGROUND for a first box.
+			if (MessageBoxW(null, utf16(message), utf16(title), 0x40 | 0x40000 | (foreground ? 0x10000 : 0)) === 0) {
 				throw new Error("MessageBoxW failed");
 			}
 		} catch (error) {

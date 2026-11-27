@@ -375,6 +375,28 @@ describe("what asks the person first, outside the page", () => {
 		expect(() => nativeNotice({ platform: "linux" })({ title: "three", message: "3" })).not.toThrow();
 	});
 
+	// #557's re-review, RM5: the QR's renewal brings a box up every 9 minutes while the setup's sheet shows it; only the
+	// first of a run of them is raised over what the person is doing.
+	test("a box that replaces one already shown doesn't take the foreground", () => {
+		const raised: [string, boolean][] = [];
+		const show = nativeNotice({
+			platform: "win32",
+			open: ({ title }, foreground) => {
+				raised.push([title, foreground]);
+				return { close: () => {} };
+			},
+		});
+		show({ title: "one", message: "1" });
+		show({ title: "two", message: "2" });
+		show(null);
+		show({ title: "three", message: "3" });
+		expect(raised).toEqual([
+			["one", true],
+			["two", false],
+			["three", true],
+		]);
+	});
+
 	// #557's re-review, RM4: the box is the new device's whole defense, and one that can't show would stop every new
 	// computer's approval with nothing in the log. Here user32 doesn't load, as a box that fails on Windows doesn't.
 	test.skipIf(process.platform === "win32")("a notice's box that can't show says why in the log", async () => {
@@ -591,6 +613,18 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		const { transfer } = (await approver.run({ cmd: "approval_confirm", code })).ok;
 		expect(notices.at(-1)).not.toBeNull();
 		expect((await device.run({ cmd: "approval_receive", transfer })).ok).toHaveProperty("identity_key");
+		expect(notices.at(-1)).toBeNull();
+	});
+
+	// #557's re-review, RM5: the setup's sheet closed, the page's attempt is over, and its box mustn't say to keep it open.
+	test("the page's end of an attempt takes the new device's box away", async () => {
+		const notices: (Notice | null)[] = [];
+		const device = pageOf({ start: realCore(), show: (notice) => notices.push(notice) });
+		await device.ask("open", { userId: ANA });
+		await device.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
+		await device.run({ cmd: "approval_begin" });
+		expect(notices.at(-1)).not.toBeNull();
+		expect((await device.ask("endApproval")).ok).toEqual({});
 		expect(notices.at(-1)).toBeNull();
 	});
 

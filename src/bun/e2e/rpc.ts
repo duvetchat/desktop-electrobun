@@ -507,6 +507,10 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 			}
 			case "importShare":
 				return unwrap(await core("importShare", { shareId: text(p.shareId, "shareId") }));
+			case "endApproval":
+				// The page's attempt is over (its setup's sheet closed): its box goes, as close's does (RM5).
+				notify(null);
+				return {};
 		}
 		throw bad("op", "no such op");
 	}
