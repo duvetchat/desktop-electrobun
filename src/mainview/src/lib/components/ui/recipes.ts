@@ -181,23 +181,23 @@ export function segmentIndex<T>(values: readonly T[], picked: T | undefined): nu
 }
 
 /**
- * Whether every option of a segmented control fits its column with its label (#562): `needed` is the width each one
- * takes on one line, its icon, label and padding, and `column` the width of one of the control's equal columns. Half
- * a pixel of slack, for widths rounded differently.
+ * How far a segmented control's clipped label scrolls, and how long each way takes (#562): `words` is the width of
+ * its words on one line, `box` the width its option leaves them. Words that fit, give or take half a pixel for widths
+ * rounded differently, don't scroll. Those that don't travel at 30 px a second for the middle 60% of the run, resting
+ * at either end for the rest, and never take under 2.5 seconds a way.
  */
-export function segmentsFit(needed: readonly number[], column: number): boolean {
-	return needed.every((width) => width <= column + 0.5);
+export function marqueeRun(words: number, box: number): { shift: number; seconds: number } {
+	const over = words - box;
+	if (over <= 0.5) return { shift: 0, seconds: 0 };
+	const shift = Math.ceil(over);
+	return { shift, seconds: Math.max(2.5, Math.round((shift / 30 / 0.6) * 10) / 10) };
 }
 
 /**
- * What a segmented control's option says beside its words (#562). With its label it is named by that label, and its
- * tooltip is its title, if any. With its icon only, its label names it for a screen reader and is its tooltip, above
- * its title.
+ * A segmented control's option's tooltip (#562): its title, if any, and, while its label is clipped, the label whole
+ * above it.
  */
-export function segmentNaming(
-	option: { label: string; title?: string },
-	iconOnly: boolean,
-): { ariaLabel: string | undefined; title: string | undefined } {
-	if (!iconOnly) return { ariaLabel: undefined, title: option.title };
-	return { ariaLabel: option.label, title: option.title ? `${option.label}\n${option.title}` : option.label };
+export function segmentTitle(option: { label: string; title?: string }, clipped: boolean): string | undefined {
+	if (!clipped) return option.title;
+	return option.title ? `${option.label}\n${option.title}` : option.label;
 }
