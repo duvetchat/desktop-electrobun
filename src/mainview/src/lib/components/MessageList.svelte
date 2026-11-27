@@ -756,9 +756,10 @@
 	const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));
 
 	// Mentions of the user that follow one another as one block: its outer corners stay round, their meeting edges square,
-	// and their washes meet without a gap. A day or the unread divider between them ends the block.
-	type MentionRun = { mention: boolean; first: boolean; last: boolean; only: boolean; corners: string };
-	const NO_MENTION: MentionRun = { mention: false, first: false, last: false, only: false, corners: "rounded-xl" };
+	// and their washes meet without a gap. A day or the unread divider between them ends the block. The list's DOM is
+	// newest first and its flex column reverses it, so "top" is the older side of a pair: the highest index of a run.
+	type MentionRun = { mention: boolean; top: boolean; bottom: boolean; only: boolean; corners: string };
+	const NO_MENTION: MentionRun = { mention: false, top: false, bottom: false, only: false, corners: "rounded-xl" };
 	const mentionRuns = $derived.by(() => {
 		const user = $currentUser;
 		const mentioned = sortedMessages.map(
@@ -773,17 +774,17 @@
 			(unreadDividerIdx === null || unreadDividerIdx <= 0 || index !== unreadDividerIdx) &&
 			!shapes[index - 1]?.newDay;
 		return mentioned.map((mention, i) => {
-			const previous = joins(i) && mentioned[i - 1]!;
-			const next = joins(i + 1) && mentioned[i + 1]!;
-			const first = mention && !previous;
-			const last = mention && !next;
-			const only = first && last;
+			const newer = joins(i) && mentioned[i - 1]!;
+			const older = joins(i + 1) && mentioned[i + 1]!;
+			const top = mention && !older;
+			const bottom = mention && !newer;
+			const only = top && bottom;
 			return {
 				mention,
-				first,
-				last,
+				top,
+				bottom,
 				only,
-				corners: mention ? (only ? "rounded-xl" : first ? "rounded-t-xl" : last ? "rounded-b-xl" : "") : "rounded-xl",
+				corners: mention ? (only ? "rounded-xl" : top ? "rounded-t-xl" : bottom ? "rounded-b-xl" : "") : "rounded-xl",
 			};
 		});
 	});
@@ -1309,7 +1310,7 @@
 							data-message-id={message.id}
 							tabindex={tabStopId === message.id ? 0 : -1}
 							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] px-2 py-[3px] {mentionRun.corners} {shape.first
-								? mentionRun.mention && !mentionRun.first
+								? mentionRun.mention && !mentionRun.top
 									? 'pt-1.5'
 									: 'mt-3 pt-1.5'
 								: ''} {isFailed

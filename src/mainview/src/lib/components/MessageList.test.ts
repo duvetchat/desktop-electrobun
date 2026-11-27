@@ -400,6 +400,8 @@ describe("the two layouts", () => {
 		expect(html).not.toContain("radial-gradient(420px_80px_at_60px_50%");
 		expect(html).toContain("rounded-t-xl");
 		expect(html).toContain("rounded-b-xl");
+		// The DOM runs newest first, so the newest message's bottom edge comes before the oldest message's top one.
+		expect(html.indexOf("rounded-b-xl")).toBeLessThan(html.indexOf("rounded-t-xl"));
 	});
 
 	test("a day's label sits between two hairlines in flat rows, and alone in bubbles", async () => {
