@@ -26,8 +26,15 @@ describe("a draft per chat", () => {
 	});
 
 	test("a send and a picked command leave the box's draft empty, there and then, not when the answer comes", () => {
-		expect(input).toMatch(/onSubmit\(raw, filesToSend\);[\s\S]{0,200}keepDraft\(""\);\s*\}/);
+		expect(input).toMatch(/onSubmit\(raw, filesToSend\);[\s\S]*?keepDraft\(""\);\s*\}/);
 		expect(input).toMatch(/keepDraft\(""\);\s*onCommand\?\.\(entry, app\);/);
+	});
+
+	test("a sent message, a picked file and a file chip give the box the focus back", () => {
+		expect(input).toMatch(/if \(!destroyed\) focus\(\);/);
+		expect(input).toMatch(/if \(!editing && !destroyed\) \{\s*inputEl\.focus\(\);\s*setOffset\(0\);/);
+		expect(chat).toMatch(/toggleSpoiler\(key, i\);\s*focus\(\);/);
+		expect(chat).toMatch(/removePendingFile\(key, i\);\s*focus\(\);/);
 	});
 
 	test("a box that's gone sends nothing: an Enter waiting for the commands list, a recording, a file dialog", () => {

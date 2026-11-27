@@ -274,6 +274,8 @@
 			pendingFiles = [...pendingFiles, ...Array.from(input.files)];
 		}
 		input.value = "";
+		// The file dialog took the focus: typing the message that goes with the file has to reach the box again.
+		if (!destroyed) focus();
 	}
 
 	onMount(() => {
@@ -928,6 +930,11 @@
 		// What was sent is no draft to undo back to.
 		undoStack = [{ raw: "", cursor: 0 }];
 		undoIndex = 0;
+		// The send button may have had the focus, or the + menu that picked the file: the next message starts here.
+		if (!editing && !destroyed) {
+			inputEl.focus();
+			setOffset(0);
+		}
 		keepDraft("");
 	}
 
