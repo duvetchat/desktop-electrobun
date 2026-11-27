@@ -43,16 +43,18 @@ describe("the Now section", () => {
 			'"shell_now_in_voice"',
 			'"shell_now_online_friends"',
 			"Permission.JoinVoice",
-			"onFriend(friend.id)",
-			"onclick={onFriendsSelect}",
+			"{onFriend}",
+			"onMore={onFriendsSelect}",
+			"OnlineFriendFaces.svelte",
 			// The folds and "show more", saved on this device.
 			'toggleNow("roomsFolded")',
 			'toggleNow("friendsFolded")',
 			'toggleNow("allRooms")',
 		])
 			expect(now, part).toContain(part);
-		// Every row the jump marks label (keyboard.ts): a call, a room, a friend's row and a friend's face.
-		expect(now.match(/\bdata-jump\b/g)).toHaveLength(4);
+		// Every row the jump marks label (keyboard.ts): a call, a room and a friend's row. The faces are in
+		// OnlineFriendFaces, which marks its own.
+		expect(now.match(/\bdata-jump\b/g)).toHaveLength(3);
 	});
 
 	// #464: the percent sign is the message's, so English writes 42% on every system (Intl's percent writes "42 %"

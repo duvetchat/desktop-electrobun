@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
@@ -64,7 +64,15 @@
 	import { nameColors } from "$lib/name-colors";
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
-	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
+	import {
+		PRISM_BUBBLE,
+		PRISM_LIGHT,
+		PRISM_RIM,
+		PRISM_WASH,
+		PRISM_WASH_RUN,
+		placePrismsIn,
+		slidePrismsIn,
+	} from "$lib/prism";
 	import {
 		MESSAGE_BODY,
 		MESSAGE_CARD,
@@ -747,6 +755,40 @@
 	// Each message's place in its group and its day (lib/message-groups.ts), in the list's order.
 	const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));
 
+	// Mentions of the user that follow one another as one block: its outer corners stay round, their meeting edges square,
+	// and their washes meet without a gap. A day or the unread divider between them ends the block. The list's DOM is
+	// newest first and its flex column reverses it, so "top" is the older side of a pair: the highest index of a run.
+	type MentionRun = { mention: boolean; top: boolean; bottom: boolean; only: boolean; corners: string };
+	const NO_MENTION: MentionRun = { mention: false, top: false, bottom: false, only: false, corners: "rounded-xl" };
+	const mentionRuns = $derived.by(() => {
+		const user = $currentUser;
+		const mentioned = sortedMessages.map(
+			(message) =>
+				!!user &&
+				message.author_id !== user.id &&
+				(messageText(message).includes(`<@${user.id}>`) || mentionsByReply(message, user.id)),
+		);
+		const joins = (index: number) =>
+			index > 0 &&
+			index < mentioned.length &&
+			(unreadDividerIdx === null || unreadDividerIdx <= 0 || index !== unreadDividerIdx) &&
+			!shapes[index - 1]?.newDay;
+		return mentioned.map((mention, i) => {
+			const newer = joins(i) && mentioned[i - 1]!;
+			const older = joins(i + 1) && mentioned[i + 1]!;
+			const top = mention && !older;
+			const bottom = mention && !newer;
+			const only = top && bottom;
+			return {
+				mention,
+				top,
+				bottom,
+				only,
+				corners: mention ? (only ? "rounded-xl" : top ? "rounded-t-xl" : bottom ? "rounded-b-xl" : "") : "rounded-xl",
+			};
+		});
+	});
+
 	// ── Where a visit opens ────────────────────────────────────────────────────
 	// The list stays mounted across channels and while hidden (the friends view hides it), and a hidden
 	// list has no size: it can't be scrolled, and it loses its position. So each visit (another channel,
@@ -1204,10 +1246,8 @@
 					{@const ephemeral = isEphemeral(message)}
 					{@const isHighlighted = highlightedMessageId === message.id}
 					{@const mine = !!$currentUser && message.author_id === $currentUser.id}
-					{@const isMention =
-						!!$currentUser &&
-						!mine &&
-						(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
+					{@const mentionRun = mentionRuns[i] ?? NO_MENTION}
+					{@const isMention = mentionRun.mention}
 					{@const callLine = callNoticeLines.get(message.id)}
 					{@const barShown =
 						(hoveredMessageId === message.id ||
@@ -1269,14 +1309,18 @@
 						<div
 							data-message-id={message.id}
 							tabindex={tabStopId === message.id ? 0 : -1}
-							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-2 py-[3px] {shape.first
-								? 'mt-3 pt-1.5'
+							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] px-2 py-[3px] {mentionRun.corners} {shape.first
+								? mentionRun.mention && !mentionRun.top
+									? 'pt-1.5'
+									: 'mt-3 pt-1.5'
 								: ''} {isFailed
 								? 'bg-duvet-danger/10'
 								: isHighlighted
 									? 'bg-duvet-accent-tint'
 									: isMention
-										? PRISM_WASH
+										? mentionRun.only
+											? PRISM_WASH
+											: PRISM_WASH_RUN
 										: 'hover:bg-duvet-hover-soft'} {isPending && !isFailed
 								? 'pointer-events-none opacity-50'
 								: ''} {cursorOn ? 'outline-duvet-accent outline-2 -outline-offset-2' : ''}"
@@ -1528,6 +1572,12 @@
 		{#if editingMessageId === message.id}
 			<InlineMessageEditor
 				content={message.content ?? ""}
+				{mentionMap}
+				{customEmojiMap}
+				{members}
+				rooms={space ? mentionableRooms(space) : []}
+				{emojiGroups}
+				spaceId={spaceId || null}
 				onSave={(text) => onSaveEdit?.(message.id, text)}
 				onCancel={() => (editingMessageId = null)}
 			/>
