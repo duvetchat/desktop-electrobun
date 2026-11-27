@@ -159,6 +159,7 @@
 	"e2e_key_changed": "A notice over the message box of each conversation with someone whose security keys changed (a new device setup or new keys of theirs, or someone else's). {name} is their name.",
 	"e2e_key_changed_close": "[short] The label of the × that closes a changed key's notice (a verb).",
 	"e2e_key_changed_verified": "After e2e_key_changed, for someone the person had verified; also the question before their next message goes. {name} is the contact's name, or several joined as a list.",
+	"e2e_key_in_file": "In Settings → Devices, in the desktop app on Linux: the computer has no system keyring (a Secret Service), so the key of the person's encrypted conversations is in a file beside them, which only their user account can read.",
 	"e2e_keys_again": "In the encryption bar and in Settings → Devices, after a change of the security keys went on without devices that had left the account: one of them may still hold those keys, so another change is offered.",
 	"e2e_leave_elsewhere": "In the Leave group dialog of an encrypted group, when this device isn't in the group's encryption (not joined yet, or waiting to be let back in): the person leaves from another of their devices.",
 	"e2e_leave_failed": "In the Leave group dialog, when leaving failed for another reason.",

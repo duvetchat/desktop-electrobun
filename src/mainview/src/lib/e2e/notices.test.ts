@@ -96,6 +96,16 @@ describe("the notices", () => {
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
 
+	test("where the key is kept says the table's words", () => {
+		// The desktop's, the one app whose key is in the system's keyring (PLAN-E2E-PLATAFORMAS.md, «Avisos nuevos»):
+		// Settings says when Linux has none, and the key is in a file (decision 19).
+		const words: [keyof typeof en, NoticeKey][] = [["e2e_key_in_file", "key_in_file"]];
+		for (const [key, table] of words) {
+			expect(NOTICES[table]).toEqual(expect.any(String));
+			expect(en[key]).toBe(NOTICES[table]);
+		}
+	});
+
 	test("the encrypted backup says the table's words", () => {
 		// Settings' row, a new device's restore as it goes, and a pause and why (task 32): the mobile app takes the same.
 		const words: [keyof typeof en, NoticeKey][] = [

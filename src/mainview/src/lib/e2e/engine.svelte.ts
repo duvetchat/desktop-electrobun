@@ -163,6 +163,7 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		encryption.state = state;
 		encryption.cutoverAt = made.cutoverAt;
 		encryption.serverKeyChanged = made.serverKeyChanged;
+		encryption.keyStorage = made.keyStorage;
 		// The user's other tabs show it too: a new device's setup moves on here, in the tab that leads.
 		tabs?.stateChanged();
 		// Ready, the rows the views asked for before may be there now.
@@ -706,6 +707,7 @@ export async function stopEngine(): Promise<void> {
 	encryption.conversations = {};
 	encryption.cutoverAt = null;
 	encryption.serverKeyChanged = false;
+	encryption.keyStorage = null;
 	encryption.offers = {};
 	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };

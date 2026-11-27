@@ -30,6 +30,10 @@ export const NOTICES = {
 	locked: "Encrypted conversations are open in another Duvet window.",
 	// The mobile app's, while another engine of its holds the core (mobile#371): this app never shows it.
 	locked_phone: "Encrypted conversations are busy on this phone. Duvet tries again on its own.",
+	// This app's, the one whose key is in the system's keyring (PLAN-E2E-PLATAFORMAS.md, «Avisos nuevos»): Settings says
+	// when Linux has none, and the key is in a file beside the database (decision 19). The mobile app never shows it.
+	key_in_file:
+		"This computer has no system keyring, so the key to your encrypted conversations is kept in a file that only your user can read.",
 	// The API serves another external sender than the one this device pinned (Ruling 32, #575 M5): said while it's served.
 	server_key_changed:
 		"Duvet's server key isn't the one this device first saw. This device keeps the first one, so a conversation that uses the new one won't open here.",

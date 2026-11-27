@@ -7,6 +7,7 @@ import type { BackupShown } from "./engine/backup";
 import type { ContactsShown } from "./engine/contacts";
 import type { EngineState, SharedOffer } from "./engine/engine";
 import type { ConversationState } from "./engine/sync";
+import type { HostOpened } from "./host";
 
 export const encryption = $state<{
 	state: EngineState;
@@ -17,6 +18,11 @@ export const encryption = $state<{
 	cutoverAt: string | null;
 	/** The API serves another server key than the one this device first saw (Ruling 32, #575 M5). */
 	serverKeyChanged: boolean;
+	/**
+	 * Where the core keeps the database's key, as its open said: Settings → Devices says when it's a file, where Linux
+	 * has no Secret Service (PLAN-E2E-PLATAFORMAS.md, Task 4). Null until an open says.
+	 */
+	keyStorage: HostOpened["keyStorage"] | null;
 	/** The person's contacts as the engine holds them (contacts.ts): their changed keys, and whom they verified. */
 	contacts: ContactsShown;
 	/** What a ready device's encrypted backup shows (backup.ts): until the engine says, nothing is known to be up. */
@@ -27,6 +33,7 @@ export const encryption = $state<{
 	offers: {},
 	cutoverAt: null,
 	serverKeyChanged: false,
+	keyStorage: null,
 	contacts: { changes: {}, verified: {} },
 	backup: { state: "uploading" },
 });

@@ -211,6 +211,11 @@ export class E2EEngine {
 	 * views say so while it's served (#575, M5), as a group under the new one won't open here.
 	 */
 	serverKeyChanged = false;
+	/**
+	 * Where the core keeps this device's database key, as its last open that went through said: a file where Linux has no
+	 * Secret Service, which Settings says (PLAN-E2E-PLATAFORMAS.md, Task 4); null before one did.
+	 */
+	keyStorage: HostOpened["keyStorage"] | null = null;
 	readonly #parts: EngineParts;
 	readonly #listeners = new Set<(state: EngineState) => void>();
 	/** The flow under way: each one waits for the one before. */
@@ -1598,6 +1603,7 @@ export class E2EEngine {
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);
+			this.keyStorage = opened.keyStorage ?? null;
 			this.#keysAgain = parts.store.read(KEYS_AGAIN) === true;
 			this.#relisted = parts.store.read(RELISTED) === true;
 			const { status, keys } = await ownDevice(parts);
