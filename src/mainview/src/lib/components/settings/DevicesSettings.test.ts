@@ -1,6 +1,7 @@
 // oxlint-disable-next-line import/no-unassigned-import -- it has Bun load .svelte files compiled for the server
 import "../server-render";
 import { describe, expect, test } from "bun:test";
+import { formatDate } from "$lib/i18n/format";
 import { render } from "svelte/server";
 import type { Device } from "$lib/api/e2e";
 import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
@@ -42,6 +43,8 @@ const PHONE = device("0193a4b2-0000-7000-8000-0000000000a2", "Pixel 8 Pro", {
 const BROWSER = device("0193a4b2-0000-7000-8000-0000000000a3", "Firefox on Linux", { listed: false });
 /** A device another one took off, whose registration went with its name. */
 const GONE = "0193b7c1-0000-7000-8000-0000000000a4";
+/** What a device the API no longer lists is said with: the person's way out. */
+const CANCEL = "If you didn't remove it or change your password, cancel.";
 
 const props = (more: Record<string, unknown> = {}) => ({
 	devices: [THIS, PHONE, BROWSER],
@@ -176,16 +179,30 @@ describe("Settings' devices", () => {
 	});
 
 	// #575 (I2): on the web the dialog is the only question. A device the server no longer lists, which the list this
-	// removal signs takes off too, is named there, by its ID's start, and is what goes with the person's yes.
+	// removal signs takes off too, is named there, and is what goes with the person's yes.
 	test("name the devices the server no longer lists, which the list takes off too", () => {
 		const notes = removalNotes(PHONE, { along: [], away: [GONE, PHONE.id] }, [THIS, PHONE, BROWSER]);
-		const away = `Your password change took ${GONE.slice(0, 8)} off your account: this takes it off your device list too.`;
+		const away = `Duvet no longer lists the device whose ID starts with ${GONE.slice(0, 8)}. ${CANCEL}`;
 		expect(notes).toContain(away);
 		expect(dropped({ along: [BROWSER.id], away: [GONE, PHONE.id] }, PHONE.id)).toEqual([BROWSER.id, GONE]);
 		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE] }, async () => {});
 		const message = confirmStore.pending?.message ?? "";
 		confirmStore.cancel();
 		expect(message).toContain(away);
+	});
+
+	// #575 (N-M7): a device the API no longer lists is named by what's known of it (its name, its client and when it was
+	// added), by its ID only when nothing else is; and the words don't tell the server's story in the app's voice: if the
+	// person removed nothing and changed no password, they cancel.
+	test("name a device the API no longer lists by what's known of it, and say to cancel", () => {
+		const known = { [GONE]: { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" } };
+		const date = formatDate(Date.parse("2026-11-03T10:00:00Z"), { dateStyle: "medium" });
+		const named = `Duvet no longer lists Galaxy Tab (android/1.0.0, added ${date}). ${CANCEL}`;
+		expect(removalNotes(PHONE, { along: [], away: [GONE], known }, [THIS, PHONE])).toContain(named);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE], known }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(named);
 	});
 
 	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.

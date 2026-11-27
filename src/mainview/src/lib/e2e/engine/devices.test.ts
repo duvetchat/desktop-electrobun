@@ -587,14 +587,14 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			useFake(fake);
 			const a = await firstDevice(fake, ana);
 			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
-			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [] });
+			expect(await a.engine.alsoRemoved()).toMatchObject({ along: [], away: [] });
 			fake.refuse(LIST, 500, { error: "internal server error" });
 			await rejection(a.engine.removeDevice(deviceOf(b)));
-			expect(await a.engine.alsoRemoved()).toEqual({ along: [deviceOf(b)], away: [] });
+			expect(await a.engine.alsoRemoved()).toMatchObject({ along: [deviceOf(b)], away: [] });
 			// The next removal takes it along, once the person was shown it, and then nothing waits.
 			await a.engine.removeDevice(deviceOf(c), { named: [deviceOf(b)] });
 			expect(await deviceIds(a)).toEqual([deviceOf(a)]);
-			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [] });
+			expect(await a.engine.alsoRemoved()).toMatchObject({ along: [], away: [] });
 			await Promise.all([a, b, c].map((device) => device.engine.stop()));
 		},
 		SLOW,
@@ -727,6 +727,8 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			const [b, c] = [await approvedDevice(fake, a), await approvedDevice(fake, a)];
 			const listed = async () => listDevices((await a.api.identity(ana)).device_list)?.sort();
 			const all = [deviceOf(a), deviceOf(b), deviceOf(c)].sort();
+			const cys = (await a.api.devices()).find(({ id }) => id === deviceOf(c));
+			await turnEnded(a);
 			// The server lists Ana's devices without Cy's.
 			fake.devicesAs = (devices) => devices.filter(({ id }) => id !== deviceOf(c));
 			// The person was shown B's removal alone, and new keys that take nothing off: no list changes.
@@ -734,8 +736,13 @@ describe.skipIf(!coreLibrary)("the user's devices", () => {
 			expect(await rejection(a.engine.changeKeys())).toMatchObject({ code: "devices_changed" });
 			expect(removed).toEqual([]);
 			expect(await listed()).toEqual(all);
-			// What the question names beside the device asked for: Cy's, which GET …/devices leaves out.
-			expect(await a.engine.alsoRemoved()).toEqual({ along: [], away: [deviceOf(c)] });
+			// What the question names beside the device asked for: Cy's, which GET …/devices leaves out, as this device last
+			// saw it listed (#575, N-M7).
+			const { name, client, created_at } = cys!;
+			expect(await a.engine.alsoRemoved()).toEqual({
+				...{ along: [], away: [deviceOf(c)] },
+				known: { [deviceOf(c)]: { name, client, created_at } },
+			});
 			// Shown Cy's too, the yes takes off exactly those two.
 			await a.engine.removeDevice(deviceOf(b), { named: [deviceOf(c)] });
 			expect(removed).toEqual([[deviceOf(b), deviceOf(c)]]);

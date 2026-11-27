@@ -11,7 +11,7 @@ import { CoreError } from "../errors";
 import { coreStatus, type CoreStatus } from "./bootstrap";
 import type { EngineParts, EngineState } from "./engine";
 import { observeOwn, servedIdentity } from "./identity";
-import { KEPT_ROTATION, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
+import { KEPT_ROTATION, KNOWN_DEVICES, TOLD_ADDED, TOLD_INACTIVE, type EngineStore } from "./store";
 
 /** How long a device goes unseen before Settings marks it and the app tells of it once (decisions 13 and 52). */
 export const INACTIVE_MS = 45 * 24 * 3600 * 1000;
@@ -73,9 +73,49 @@ export function addedToTell(store: EngineStore, device: UserDevice): boolean {
  * yet (one this device approved, whose own list hasn't gone up: task 24's review, M2), as GET …/devices tells: the
  * Android twin's rule (task 25).
  */
-export async function takenAway(api: E2eApi, held: readonly string[], self: string | undefined): Promise<string[]> {
-	const registered = new Set((await api.devices()).map(({ id }) => id));
+export async function takenAway(
+	api: E2eApi,
+	held: readonly string[],
+	self: string | undefined,
+	store?: EngineStore,
+): Promise<string[]> {
+	const devices = await api.devices();
+	if (store) knowDevices(store, devices);
+	const registered = new Set(devices.map(({ id }) => id));
 	return held.filter((id) => id !== self && !registered.has(id));
+}
+
+/** What's known of a device of the user's (#575, N-M7): its name, its client and when it was added. */
+export type KnownDevice = Pick<UserDevice, "name" | "client" | "created_at">;
+
+/** How many devices' records KNOWN_DEVICES keeps: those seen last. */
+const KNOWN_KEPT = 100;
+
+/** The user's devices as GET …/devices or DEVICE_ADD gave them, kept by ID: what a list that drops one names it by. */
+export function knowDevices(store: EngineStore, devices: readonly UserDevice[]) {
+	if (!devices.length) return;
+	const kept = knownDevices(store);
+	for (const { id, name, client, created_at } of devices) {
+		delete kept[id];
+		kept[id] = { name, client, created_at };
+	}
+	store.write(KNOWN_DEVICES, Object.fromEntries(Object.entries(kept).slice(-KNOWN_KEPT)));
+}
+
+/** What this installation last saw of its user's devices (KNOWN_DEVICES), by ID. */
+export function knownDevices(store: EngineStore): Record<string, KnownDevice> {
+	const kept = store.read<unknown>(KNOWN_DEVICES);
+	const read: Record<string, KnownDevice> = {};
+	if (typeof kept !== "object" || kept === null) return read;
+	for (const [id, value] of Object.entries(kept)) {
+		if (typeof value !== "object" || value === null) continue;
+		if (!("name" in value) || !("client" in value) || !("created_at" in value)) continue;
+		const { name, client, created_at } = value;
+		if (typeof name === "string" && typeof client === "string" && typeof created_at === "string") {
+			read[id] = { name, client, created_at };
+		}
+	}
+	return read;
 }
 
 /** The devices the list this device holds of its user names. */
@@ -90,6 +130,8 @@ const heldDevices = (status: CoreStatus) => (status.device_list && listDevices(s
 export interface Drops {
 	along: string[];
 	away: string[];
+	/** What's known of each device it names (N-M7): GET …/devices', or what this installation last saw of it. */
+	known?: Record<string, KnownDevice>;
 }
 
 /**
@@ -139,7 +181,7 @@ export async function signWithout(
 		const held = heldDevices(status);
 		// On neither list: done. On this device's alone, an approval of its own that never finished (task 26's I1).
 		if (!listed.includes(device) && !held.includes(device)) return;
-		const away = alone ? [] : await takenAway(api, held, status.device_id);
+		const away = alone ? [] : await takenAway(api, held, status.device_id, parts.store);
 		if (!alone) shownAll([...away, ...listed.filter((id) => !held.includes(id))], [device, ...named]);
 		const off = [...new Set([device, ...away])].filter((id) => held.includes(id));
 		const device_list = off.length
@@ -174,7 +216,10 @@ export async function alsoDropped(parts: EngineParts): Promise<Drops> {
 	if (status.waiting_upload === "rotate_keys") return { along: [], away: [] };
 	const held = heldDevices(status);
 	const along = (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
-	return { along, away: await takenAway(parts.api, held, status.device_id) };
+	const away = await takenAway(parts.api, held, status.device_id, parts.store);
+	const seen = knownDevices(parts.store);
+	const known = Object.fromEntries([...along, ...away].flatMap((id) => (seen[id] ? [[id, seen[id]]] : [])));
+	return { along, away, known };
 }
 
 /**
@@ -262,7 +307,7 @@ export async function makeKeys(
 		status = await coreStatus(host);
 		const held = heldDevices(status);
 		const asked = remove.filter((id) => held.includes(id));
-		const away = await takenAway(parts.api, held, status.device_id);
+		const away = await takenAway(parts.api, held, status.device_id, store);
 		const along = (listDevices(served.device_list) ?? []).filter((id) => !held.includes(id));
 		shownAll([...away, ...along], [...remove, ...named]);
 		removing = [...new Set([...asked, ...away])];

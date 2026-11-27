@@ -5,7 +5,7 @@
 	import { onlyDevice, type Drops } from "$lib/e2e/engine/devices";
 	import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
-	import { formatList, formatNumber } from "$lib/i18n/format";
+	import { formatDate, formatList, formatNumber } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 
 	/**
@@ -24,19 +24,32 @@
 		removeThisDevice(): Promise<void>;
 	}
 
-	/** Devices by their names, or by the start of their IDs for those the list of them doesn't have. */
-	const namesOf = (ids: readonly string[], devices: readonly Device[] | null) =>
-		formatList(ids.map((id) => devices?.find((device) => device.id === id)?.name ?? id.slice(0, 8)));
+	/** Devices by their names: as listed now, or as this device last saw them, else by the start of their IDs. */
+	const namesOf = (ids: readonly string[], devices: readonly Device[] | null, known: Drops["known"]) =>
+		formatList(
+			ids.map((id) => devices?.find((device) => device.id === id)?.name ?? known?.[id]?.name ?? id.slice(0, 8)),
+		);
+
+	/**
+	 * A device the API no longer lists, by what's known of it (#575, N-M7): its name, its client and when it was added,
+	 * as listed now or as this device last saw it; by the start of its ID only when nothing else is.
+	 */
+	function deviceWords(id: string, devices: readonly Device[] | null, known: Drops["known"]): string {
+		const seen = devices?.find((device) => device.id === id) ?? known?.[id];
+		if (!seen) return t("e2e_device_by_id", { id: id.slice(0, 8) });
+		const date = formatDate(Date.parse(seen.created_at), { dateStyle: "medium" });
+		return t("e2e_device_known", { name: seen.name, client: seen.client, date });
+	}
 
 	/**
 	 * The sentences naming what a list leaves out beside what's asked, or none: the devices an earlier removal takes along
-	 * (M3), and those the API no longer lists (#575), which GET …/devices leaves out, by the start of their IDs, in the
-	 * words a first list names them with, as the mobile app does.
+	 * (M3), and each the API no longer lists (#575), which GET …/devices leaves out, with the person's way out: never the
+	 * server's story in the app's voice (N-M7).
 	 */
-	function dropLines({ along, away }: Drops, devices: readonly Device[] | null): string[] {
+	function dropLines({ along, away, known }: Drops, devices: readonly Device[] | null): string[] {
 		return [
-			...(along.length ? [t("e2e_device_remove_along", { names: namesOf(along, devices) })] : []),
-			...(away.length ? [t("e2e_device_remove_away", { names: namesOf(away, devices), count: away.length })] : []),
+			...(along.length ? [t("e2e_device_remove_along", { names: namesOf(along, devices, known) })] : []),
+			...away.map((id) => t("e2e_device_remove_away", { device: deviceWords(id, devices, known) })),
 		];
 	}
 
@@ -52,6 +65,7 @@
 		const beside = {
 			along: drops.along.filter((id) => id !== device.id),
 			away: drops.away.filter((id) => id !== device.id),
+			...(drops.known ? { known: drops.known } : {}),
 		};
 		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...dropLines(beside, devices)];
 	}
@@ -133,7 +147,6 @@
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { stuckText } from "$lib/components/e2e/EncryptionGate.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
-	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
 	import SettingsGroup from "./SettingsGroup.svelte";
 	import SettingsRow from "./SettingsRow.svelte";

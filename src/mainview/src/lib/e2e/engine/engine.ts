@@ -20,6 +20,7 @@ import {
 	alsoDropped,
 	goneDevices,
 	inactiveToTell,
+	knowDevices,
 	makeKeys,
 	publishKeys,
 	removeDevice,
@@ -1383,6 +1384,8 @@ export class E2EEngine {
 				if (own(event.data.device_id)) this.#set({ name: "removed" });
 				break;
 			case "DEVICE_ADD":
+				// What it is, kept for a list that may drop it once the API no longer lists it (#575, N-M7).
+				knowDevices(this.#parts.store, [event.data]);
 				// Its registration, then its listing: told once, and never of this installation's own device.
 				if (event.data.id !== this.#self && addedToTell(this.#parts.store, event.data)) {
 					this.#tell({ kind: "added", device: event.data });
@@ -1448,7 +1451,9 @@ export class E2EEngine {
 	/** The user's devices not seen in 45 days, each told of once, on a device that can take them off (ready). */
 	async #tellInactive(): Promise<void> {
 		if (this.state.name !== "ready") return;
-		for (const device of inactiveToTell(this.#parts.store, await this.#parts.api.devices())) {
+		const devices = await this.#parts.api.devices();
+		knowDevices(this.#parts.store, devices);
+		for (const device of inactiveToTell(this.#parts.store, devices)) {
 			this.#tell({ kind: "inactive", device });
 		}
 	}

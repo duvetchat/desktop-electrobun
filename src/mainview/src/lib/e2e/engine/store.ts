@@ -75,6 +75,11 @@ export const DEVICE_RECORD = [
 	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE, BACKUP_SET_ASIDE],
 ];
+/**
+ * What this installation last saw of each of its user's devices, by ID (devices.ts' knowDevices): its name, its client
+ * and when it was added, which a list that drops one the API no longer lists names it by (#575, N-M7). Nothing secret.
+ */
+export const KNOWN_DEVICES = "known_devices";
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";
 export const TOLD_ADDED = "told_added";
