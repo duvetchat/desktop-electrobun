@@ -142,6 +142,12 @@ nix profile install .                            # or add `overlays.default` to 
 The package is built with `electrobun build --env=dev`, which yields a plain app directory; the
 other environments produce a self-extracting installer that unpacks into `$HOME` at first run.
 
+**End-to-end encryption on Linux:** an x86_64 build carries the core, `native/core/linux-x64/libduvet_e2e_ffi.so`,
+in `Resources/app/native/`, and the Nix package carries it unchanged (Nix's loader finds the `libgcc_s` it needs in
+gcc's own). The core keeps its database's key in the Secret Service (GNOME Keyring, KWallet) when the session has one,
+and otherwise in a file beside the database that only your user can read. It needs glibc 2.34, under the 2.38 that
+Electrobun's own native wrapper needs (Ubuntu 24.04, Debian 13, Fedora 39 or later).
+
 Maintenance:
 
 - Bumping `electrobun` in `package.json` also needs `version` and `hashes` in `nix/electrobun.nix`

@@ -1,12 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import config from "../../../electrobun.config";
-import { coreLibraryCopy, coreLibraryPath } from "./library";
 
-// The core in the app's Bun (PLAN-E2E-CLIENTES.md, Task 7): the library each build carries and where the app finds it,
-// and the core opened as the app opens it, its key in the keyring its config names.
+// The core in the app's Bun (PLAN-E2E-CLIENTES.md, Task 7): the core opened as the app opens it, its key in the keyring
+// its config names. The library each build carries is library.test.ts's.
 
 const ROOT = join(import.meta.dir, "../../..");
 /** The Linux library native/core carries for the tests, or the build DUVET_E2E_FFI names. */
@@ -22,41 +21,6 @@ const folder = () => {
 	folders.push(made);
 	return made;
 };
-
-describe("the core's library in the app", () => {
-	test("a Windows build carries the DLL, where the app loads it; macOS and Linux carry none", () => {
-		expect(coreLibraryCopy("win32", "x64")).toEqual({
-			"native/core/win-x64/duvet_e2e_ffi.dll": "native/duvet_e2e_ffi.dll",
-		});
-		expect(existsSync(join(ROOT, "native/core/win-x64/duvet_e2e_ffi.dll"))).toBe(true);
-		for (const [platform, arch] of [
-			["linux", "x64"],
-			["darwin", "arm64"],
-			["darwin", "x64"],
-			["win32", "arm64"],
-		] as const) {
-			expect(coreLibraryCopy(platform, arch)).toEqual({});
-		}
-		// The build's own rule, on the system it runs on: Electrobun builds for that one alone.
-		const copy: Record<string, string> = config.build.copy;
-		expect(Object.entries(copy).filter(([from]) => from.startsWith("native/core/"))).toEqual(
-			Object.entries(coreLibraryCopy(process.platform, process.arch)),
-		);
-	});
-
-	test("the app finds it where the copy rule puts it, and without it the core is unsupported", () => {
-		// Electrobun copies into Resources/app, which is nativeLibraryPath's folder (native-library.ts).
-		const app = folder();
-		const inApp = (name: string) => join(app, "native", name);
-		expect(coreLibraryPath(inApp, "win32", "x64")).toBeNull();
-		mkdirSync(join(app, "native"));
-		writeFileSync(inApp("duvet_e2e_ffi.dll"), "");
-		const [copied] = Object.values(coreLibraryCopy("win32", "x64"));
-		expect(coreLibraryPath(inApp, "win32", "x64")).toBe(join(app, copied));
-		expect(coreLibraryPath(inApp, "linux", "x64")).toBeNull();
-		expect(coreLibraryPath(inApp, "darwin", "arm64")).toBeNull();
-	});
-});
 
 // The app runs the worker from coreWorker's source as Electrobun's build prints it. A bundler can put names of the
 // module's into a function's body (require becomes __require), which would leave the worker dead in the packaged app

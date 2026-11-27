@@ -260,7 +260,8 @@ const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUB
 // the system's keyring under the channel's own name (as its notifications have it) and the user's ID. The main window's
 // page reaches it through e2e/rpc.ts alone: the commands of the core's contract, and a yes in the system's box, over
 // this window, before what approves a device or makes new keys, and before another account's database than the one in
-// <userData>/e2e/last-user opens (#558). A build without the library (macOS, Linux) answers unsupported.
+// <userData>/e2e/last-user opens (#558). On Linux the core keeps the key in the Secret Service, or in a file beside the
+// database when the session has none. A build without the library (macOS's, for now) answers unsupported.
 const coreLibrary = coreLibraryPath(nativeLibraryPath);
 const e2e = e2eBoundary({
 	start: coreLibrary
