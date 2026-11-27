@@ -663,6 +663,33 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// N-M9: an honest removal the page draws before its commit reached this device. The queue is read whole before the
+	// group is said to differ: what's sent goes, to the group as it is once the commit is in, and nothing is said.
+	test(
+		"a removal the page draws before its commit comes: the queue is read first, and what's sent goes",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			let muted = false;
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo, { hears: (event) => !(muted && event.type === "MLS_COMMIT") });
+			const c = await firstDevice(fake, cy);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			// Bo's device doesn't hear the commit that takes Cy out; his page, listing again, draws the group without her.
+			muted = true;
+			await a.engine.removeMember(conversation, cy);
+			const sent = await send(b, conversation, "after Cy left");
+			await until(async () => (await textOn(a, conversation, sent.id)) === "after Cy left");
+			expect((await groupOf(b, conversation))!.members.map((member) => member.user_id)).not.toContain(cy);
+			expect(b.engine.conversationState(conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
 	// #575 (M1): `expected` is this device's own record of a conversation, never the API's word. One the server writes on
 	// a welcome holds nothing to it: a device without a record joins the group as founded.
 	test(

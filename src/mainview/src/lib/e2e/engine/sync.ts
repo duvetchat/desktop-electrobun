@@ -232,6 +232,8 @@ export class Conversations {
 	#sender = "";
 	/** The API's conversations as last listed, their groups as the events and the queue have told of them since. */
 	readonly #known = new Map<string, Conversation>();
+	/** The conversations whose queue is read whole again before their group is said to differ (#reread). */
+	readonly #rereading = new Set<string>();
 	/** Entries heard by events, by conversation and number, until the conversation's turn. */
 	readonly #heard = new Map<string, Map<number, MlsEventEntry>>();
 	readonly #states = new Map<string, ConversationState>();
@@ -916,7 +918,11 @@ export class Conversations {
 			forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
-				this.#set(conv.id, (await this.#othersIn(conv.id, held, at.due)) ?? this.#goingOn(conv.id));
+				const others = await this.#othersIn(conv.id, held, at.due);
+				// The page may draw an addition or a removal before its commit reached this device: the queue is read
+				// whole, and only then is a difference said (N-M9).
+				if (others && !read && !this.#rereading.has(conv.id)) return this.#reread(conv);
+				this.#set(conv.id, others ?? this.#goingOn(conv.id));
 				if (at.due) this.#dueLater(conv.id);
 				return;
 			}
@@ -982,14 +988,30 @@ export class Conversations {
 	 * ready_to_send). False without a group.
 	 */
 	async holdsOthers(conversationId: string): Promise<boolean> {
-		const held = await this.#group(conversationId);
+		let held = await this.#group(conversationId);
 		if (!held) return false;
-		const others = await this.#othersIn(conversationId, held, false);
+		let others = await this.#othersIn(conversationId, held, false);
+		// What differs may be a commit the queue has that this device hasn't read (N-M9): read whole, then held again.
+		if (others) {
+			await this.sync(conversationId, true);
+			held = await this.#group(conversationId);
+			others = held && (await this.#othersIn(conversationId, held, false));
+		}
 		if (others) this.#set(conversationId, others);
 		else if (this.#states.get(conversationId)?.name === "other_members") {
 			this.#set(conversationId, this.#goingOn(conversationId));
 		}
 		return others !== null;
+	}
+
+	/** A conversation's queue read whole once more before its group is said to differ (N-M9), once at a time. */
+	async #reread(conv: Conversation) {
+		this.#rereading.add(conv.id);
+		try {
+			await this.#sync(conv, true);
+		} finally {
+			this.#rereading.delete(conv.id);
+		}
 	}
 
 	/** What a conversation whose group goes on says: who in it has no device yet, or nothing. */
