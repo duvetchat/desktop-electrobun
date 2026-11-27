@@ -53,6 +53,10 @@ export type AppRPCSchema = {
 			// (src/bun/copy-image.ts), in base64, for the page to put on the clipboard (lib/copy-picture.ts); null when it
 			// can't be had. The main window's only.
 			pictureForCopy: { params: { url: string }; response: string | null };
+			// A secret the person copies (the recovery key, #569), which Bun puts on Windows' clipboard out of its history
+			// and the cloud clipboard (src/bun/secret-clipboard.ts): true once it's there, false when the clipboard took
+			// nothing, null where Bun doesn't copy it (lib/e2e/secret-copy.ts).
+			copySecret: { params: { text: string }; response: boolean | null };
 			// What the title bar offers of the app's own updates (lib/app-update.ts, #456); null for nothing.
 			pendingUpdate: { params: void; response: UpdateOffer | null };
 			// Where the YouTube relay listens (src/bun/player-relay.ts), or null.
@@ -128,6 +132,7 @@ export type AppRPCClient = {
 		nativeWindowDrag: () => Promise<boolean>;
 		windowCommand: (command: WindowCommand) => Promise<WindowAnswer>;
 		pictureForCopy: (params: { url: string }) => Promise<string | null>;
+		copySecret: (params: { text: string }) => Promise<boolean | null>;
 		pendingUpdate: () => Promise<UpdateOffer | null>;
 		playerRelay: () => Promise<string | null>;
 	};
@@ -211,6 +216,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			nativeWindowDrag: () => rpc.request.nativeWindowDrag(),
 			windowCommand: (command) => rpc.request.windowCommand(command),
 			pictureForCopy: (params) => rpc.request.pictureForCopy(params),
+			copySecret: (params) => rpc.request.copySecret(params),
 			pendingUpdate: () => rpc.request.pendingUpdate(),
 			playerRelay: () => rpc.request.playerRelay(),
 		},

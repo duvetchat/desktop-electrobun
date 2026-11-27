@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render } from "svelte/server";
 import { NOTICES } from "$lib/e2e/notices";
 import en from "../../../../messages/en.json";
@@ -39,6 +41,14 @@ describe("the recovery key's sheet", () => {
 		// Ticked, it goes on.
 		expect((await named(true, "input"))[0]?.attributes).toHaveProperty("checked");
 		expect((await named(true, "button")).at(-1)?.attributes).not.toHaveProperty("disabled");
+	});
+
+	// #569: as a secret, which Bun keeps out of Windows' clipboard history and the cloud clipboard, and which comes off
+	// the clipboard a minute later (lib/e2e/secret-copy.ts).
+	test("copies the key as a secret, never through the page's clipboard itself", () => {
+		const source = readFileSync(join(import.meta.dir, "RecoveryKeySheet.svelte"), "utf8");
+		expect(source).toContain("copySecret(");
+		expect(source).not.toContain("navigator.clipboard");
 	});
 
 	test("offers to copy the key and to download it", () => {

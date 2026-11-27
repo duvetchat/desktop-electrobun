@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Copy as CopyIcon, Download as DownloadIcon } from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
+	import { copySecret } from "$lib/e2e/secret-copy";
 	import { t } from "$lib/i18n";
 
 	// The first device's recovery key (decision 23): its 48 characters in 12 groups of 4 (decision 22), which the person
@@ -25,11 +26,12 @@
 	let copied = $state(false);
 	let busy = $state(false);
 
+	// As a secret, kept out of what remembers the clipboard and taken off it a minute later (#569).
 	async function copy() {
 		try {
-			await navigator.clipboard.writeText(groups.join(" "));
+			await copySecret(groups.join(" "));
 		} catch (error) {
-			// The webview refused the clipboard: the key still shows, and Download keeps it.
+			// The clipboard took nothing: the key still shows, and Download keeps it.
 			console.error("[e2e] The recovery key wasn't copied:", error);
 			return;
 		}
