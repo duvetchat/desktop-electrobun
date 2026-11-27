@@ -92,12 +92,18 @@ export function nativeConfirm(deps: {
 /** A notice's box while it shows. */
 export interface NoticeBox {
 	close(): void;
+	/**
+	 * Shows another notice in its place, where it is, without taking the foreground: a window's (notice-window.ts).
+	 * Windows' box has none, and a new box takes the place of the one closed.
+	 */
+	replace?(notice: Notice): void;
 }
 
 /**
  * The system's box for what asks nothing, one at a time: a notice replaces the box shown. It mustn't hold the window or
- * Bun's thread, as a confirmation's does: the person keeps it open while Duvet goes on. Only Windows has the core (38,
- * 39), and so begins an approval: elsewhere nothing shows, and an approving device's words say to compare with a box.
+ * Bun's thread, as a confirmation's does: the person keeps it open while Duvet goes on. On Windows it's user32's box;
+ * on Linux and macOS, a window of Bun's, which index.ts hands in as `open` (notice-window.ts; PLAN-E2E-PLATAFORMAS.md,
+ * Task 6). Without one nothing shows, and an approving device's words say to compare with a box.
  */
 export function nativeNotice(deps: {
 	platform: string;
@@ -108,6 +114,15 @@ export function nativeNotice(deps: {
 	return (notice) => {
 		// Only the first box of a run takes the foreground: the QR's renewal replaces it every 9 minutes (RM5).
 		const replacing = shown !== null;
+		// A box that shows the new notice where it is keeps it there, behind what the person is doing.
+		if (notice && shown?.replace) {
+			try {
+				shown.replace(notice);
+				return;
+			} catch (error) {
+				console.error("[e2e] a notice couldn't be replaced:", error);
+			}
+		}
 		try {
 			shown?.close();
 		} catch (error) {

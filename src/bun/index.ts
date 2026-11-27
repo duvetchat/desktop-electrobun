@@ -45,6 +45,7 @@ import { coreLibraryPath } from "./e2e/library";
 import { startCore } from "./e2e/core";
 import { e2eBoundary, fileMark } from "./e2e/rpc";
 import { nativeConfirm, nativeNotice } from "./e2e/confirm";
+import { noticeWindow, type NoticeWindow, type NoticeWindowOptions } from "./e2e/notice-window";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -263,6 +264,12 @@ const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUB
 // <userData>/e2e/last-user opens (#558). On Linux the core keeps the key in the Secret Service, or in a file beside the
 // database when the session has none. A build without the library (macOS's, for now) answers unsupported.
 const coreLibrary = coreLibraryPath(nativeLibraryPath);
+// What asks nothing (a new device's fingerprints, #557): Windows' own box, and elsewhere a window of Bun's, over the main
+// window, which goes with it (notice-window.ts).
+const notices = nativeNotice({
+	platform: process.platform,
+	open: process.platform === "win32" ? undefined : noticeWindow(makeNoticeWindow, () => win.getFrame()),
+});
 const e2e = e2eBoundary({
 	start: coreLibrary
 		? () =>
@@ -273,7 +280,7 @@ const e2e = e2eBoundary({
 				})
 		: null,
 	confirm: nativeConfirm({ platform: process.platform, owner: () => win.ptr, showMessageBox: Utils.showMessageBox }),
-	show: nativeNotice({ platform: process.platform }),
+	show: notices,
 	lastUser: fileMark(join(Utils.paths.userData, "e2e", "last-user")),
 	reply: (reply) => rpc.send.e2eReply(reply),
 });
@@ -626,9 +633,15 @@ const settingsWindows = new SettingsWindows({
 });
 // ── end of the Windows workstream's hook ─────────────────────────────────────────────────────────────────────────────
 
+// A notice's window, off Windows (e2e/notice-window.ts), made only once the main window is: the menu bar goes first.
+function makeNoticeWindow(options: NoticeWindowOptions): NoticeWindow {
+	return new BrowserWindow({ ...options, renderer: rendererType });
+}
+
 // The app's other windows show what the main window's page shares, and go with it.
 win.on("close", () => {
 	settingsWindows.closeAll();
+	notices(null);
 	// Nobody answers a command now, and nothing of the page that was is kept for a window to come.
 	relay.setMain(null);
 	relay.reset();
