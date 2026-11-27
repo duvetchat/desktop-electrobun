@@ -12,6 +12,8 @@ import {
 	filesOn,
 	firstDevice,
 	groupOf,
+	madeHere,
+	rejection,
 	resetFrom,
 	restarted,
 	sameGroup,
@@ -434,6 +436,62 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 				expect(a.engine.conversationState(id)).toEqual({ name: "members_changed" });
 			}
 			expect(claimed).not.toContain(eve);
+		},
+		SLOW,
+	);
+
+	// The group's own list (#574): a device that joins by a welcome can't check who founded it. Whoever its core's group
+	// holds that the conversation doesn't (a user, a kind, an owner) is said before anything more goes there.
+	test(
+		"a welcome whose group holds a user the conversation doesn't: the conversation says so and sends nothing",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			// To Bo, the group Eve makes is a DM between Ana and him.
+			fake.conversationsAs = (view, viewer) =>
+				viewer === bo && view.owner_id === eve
+					? { ...view, type: 1, owner_id: ana, members: view.members.filter((member) => member.user_id !== eve) }
+					: view;
+			const b = await firstDevice(fake, bo);
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 2, name: "three", user_ids: [ana, bo] });
+			await until(async () => (await groupOf(b, id)) !== null, { what: "Bo's device in Eve's group" });
+			await until(() => b.engine.conversationState(id)?.name === "other_members", {
+				what: "Bo's conversation saying who its group holds",
+			});
+			expect(b.engine.conversationState(id)).toEqual({ name: "other_members", users: [eve, ana, bo] });
+			expect(await rejection(send(b, id, "for Ana alone"))).toMatchObject({ code: "other_members" });
+			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// The one honest case: a member who left stays in the group until a member's commit takes them out, under the API's
+	// proposal of their removal. It isn't said, and what goes there next commits that removal first.
+	test(
+		"a member who left and waits for their removal isn't said, and what's sent next goes once it's committed",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			const usersIn = async (device: TestDevice) =>
+				(await groupOf(device, conversation))!.members.map((member) => member.user_id);
+			// The members' clocks stand still: their due commit waits. Ana's device, started again, lists him gone.
+			await c.engine.leaveConversation(conversation);
+			const again = await restarted(fake, a);
+			await turnEnded(again);
+			expect(await usersIn(again)).toContain(cy);
+			expect(again.engine.conversationState(conversation)).toBeNull();
+			const sent = await send(again, conversation, "after Cy left");
+			expect(await usersIn(again)).not.toContain(cy);
+			await until(async () => (await textOn(b, conversation, sent.id)) === "after Cy left");
+			expect(again.engine.conversationState(conversation)).toBeNull();
 		},
 		SLOW,
 	);

@@ -7,7 +7,8 @@
 	// What a conversation says over its message box of its encrypted group (PLAN-E2E-CLIENTES.md, «Avisos»): nothing while
 	// the group goes on. Blocked, its restart for whoever may make it and the wait for the others; waiting for its owner to
 	// open it, or for another member to let this device back in; members other than those this device first saw, with
-	// who they are now and the person's yes; and, while the group goes on, the members who can't receive what's sent yet.
+	// who they are now and the person's yes; a group that holds people the conversation doesn't show, naming whom it
+	// holds; and, while the group goes on, the members who can't receive what's sent yet.
 	let {
 		conversationState,
 		ownerName,
@@ -46,6 +47,12 @@
 				const detail = memberNames.length ? t("e2e_members_now", { names: formatList(memberNames) }) : undefined;
 				return { text: t("e2e_members_changed"), detail, label: t("e2e_members_accept"), run: onAccept };
 			}
+			// Whom its group holds, the people the conversation doesn't show among them (#574): nothing more goes there.
+			case "other_members":
+				return {
+					text: t("e2e_members_changed"),
+					detail: t("e2e_members_now", { names: formatList(said.users.map(memberName)) }),
+				};
 			case "no_device":
 				return { text: t("e2e_no_device", { name: formatList(said.users.map(memberName)) }) };
 			default:

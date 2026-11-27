@@ -130,7 +130,8 @@ const staleBytes = (error: unknown) =>
 	error instanceof CoreError && error.code === "rule_violation" && error.rule === "stale_message";
 /** A message held for the person's yes, a verified contact's key changed (#deliver): it waits, as an unanswered one
  * does. */
-const held = (error: unknown) => error instanceof CoreError && error.code === "key_changed";
+const held = (error: unknown) =>
+	error instanceof CoreError && (error.code === "key_changed" || error.code === "other_members");
 /** The API's (a 409): the bytes are of another generation of the group, or too many epochs behind it. */
 const staleAnswer = (error: unknown) =>
 	error instanceof FetchError && error.response?.status === 409 && error.response.data?.error === "stale message";
@@ -461,7 +462,13 @@ export class Sends {
 			if ("stale" in encrypted) return encrypted;
 			// Whom it reaches whose changed key waits for the person's yes, known by now (its encrypt may have just observed
 			// it), read in the same turn.
-			return { ...encrypted, holding: await this.#hooks.held(id) };
+			const holding = await this.#hooks.held(id);
+			// Its group holds someone the conversation doesn't show (#574): the conversation says so, and it waits, its
+			// bytes kept, once no changed key asks first. Read after its encrypt committed any removal that waited.
+			if (!holding.length && (await this.#groups.holdsOthers(id))) {
+				throw new CoreError("other_members", "this conversation's group holds people the conversation doesn't show");
+			}
+			return { ...encrypted, holding };
 		});
 		if (!made) return null;
 		if ("stale" in made) throw made.stale;
@@ -740,9 +747,12 @@ export class Sends {
 	 */
 	async #sendChange(change: Change, changes: Changes): Promise<number | null> {
 		const { conversation: id, message, kind } = change;
-		// An edit is new text: while a verified contact's changed key waits for the person's yes it waits as an unanswered
-		// one does, its bytes as the core last made them, and the yes sends it (review, I2). A deletion carries no text.
-		if (kind === "edit" && (await this.#hooks.held(id)).length) return this.#backoff(changes);
+		// An edit is new text: while a verified contact's changed key waits for the person's yes, or the group holds someone
+		// the conversation doesn't show (#574), it waits as an unanswered one does, its bytes as the core last made them,
+		// and the yes sends it (review, I2). A deletion carries no text.
+		if (kind === "edit" && ((await this.#hooks.held(id)).length || (await this.#groups.holdsOthers(id)))) {
+			return this.#backoff(changes);
+		}
 		let entry: MlsEntry;
 		try {
 			const { api } = this.#parts;

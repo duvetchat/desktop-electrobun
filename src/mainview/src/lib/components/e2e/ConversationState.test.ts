@@ -56,6 +56,14 @@ describe("a conversation's state", () => {
 		expect(changed).toMatch(/<button [^>]*>\s*Open with these members\s*<\/button>/);
 	});
 
+	// #574: whom the group holds, the people the conversation doesn't show among them, and nothing to say yes to.
+	test("a group that holds people the conversation doesn't show names whom it holds, with nothing to tap", async () => {
+		const state: State = { name: "other_members", users: ["eve", "bo"] };
+		expect(drawn(state)).toContain(NOTICES.members_changed);
+		expect(drawn(state)).toContain(notice("members_now", { names: "eve and Bo" }));
+		expect(await buttons(state)).toEqual([]);
+	});
+
 	test("the members who can't receive what's sent yet, named, with nothing to tap", async () => {
 		const state: State = { name: "no_device", users: ["bo", "cy"] };
 		expect(drawn(state)).toContain(notice("no_device", { name: "Bo and Cy" }));

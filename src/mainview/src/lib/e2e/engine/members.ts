@@ -12,10 +12,11 @@ import { withIdentities } from "./identity";
 /** A group's members at most, its owner among them (decision 17). */
 export const MAX_MEMBERS = 20;
 
-/** The group as the core holds it (its `group`): its generation and epoch, who's in it by their order, and its owner. */
+/** The group as the core holds it (its `group`): its generation and epoch, who's in it by their order, its kind and owner. */
 export interface HeldMembers {
 	generation: number;
 	epoch: number;
+	kind: "dm" | "group";
 	owner: string | null;
 	members: { user_id: string }[];
 }
@@ -64,6 +65,16 @@ export async function removal(parts: EngineParts, conv: Conversation, user: stri
 /** The users the core's group holds that the API's conversation no longer lists: whom a restart leaves out. */
 export const leftOut = (held: HeldMembers, conv: Conversation) =>
 	held.members.map((member) => member.user_id).filter((user) => !conv.members.some((m) => m.user_id === user));
+
+/**
+ * Whether the core's group holds a user, a kind or an owner the API's conversation doesn't (#574): whom what's sent there
+ * reaches that the conversation doesn't show. Those it lists that the group doesn't hold yet (an addition the queue
+ * hasn't brought) aren't.
+ */
+export const heldBeyond = (held: HeldMembers, conv: Conversation) =>
+	held.kind !== (conv.type === 1 ? "dm" : "group") ||
+	(held.kind === "group" && held.owner !== conv.owner_id) ||
+	leftOut(held, conv).length > 0;
 
 /** Two lists of users, the same whatever their order. */
 export const sameUsers = (a: readonly string[], b: readonly string[]) =>

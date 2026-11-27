@@ -23,6 +23,7 @@ import { dropRecord, forgetRecord, isRecord, legacyRecord, type LegacyRecord } f
 import {
 	addition,
 	checkAddition,
+	heldBeyond,
 	leftOut,
 	membersKey,
 	removal,
@@ -36,14 +37,16 @@ import { REFUSED_GENERATIONS, type EngineStore } from "./store";
  * What a conversation says over its message box of its group (PLAN-E2E-CLIENTES.md, «Avisos»): blocked, with who may
  * restart it (this user, its owner, or nobody, for a group under an external sender other than the pinned one); waiting
  * for its owner to make it; waiting for another member to let this device back in; members other than its record's
- * (or than any it can account for, as it would found the group: #574), or than those its group holds; or, while it
- * goes on, the members who can't receive what's sent yet (`no_device`).
+ * (or than any it can account for, as it would found the group: #574), or than those its group holds; a group whose
+ * core holds a user, a kind or an owner the conversation doesn't, with the users it holds (`other_members`, #574); or,
+ * while it goes on, the members who can't receive what's sent yet (`no_device`).
  */
 export type ConversationState =
 	| { name: "blocked"; restart: "mine" | "owner" | "none"; owner: string | null }
 	| { name: "wait_owner"; owner: string }
 	| { name: "wait_rejoin" }
 	| { name: "members_changed" }
+	| { name: "other_members"; users: string[] }
 	| { name: "no_device"; users: string[] };
 
 /** What apply answers. */
@@ -906,7 +909,7 @@ export class Conversations {
 			if (!conv.legacy) forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
-				this.#set(conv.id, this.#goingOn(conv.id));
+				this.#set(conv.id, (await this.#othersIn(conv, held, at.due)) ?? this.#goingOn(conv.id));
 				if (at.due) this.#dueLater(conv.id);
 				return;
 			}
@@ -945,6 +948,36 @@ export class Conversations {
 	#restartRefused(conv: Conversation): boolean {
 		const at = this.#cantRestart.get(conv.id);
 		return at !== undefined && (conv.mls?.last_seq ?? 0) <= at;
+	}
+
+	/**
+	 * Whom the group holds that the conversation doesn't show (#574): its core's users, when it holds a user, a kind or
+	 * an owner the API's conversation doesn't, listed again first, as an addition or a new owner may be newer than the
+	 * list this device read. A member who left and waits for their removal (`due`) isn't said: what goes there next
+	 * commits that removal first (encrypt's pending_proposals), and is held to the conversation once it's in.
+	 */
+	async #othersIn(conv: Conversation, held: Held, due: boolean): Promise<ConversationState | null> {
+		if (due || !heldBeyond(held, conv)) return null;
+		const listed = await this.#fresh(conv.id);
+		if (!listed || !heldBeyond(held, listed)) return null;
+		return { name: "other_members", users: held.members.map((member) => member.user_id) };
+	}
+
+	/**
+	 * Before anything more goes to the conversation (#574): whether its core's group holds a user, a kind or an owner the
+	 * conversation the API lists doesn't, which the conversation then says (`other_members`). Never waived for a removal
+	 * that waits: what's sent is made only once it's committed (the core's ready_to_send). False without a group.
+	 */
+	async holdsOthers(conversationId: string): Promise<boolean> {
+		const conv = this.#known.get(conversationId) ?? (await this.#fresh(conversationId));
+		const held = conv ? await this.#group(conversationId) : null;
+		if (!conv || !held) return false;
+		const others = await this.#othersIn(conv, held, false);
+		if (others) this.#set(conversationId, others);
+		else if (this.#states.get(conversationId)?.name === "other_members") {
+			this.#set(conversationId, this.#goingOn(conversationId));
+		}
+		return others !== null;
 	}
 
 	/** What a conversation whose group goes on says: who in it has no device yet, or nothing. */
