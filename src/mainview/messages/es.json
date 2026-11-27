@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Cerrar pestaña",
 	"shell_close_tabs_left": "Cerrar pestañas a la izquierda",
 	"shell_close_tabs_right": "Cerrar pestañas a la derecha",
+	"shell_collapse_all": "Colapsar todo",
+	"shell_collapsed_all": "Todos los Espacios están plegados",
 	"shell_copy_image_failed": "No se pudo copiar la imagen.",
 	"shell_deafen": "Ensordecer",
 	"shell_delete": "Eliminar",

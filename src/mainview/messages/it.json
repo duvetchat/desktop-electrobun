@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Chiudi scheda",
 	"shell_close_tabs_left": "Chiudi le schede a sinistra",
 	"shell_close_tabs_right": "Chiudi le schede a destra",
+	"shell_collapse_all": "Comprimi tutto",
+	"shell_collapsed_all": "Tutti gli Spazi sono compressi",
 	"shell_copy_image_failed": "Impossibile copiare l’immagine",
 	"shell_deafen": "Disattiva audio",
 	"shell_delete": "Elimina",

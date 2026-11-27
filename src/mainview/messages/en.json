@@ -1485,6 +1485,8 @@
 	"shell_close_tab": "Close tab",
 	"shell_close_tabs_left": "Close tabs to the left",
 	"shell_close_tabs_right": "Close tabs to the right",
+	"shell_collapse_all": "Collapse all",
+	"shell_collapsed_all": "All Spaces collapsed",
 	"shell_copy_image_failed": "Couldn't copy the image",
 	"shell_deafen": "Deafen",
 	"shell_delete": "Delete",

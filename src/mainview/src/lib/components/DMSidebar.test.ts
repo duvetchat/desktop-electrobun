@@ -167,7 +167,7 @@ describe("who's typing, outside the open chat", () => {
 	// list of rooms with news a Space that wasn't selected had: the mark shows on the room's own row there.
 	test("a Space's rooms in the sidebar, and the open chats in the column, show it too", () => {
 		const nav = source("SpaceNav.svelte");
-		expect(nav).toMatch(/\{#if open\}\s*<ChannelsSidebar/);
+		expect(nav).toMatch(/\{#snippet children\(\)\}\s*<ChannelsSidebar/);
 		expect(nav).toMatch(/typingSentence\(\$typingNow\[tab\.channelId\]\) \?\?\s*\(isConversationTab\(tab\)/);
 	});
 });
