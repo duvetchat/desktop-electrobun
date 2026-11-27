@@ -26,3 +26,16 @@ test("the token box copies the URL and the GitHub URL", () => {
 	expect(en.room_webhook_github_url_copied).toBe("GitHub URL copied to clipboard");
 	expect(en.room_webhook_copy_github_url).toBe("Copy GitHub URL");
 });
+
+test("a webhook's avatar is cropped, for the one being made and the one being edited", () => {
+	const box = readFileSync(join(import.meta.dir, "..", "components", "Webhooks.svelte"), "utf8");
+	expect(box).toContain('import ImageCropModal from "$lib/components/ImageCropModal.svelte";');
+	expect(box).toContain("<ImageCropModal");
+	expect(box).toContain("bind:open={showWebhookAvatarCrop}");
+	expect(box).toContain("aspect={1}");
+	expect(box).toContain("targetWidth={256}");
+	expect(box).toContain("onConfirm={applyWebhookAvatarCrop}");
+	expect(box.match(/pickWebhookAvatar\("(?:new|edit)"\)/g)).toHaveLength(2);
+	// No hidden file input bypasses the crop: both avatars take the same region picker.
+	expect(box).not.toContain('document.createElement("input")');
+});

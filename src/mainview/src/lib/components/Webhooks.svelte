@@ -13,6 +13,7 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
+	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
 	import { calloutClass, CARD, FIELD, FIELD_SM, LABEL, SELECT } from "$lib/components/settings/recipes";
 	import { getApiError } from "$lib/api/api";
 	import { t, type MessageKey } from "$lib/i18n";
@@ -48,28 +49,39 @@
 	let newWebhookRoomId = $state("");
 	let newWebhookAvatar = $state<File | null>(null);
 	let newWebhookAvatarPreview = $state<string | null>(null);
+	// The crop sheet's target: the avatar of the webhook being made, or of the one being edited.
+	let showWebhookAvatarCrop = $state(false);
+	let webhookAvatarCropTarget = $state<"new" | "edit">("new");
 
 	// The room a new webhook goes to: the first one until another is picked, and again if the one picked goes.
 	$effect.pre(() => {
 		if (!rooms.some((r) => r.id === newWebhookRoomId)) newWebhookRoomId = rooms[0]?.id ?? "";
 	});
 
-	function pickNewWebhookAvatar() {
-		const input = document.createElement("input");
-		input.type = "file";
-		input.accept = "image/*";
-		input.onchange = () => {
-			const file = input.files?.[0];
-			if (!file) return;
-			if (newWebhookAvatarPreview) URL.revokeObjectURL(newWebhookAvatarPreview);
+	function revokePreview(url: string | null) {
+		if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+	}
+
+	function pickWebhookAvatar(target: "new" | "edit") {
+		webhookAvatarCropTarget = target;
+		showWebhookAvatarCrop = true;
+	}
+
+	function applyWebhookAvatarCrop(file: File) {
+		const preview = URL.createObjectURL(file);
+		if (webhookAvatarCropTarget === "new") {
+			revokePreview(newWebhookAvatarPreview);
 			newWebhookAvatar = file;
-			newWebhookAvatarPreview = URL.createObjectURL(file);
-		};
-		input.click();
+			newWebhookAvatarPreview = preview;
+		} else {
+			revokePreview(editingWebhookAvatarPreview);
+			editingWebhookAvatar = file;
+			editingWebhookAvatarPreview = preview;
+		}
 	}
 
 	function clearNewWebhookAvatar() {
-		if (newWebhookAvatarPreview) URL.revokeObjectURL(newWebhookAvatarPreview);
+		revokePreview(newWebhookAvatarPreview);
 		newWebhookAvatar = null;
 		newWebhookAvatarPreview = null;
 	}
@@ -80,22 +92,8 @@
 	let editingWebhookAvatar = $state<File | "remove" | null>(null);
 	let editingWebhookAvatarPreview = $state<string | null>(null);
 
-	function pickEditWebhookAvatar() {
-		const input = document.createElement("input");
-		input.type = "file";
-		input.accept = "image/*";
-		input.onchange = () => {
-			const file = input.files?.[0];
-			if (!file) return;
-			if (editingWebhookAvatarPreview) URL.revokeObjectURL(editingWebhookAvatarPreview);
-			editingWebhookAvatar = file;
-			editingWebhookAvatarPreview = URL.createObjectURL(file);
-		};
-		input.click();
-	}
-
 	function removeEditWebhookAvatar() {
-		if (editingWebhookAvatarPreview) URL.revokeObjectURL(editingWebhookAvatarPreview);
+		revokePreview(editingWebhookAvatarPreview);
 		editingWebhookAvatar = "remove";
 		editingWebhookAvatarPreview = null;
 	}
@@ -156,6 +154,7 @@
 	}
 
 	function startWebhookEdit(wh: Webhook) {
+		revokePreview(editingWebhookAvatarPreview);
 		editingWebhookId = wh.id;
 		editingWebhookName = wh.username;
 		editingWebhookAvatar = null;
@@ -165,6 +164,7 @@
 	function cancelWebhookEdit() {
 		editingWebhookId = null;
 		editingWebhookName = "";
+		revokePreview(editingWebhookAvatarPreview);
 		editingWebhookAvatarPreview = null;
 		editingWebhookAvatar = null;
 	}
@@ -303,7 +303,12 @@
 				<div>
 					<span class={LABEL}>{t("room_webhook_avatar_label")}</span>
 					<div class="flex items-center gap-3">
-						{@render avatarSlot(newWebhookAvatarPreview, "size-14", pickNewWebhookAvatar, clearNewWebhookAvatar)}
+						{@render avatarSlot(
+							newWebhookAvatarPreview,
+							"size-14",
+							() => pickWebhookAvatar("new"),
+							clearNewWebhookAvatar,
+						)}
 						<p class="text-duvet-ink2 text-xs">{t("room_webhook_avatar_hint")}</p>
 					</div>
 				</div>
@@ -386,7 +391,7 @@
 							{@render avatarSlot(
 								editingWebhookAvatarPreview,
 								"size-10",
-								pickEditWebhookAvatar,
+								() => pickWebhookAvatar("edit"),
 								removeEditWebhookAvatar,
 							)}
 							<input
@@ -478,3 +483,12 @@
 		{/if}
 	</div>
 {/if}
+
+<ImageCropModal
+	bind:open={showWebhookAvatarCrop}
+	title={t("room_webhook_avatar_change")}
+	aspect={1}
+	targetWidth={256}
+	targetHeight={256}
+	onConfirm={applyWebhookAvatarCrop}
+/>
