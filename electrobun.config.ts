@@ -15,6 +15,12 @@ const noUnusedEngines = {
 	},
 };
 
+// A Linux build's tar, the one its installer unpacks, is written by the system's tar: GNU tar, which names a path over
+// 100 characters with a long-name entry that Electrobun 1.15.1's self-extractor refuses (TarUnsupportedFileType), so
+// the installer installed nothing (#590). The CLI loads this file in its own process and runs tar with its environment,
+// and GNU tar takes options from TAR_OPTIONS: PAX names long paths as the extractor reads them, as Windows' tar does.
+if (process.platform === "linux") process.env.TAR_OPTIONS = `${process.env.TAR_OPTIONS ?? ""} --format=pax`.trim();
+
 export default {
 	app: {
 		// The shortcut, the bundle (`Duvet-<channel>`) and the installer are named after it. The install folder, the
