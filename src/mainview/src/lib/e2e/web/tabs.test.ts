@@ -148,6 +148,8 @@ describe("the tabs of one user", () => {
 		const fromC = c.tabs.call("make").catch((error: unknown) => error);
 		await settle();
 		expect(made).toBe(2);
+		// a said it took them before it ran them: that reaches b and c before a goes (#568).
+		await hub.delivered();
 		a.tabs.close();
 		// Whether a made them before it went, no tab can tell: b, which leads next, and c, which hears it, fail them.
 		expect(await fromB).toMatchObject({ code: "internal" });

@@ -424,6 +424,8 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			await page.startEngine(ana, web);
 			const making = rejection(page.createGroup("friends", [bo]));
 			await until(() => asked === 1);
+			// The leader said it took it before it ran it: that reaches this tab before the leader goes (#568).
+			await hub.delivered();
 			leader.close();
 			// This tab leads now, and doesn't make it again: the tab that went may have.
 			expect(await making).toMatchObject({ code: "internal" });
