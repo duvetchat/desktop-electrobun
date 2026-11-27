@@ -103,6 +103,7 @@ describe("the section Settings opens on", () => {
 			"audio",
 			"voice-video",
 			"appearance",
+			"language",
 			"activity",
 			"buckets",
 			"developer",

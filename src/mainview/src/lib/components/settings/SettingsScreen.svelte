@@ -25,6 +25,7 @@
 		Globe as GlobeIcon,
 		Lock as LockIcon,
 		Palette as PaletteIcon,
+		Languages as LanguageIcon,
 		Activity as ActivityIcon,
 		ArrowRightLeft as MoveIcon,
 		Mail as MailIcon,
@@ -247,6 +248,7 @@
 			title: t("settings_group_app_media"),
 			items: [
 				{ id: "appearance", label: t("settings_section_appearance"), icon: PaletteIcon, tile: "#2f4cff" },
+				{ id: "language", label: t("settings_language_title"), icon: LanguageIcon, tile: "#0e8fd6" },
 				{ id: "audio", label: t("settings_section_audio"), icon: VolumeIcon, tile: "#f97316" },
 				{ id: "voice-video", label: t("settings_section_voice_video"), icon: MicIcon, tile: "#e01890" },
 			],
@@ -1735,18 +1737,6 @@
 			onRefreshCameras={loadCameras}
 		/>
 	{:else if activeSection === "appearance"}
-		<SettingsGroup title={t("settings_language_title")}>
-			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
-				<LanguageSelect
-					id="app-language"
-					value={localePref()}
-					offered={OFFERED}
-					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
-					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
-				/>
-			</SettingsRow>
-		</SettingsGroup>
-
 		<SettingsGroup title={t("settings_theme_title")} plain class="p-0!" note={t("settings_theme_note")}>
 			<ChoiceCards
 				label={t("settings_theme_title")}
@@ -1838,6 +1828,18 @@
 		<SettingsGroup title={t("settings_voice_title")}>
 			<SettingsRow label={t("settings_voice_faces")} line={t("settings_voice_faces_line")}>
 				<Toggle label={t("settings_voice_faces")} checked={$voiceFaces} onCheckedChange={(on) => voiceFaces.set(on)} />
+			</SettingsRow>
+		</SettingsGroup>
+	{:else if activeSection === "language"}
+		<SettingsGroup>
+			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
+				<LanguageSelect
+					id="app-language"
+					value={localePref()}
+					offered={OFFERED}
+					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
+					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
+				/>
 			</SettingsRow>
 		</SettingsGroup>
 	{:else if activeSection === "activity"}
