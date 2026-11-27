@@ -51,6 +51,9 @@
 	const SCROLLS = "group-hover/segment:animate-marquee group-focus-visible/segment:animate-marquee";
 	// The padding that gives way, with the 2 px that stay: 12 px a side, or 10 when small.
 	const gutter = $derived(size === "sm" ? "w-2" : "w-2.5");
+	// With the icon pinned left, the words take the column's spare room, centred in it, from their own width up, so
+	// the spacers still give way first.
+	const words = $derived(align === "start" ? "flex-auto text-center" : "");
 
 	function marquee(key: Value) {
 		return (box: HTMLElement) => {
@@ -102,11 +105,7 @@
 			     words in it on one line, whole. -->
 			<span
 				{@attach marquee(option.value)}
-				class="min-w-0 overflow-hidden leading-normal {align === 'start' ? 'flex-auto text-center' : ''} {clipped[
-					option.value
-				]
-					? CLIPPED
-					: ''}"
+				class="min-w-0 overflow-hidden leading-normal {words} {clipped[option.value] ? CLIPPED : ''}"
 			>
 				<span class="inline-block {clipped[option.value] ? SCROLLS : ''}">{option.label}</span>
 			</span>
