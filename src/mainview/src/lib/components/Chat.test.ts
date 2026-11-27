@@ -133,8 +133,9 @@ describe("a conversation's send", () => {
 		expect(chat).toMatch(
 			/async function saveEdit\(messageId: string, content: string\): Promise<string \| void> \{[^]*?if \(typeof saved === "string"\) return saved;[^]*?cancelEdit\(\);\s*\}/,
 		);
+		// The box keeps the refusal's words (lib/edit-box.svelte.ts, whose tests hold them) and says them at the message.
 		const editor = source("InlineMessageEditor.svelte");
-		expect(editor).toMatch(/const said = await onSave\(text\);\s*refused = typeof said === "string" \? said : null;/);
-		expect(editor).toMatch(/\{#if refused\}\s*<p role="alert"[^>]*>\{refused\}<\/p>\s*\{\/if\}/);
+		expect(editor).toMatch(/new EditBox\(\s*untrack\(\(\) => content\),\s*\(text\) => onSave\(text\),/);
+		expect(editor).toMatch(/\{#if box\.refused\}\s*<p role="alert"[^>]*>\{box\.refused\}<\/p>\s*\{\/if\}/);
 	});
 });

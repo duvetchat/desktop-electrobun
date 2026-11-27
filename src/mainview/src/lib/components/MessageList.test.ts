@@ -502,6 +502,19 @@ describe("editing a message", () => {
 		expect(editor).toContain("event.metaKey || event.ctrlKey");
 	});
 
+	// #578: while a save waits for the engine's word, the box takes nothing more (lib/edit-box.test.ts holds the rule).
+	test("while its save waits, the box's text, Save, Discard and keys go through its EditBox, and are held", () => {
+		expect(editor).toContain("bind:value={() => box.text, (text) => box.type(text)}");
+		expect(editor).toContain("readonly={box.saving}");
+		expect(editor).toMatch(
+			/<IconButton label="Discard edit"[^>]*disabled=\{box\.saving\} onclick=\{\(\) => box\.discard\(\)\}/,
+		);
+		expect(editor).toMatch(/<Button size="sm" disabled=\{box\.saving\} onclick=\{\(\) => void save\(\)\}>/);
+		expect(editor).toMatch(/event\.key === "Escape"[^]*?box\.discard\(\);[^]*?void save\(\);/);
+		expect(editor).toMatch(/async function save\(\) \{\s*await box\.save\(\);/);
+		expect(editor).not.toMatch(/onclick=\{onCancel\}|onCancel\(\);/);
+	});
+
 	test("the chat saves it there, not in the message box", () => {
 		const chat = source("Chat.svelte");
 		expect(chat).toContain("onSaveEdit={saveEdit}");
