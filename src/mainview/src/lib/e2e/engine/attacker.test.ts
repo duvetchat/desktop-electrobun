@@ -19,6 +19,7 @@ import {
 	resetFrom,
 	restarted,
 	sameGroup,
+	sayYes,
 	sendWritten,
 	shownKey,
 	testDevice,
@@ -711,6 +712,84 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 				what: "Ana's device refusing the welcome",
 			});
 			expect(await groupOf(a, conversation)).toBeNull();
+			// Past the welcome: a READY takes it in by no external commit, nothing Ana sends goes there, and her yes to the
+			// people the question names (as the API lists them to her) takes it into no group with anyone else.
+			a.connect(a.registered.at(-1) ?? null);
+			await turnEnded(a);
+			expect(await groupOf(a, conversation)).toBeNull();
+			expect(await rejection(send(a, conversation, "to Bo"))).toMatchObject({ code: "blocked" });
+			await sayYes(a, conversation);
+			await turnEnded(a);
+			expect(await heldUsers(a, conversation)).not.toContain(eve);
+			expect(await madeAt(e, conversation, ana, ["commit", "message"])).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// A look whose drawing can't be read, as when the page's first listing fails at a start: nothing goes, what waits
+	// stays, and it goes at a later READY once the page draws the conversation again.
+	test(
+		"a look whose page drawing fails sends nothing, and what waits goes at a later READY",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			let failing = false;
+			let drawn: Conversation[] = [];
+			const shown = async (id: string) => {
+				if (failing) throw new Error("the page's listing failed");
+				return drawn.find((conv) => conv.id === id) ?? null;
+			};
+			const a = await firstDevice(fake, ana);
+			const b = await firstDevice(fake, bo, { shown });
+			drawn = await b.api.conversations();
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			// A message waits, its request unanswered; then the page's drawing can't be read.
+			fake.refuse({ method: "POST", path: messagesPath(conversation) }, 500);
+			await rejection(send(b, conversation, "waits"));
+			failing = true;
+			b.connect(b.registered.at(-1) ?? null);
+			await turnEnded(b);
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([]);
+			expect(await b.engine.pendingMessages(conversation)).toHaveLength(1);
+			failing = false;
+			b.connect(b.registered.at(-1) ?? null);
+			await until(async () => (await madeAt(a, conversation, bo, ["message"])).length === 1, {
+				what: "what waited going at the READY",
+			});
+			expect(await b.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// The review's untested case: an external join, not a welcome, into a group that holds someone the page doesn't draw.
+	// The server's account founds it, and Bo's first device comes in after, by an external commit of its own: what's sent
+	// there waits, and nothing goes.
+	test(
+		"an external join into a group that holds someone the page doesn't draw: what's sent there waits",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [eve, ana, bo], owner: eve });
+			fake.conversationsAs = (view, viewer) =>
+				viewer === bo && view.id === conversation
+					? { ...view, owner_id: ana, members: view.members.filter((member) => member.user_id !== eve) }
+					: view;
+			const [e, a] = [await firstDevice(fake, eve), await firstDevice(fake, ana)];
+			await madeHere(e, conversation);
+			await e.engine.openConversation(conversation);
+			await sameGroup([e, a], conversation);
+			const b = await firstDevice(fake, bo);
+			await sameGroup([e, a, b], conversation);
+			expect(await madeAt(e, conversation, bo, ["commit"])).toHaveLength(1);
+			await until(() => b.engine.conversationState(conversation)?.name === "other_members", {
+				what: "Bo's conversation saying whom its group holds",
+			});
+			expect(await rejection(send(b, conversation, "for Ana"))).toMatchObject({ code: "other_members" });
+			expect(await madeAt(e, conversation, bo, ["message"])).toEqual([]);
 		},
 		SLOW,
 	);

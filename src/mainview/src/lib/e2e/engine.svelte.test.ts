@@ -21,7 +21,7 @@ Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("./engine.svelte");
 const { logout } = await import("$lib/api/auth");
 const { toastStore } = await import("$lib/stores/toast.svelte");
-const { conversations: drawnConversations } = await import("$lib/stores.svelte");
+const { conversations: drawnConversations, friendsReady } = await import("$lib/stores.svelte");
 
 // The page's engine (lib/e2e/engine.svelte.ts): one for the page on the desktop's one host, and on the web the engine of
 // the tab that leads, which the user's other tabs show and ask (Ruling 16), on task 8's tabs with a test's locks and
@@ -113,6 +113,41 @@ test("the page's drawing: its first listing, a fresh one into its store, and its
 	fake.conversationsAs = (view) => (view.id === dm ? null : view);
 	expect(await page.shownConversation(dm, true)).toEqual(get(drawnConversations).find((conv) => conv.id === dm)!);
 	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
+});
+
+// The review's untested cases. The page's first listing failing fails the look that asked for it, so what waits stays
+// for the next start, READY or Retry, and the next look lists again. READY's lists in with its conversations' failed
+// (friendsReady set, the store empty): the page draws nothing, and a fresh look's listing adds what it asks for.
+test("the page's drawing when its first listing fails, and when READY's list of conversations failed", async () => {
+	const fake = new FakeApi();
+	const conversations = "/api/users/@me/conversations";
+	let listings = 0;
+	useFake(fake, (request) => {
+		if (request.method === "GET" && new URL(request.url).pathname === conversations) listings++;
+	});
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	drawnConversations.set([]);
+	fake.refuse({ method: "GET", path: conversations }, 500);
+	await rejection(page.shownConversation(dm, false));
+	expect(get(drawnConversations)).toEqual([]);
+	expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+	expect(listings).toBe(2);
+	// A new session's READY: its lists came, its conversations' didn't.
+	await page.stopEngine();
+	drawnConversations.set([]);
+	friendsReady.set(true);
+	try {
+		expect(await page.shownConversation(dm, false)).toBeNull();
+		expect(listings).toBe(2);
+		expect((await page.shownConversation(dm, true))?.id).toBe(dm);
+		expect(get(drawnConversations).map((conv) => conv.id)).toEqual([dm]);
+		expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+		expect(listings).toBe(3);
+	} finally {
+		friendsReady.set(false);
+	}
 });
 
 // N-I2: what a tab that doesn't lead sends, edits or deletes carries the people that tab draws, which the leader holds
