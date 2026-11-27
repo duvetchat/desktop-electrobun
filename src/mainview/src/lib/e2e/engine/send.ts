@@ -21,6 +21,7 @@ import type { EngineParts } from "./engine";
 import { FilesGone, SealedFiles, type OutgoingFile } from "./files";
 import { withIdentities } from "./identity";
 import { AGAIN } from "./inbox";
+import type { Drawn } from "./members";
 import { PENDING_CHANGES, PENDING_SENDS } from "./store";
 import type { Conversations } from "./sync";
 
@@ -37,10 +38,15 @@ export interface Outgoing {
 	sticker_attachment_id?: string;
 	/** Its files, sealed as it's first made: neither they nor their bytes go in the record. */
 	files?: OutgoingFile[];
+	/**
+	 * The people the tab it was written in draws there, when that's another than the one running the engine (N-I2): its
+	 * delivery is held to them too (null: that tab draws no such conversation). In memory alone, with what waits.
+	 */
+	drawn?: Drawn | null;
 }
 
 /** What goes with a message in the clear, kept by its nonce until it's sent. */
-type Clear = Omit<Outgoing, "nonce" | "text" | "files">;
+type Clear = Omit<Outgoing, "nonce" | "text" | "files" | "drawn">;
 
 /**
  * What the record keeps by a message's nonce: what goes with it in the clear; once its bytes were made again under this
@@ -64,6 +70,8 @@ interface Change {
 	text: string | null;
 	ciphertext: string;
 	remade: boolean;
+	/** The people the tab it was made in draws there, as a message's (Outgoing's `drawn`): in memory alone. */
+	drawn?: Drawn | null;
 }
 
 /** A message's changes not answered yet, one after the other: the first goes, and its retry's wait. */
@@ -178,6 +186,8 @@ export class Sends {
 	readonly #out = new Map<string, { stop: AbortController; done: Promise<DirectMessage | null> }>();
 	/** The messages a Dismiss takes now, by the person's nonce: none of their rows is sent once its turn comes. */
 	readonly #dismissing = new Set<string>();
+	/** What the tab each message waiting here was written in draws there, by the nonce the person sent it with (N-I2). */
+	readonly #carried = new Map<string, Drawn | null>();
 
 	constructor(
 		parts: EngineParts,
@@ -202,7 +212,9 @@ export class Sends {
 	 * a Cancel rejects at once, also while an older message's upload goes on in its lane.
 	 */
 	async send(out: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
-		const { conversation_id: id, nonce, text, files, ...clear } = out;
+		const { conversation_id: id, nonce, text, files, drawn, ...clear } = out;
+		// Each send of it from another tab says what that tab draws now, which every delivery of it is held to.
+		if (drawn !== undefined) this.#carried.set(nonce, drawn);
 		const waits = await this.#turn(async (): Promise<{ went: string | null } | null> => {
 			await this.#groups.current(id);
 			const { rows, older } = await this.#waiting(id);
@@ -340,10 +352,11 @@ export class Sends {
 	 * Without an answer its bytes go again later; refused for good, it's told (`refused`). A client too old for it (426)
 	 * keeps it for after the update.
 	 */
-	async change(id: string, message: string, text: string | null): Promise<void> {
+	async change(id: string, message: string, text: string | null, drawn?: Drawn | null): Promise<void> {
 		await this.#groups.current(id);
 		const kind = text === null ? "delete" : "edit";
 		const change: Change = { conversation: id, message, kind, text, ciphertext: "", remade: false };
+		if (drawn !== undefined) change.drawn = drawn;
 		change.ciphertext = await this.#make(change);
 		const key = changeKey(id, message);
 		this.#keepChange(key, change);
@@ -367,6 +380,7 @@ export class Sends {
 		this.#remakes.clear();
 		this.#uploads.clear();
 		this.#dismissing.clear();
+		this.#carried.clear();
 	}
 
 	/**
@@ -465,7 +479,7 @@ export class Sends {
 			const holding = await this.#hooks.held(id);
 			// Its group holds someone the conversation doesn't show (#574): the conversation says so, and it waits, its
 			// bytes kept, once no changed key asks first. Read after its encrypt committed any removal that waited.
-			if (!holding.length && (await this.#groups.holdsOthers(id))) {
+			if (!holding.length && (await this.#groups.holdsOthers(id, this.#carried.get(first)))) {
 				throw new CoreError("other_members", "this conversation's group holds people the conversation doesn't show");
 			}
 			return { ...encrypted, holding };
@@ -750,7 +764,10 @@ export class Sends {
 		// An edit is new text: while a verified contact's changed key waits for the person's yes it waits as an unanswered
 		// one does, its bytes as the core last made them, and the yes sends it (review, I2); a deletion carries no text.
 		// Either waits while the group holds someone the conversation doesn't show (#574): nothing more goes there.
-		if ((kind === "edit" && (await this.#hooks.held(id)).length) || (await this.#groups.holdsOthers(id))) {
+		if (
+			(kind === "edit" && (await this.#hooks.held(id)).length) ||
+			(await this.#groups.holdsOthers(id, change.drawn))
+		) {
 			return this.#backoff(changes);
 		}
 		let entry: MlsEntry;
@@ -827,8 +844,11 @@ export class Sends {
 	}
 
 	#forget(nonce: string) {
-		const { [nonce]: _gone, ...rest } = this.#record();
+		const { [nonce]: gone, ...rest } = this.#record();
 		this.#parts.store.write(PENDING_SENDS, Object.keys(rest).length ? rest : null);
+		// What another tab drew goes with the message's last bytes, never while a remake of it still waits.
+		const first = gone?.first ?? nonce;
+		if (!(first in rest) && !Object.values(rest).some((kept) => kept.first === first)) this.#carried.delete(first);
 	}
 
 	/**

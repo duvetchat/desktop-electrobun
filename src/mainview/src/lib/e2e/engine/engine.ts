@@ -44,7 +44,7 @@ import {
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
 import { keepMade } from "./legacy";
-import { checkRoom } from "./members";
+import { checkRoom, type Drawn } from "./members";
 import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
@@ -700,13 +700,16 @@ export class E2EEngine {
 	 * An edit of the user's message: shown here at once, then sent after the message's changes before it, and its answer's
 	 * entry applied. Without an answer it's kept, and goes again later and at the next start; refused for good, it's told.
 	 */
-	editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
-		return this.#act(() => this.#sends.change(conversationId, messageId, text));
+	editMessage(conversationId: string, messageId: string, text: string, drawn?: Drawn | null): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, text, drawn));
 	}
 
-	/** A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. */
-	deleteMessage(conversationId: string, messageId: string): Promise<void> {
-		return this.#act(() => this.#sends.change(conversationId, messageId, null));
+	/**
+	 * A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. From another
+	 * tab (`drawn`), as an edit, held to the people that tab draws too (N-I2).
+	 */
+	deleteMessage(conversationId: string, messageId: string, drawn?: Drawn | null): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, null, drawn));
 	}
 
 	/**

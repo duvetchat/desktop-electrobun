@@ -634,6 +634,38 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// N-I2: on the web each tab draws from its own READY, and the one that leads sends for the others. What another tab
+	// sends, edits or deletes carries the people it draws: the delivery is held to them too, its own drawing aside.
+	test(
+		"what another tab sends, edits or deletes is held to the people that tab draws too",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const changes: string[] = [];
+			useFake(fake, (request) => {
+				const change = request.method === "PATCH" || request.method === "DELETE";
+				if (change && /\/messages\/[^/]+$/.test(new URL(request.url).pathname)) changes.push(request.method);
+			});
+			const b = await firstDevice(fake, bo);
+			const e = await firstDevice(fake, eve);
+			const { id } = await e.engine.createConversation({ type: 2, name: "three", user_ids: [ana, bo] });
+			await b.engine.openConversation(id);
+			await sameGroup([b, e], id);
+			const first = await send(b, id, "first");
+			// Bo's other tab draws the group without Eve.
+			const listed = (await b.api.conversations()).find((conv) => conv.id === id)!;
+			const drawn = { ...listed, members: listed.members.filter((member) => member.user_id !== eve) };
+			const sent = b.engine.sendMessage({ conversation_id: id, nonce: crypto.randomUUID(), text: "for Ana", drawn });
+			expect(await rejection(sent)).toMatchObject({ code: "other_members" });
+			await b.engine.editMessage(id, first.id, "edited", drawn);
+			await b.engine.deleteMessage(id, first.id, drawn);
+			await turnEnded(b);
+			expect(changes).toEqual([]);
+			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toHaveLength(1);
+		},
+		SLOW,
+	);
+
 	// The one honest case: a member who left stays in the group until a member's commit takes them out, under the API's
 	// proposal of their removal. It isn't said, and what goes there next commits that removal first.
 	test(

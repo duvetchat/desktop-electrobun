@@ -115,6 +115,41 @@ test("the page's drawing: its first listing, a fresh one into its store, and its
 	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
 });
 
+// N-I2: what a tab that doesn't lead sends, edits or deletes carries the people that tab draws, which the leader holds
+// the delivery to beside its own drawing; none where it draws no such conversation.
+test("on the web, a tab that doesn't lead carries the people it draws with what it sends, edits or deletes", async () => {
+	const fake = new FakeApi();
+	useFake(fake);
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const [locks, hub] = [new FakeLocks(), new FakeHub()];
+	const carried: unknown[] = [];
+	const leading = new BrowserTabs({
+		...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+		methods: {
+			state: () => ({ name: "ready" }),
+			sendMessage: async ({ drawn }: { drawn?: unknown }) => (carried.push(drawn), null),
+			editMessage: async ({ drawn }: { drawn?: unknown }) => void carried.push(drawn),
+			deleteMessage: async ({ drawn }: { drawn?: unknown }) => void carried.push(drawn),
+		},
+		lead: async () => {},
+	});
+	await leading.leading;
+	await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) } }));
+	await until(() => page.encryption.state.name === "ready");
+	await drawnOnPage();
+	const listed = get(drawnConversations).find((conv) => conv.id === dm)!;
+	const people = { type: 1, owner_id: listed.owner_id, members: [{ user_id: ana }, { user_id: bo }] };
+	await page.sendEncrypted({ conversation_id: dm, nonce: crypto.randomUUID(), text: "hi" });
+	await page.editEncrypted(dm, crypto.randomUUID(), "edited");
+	await page.deleteEncrypted(dm, crypto.randomUUID());
+	await page.sendEncrypted({ conversation_id: crypto.randomUUID(), nonce: crypto.randomUUID(), text: "hi" });
+	expect(carried).toEqual([people, people, people, null]);
+	await page.stopEngine();
+	leading.close();
+});
+
 describe.skipIf(!coreLibrary)("the page's engine", () => {
 	// #575 (M6): what the page's engine last showed goes with it as it stops: the state its sheets draw (a first device's
 	// recovery key among them), what each conversation said, the cutover's instant and the server key's notice. Every

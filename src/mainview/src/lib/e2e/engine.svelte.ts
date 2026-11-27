@@ -45,6 +45,7 @@ import {
 	type ShownMessage,
 } from "./engine/engine";
 import { SHARE_RANGES } from "./engine/history";
+import type { Drawn } from "./engine/members";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
@@ -360,10 +361,10 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 				live().openFile(key, attachmentId, sealed),
 			fileNames: () => live().fileNames(),
 			fileFailed: () => live().fileFailed(),
-			editMessage: ({ conversationId, messageId, text }: MessageParams) =>
-				live().editMessage(conversationId, messageId ?? "", text ?? ""),
-			deleteMessage: ({ conversationId, messageId }: MessageParams) =>
-				live().deleteMessage(conversationId, messageId ?? ""),
+			editMessage: ({ conversationId, messageId, text, drawn }: MessageParams) =>
+				live().editMessage(conversationId, messageId ?? "", text ?? "", drawn),
+			deleteMessage: ({ conversationId, messageId, drawn }: MessageParams) =>
+				live().deleteMessage(conversationId, messageId ?? "", drawn),
 			discardMessage: ({ conversationId, nonce }: MessageParams) => live().discardMessage(conversationId, nonce ?? ""),
 			read: ({ conversationId, ids }: MessageParams) => live().read(conversationId, ids ?? []),
 			search: (request: DeviceSearch) => live().search(request),
@@ -457,6 +458,8 @@ export const acceptMembers = (conversationId: string) => onConversation("acceptM
 /** What a tab asks of the leader's engine about a conversation's messages, or its members. */
 interface MessageParams {
 	conversationId: string;
+	/** The people the asking tab draws there (drawnHere). */
+	drawn?: Drawn | null;
 	ids?: string[];
 	messageId?: string;
 	text?: string;
@@ -516,6 +519,17 @@ function live(): E2EEngine {
 	return engine;
 }
 
+/**
+ * The people this tab draws in a conversation (N-I2): what's sent, edited or deleted from here carries them, and the tab
+ * that leads holds its delivery to them beside its own drawing, as each tab draws from its own READY. Null where it
+ * draws none.
+ */
+function drawnHere(conversationId: string): Drawn | null {
+	const conv = get(conversations).find((one) => one.id === conversationId);
+	if (!conv) return null;
+	return { type: conv.type, owner_id: conv.owner_id, members: conv.members.map(({ user_id }) => ({ user_id })) };
+}
+
 /** The person's act on a conversation's messages: by this page's engine, or the tab that leads (Ruling 16). */
 function onMessages<T>(method: string, params: unknown, run: (made: E2EEngine) => Promise<T>): Promise<T> {
 	if (tabs) return tabs.call<T>(method, params);
@@ -532,18 +546,18 @@ export function sendEncrypted(message: Outgoing, upload?: UploadOptions): Promis
 		upload?.signal?.addEventListener("abort", () => void tabs?.call("cancelUpload", message.nonce).catch(() => {}), {
 			once: true,
 		});
-		return tabs.call<DirectMessage | null>("sendMessage", message);
+		return tabs.call<DirectMessage | null>("sendMessage", { ...message, drawn: drawnHere(message.conversation_id) });
 	}
 	return engine ? engine.sendMessage(message, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
 }
 /** An edit of the person's message, which shows at once. */
 export const editEncrypted = (conversationId: string, messageId: string, text: string) =>
-	onMessages<void>("editMessage", { conversationId, messageId, text }, (made) =>
+	onMessages<void>("editMessage", { conversationId, messageId, text, drawn: drawnHere(conversationId) }, (made) =>
 		made.editMessage(conversationId, messageId, text),
 	);
 /** A deletion of the person's message, for everyone. */
 export const deleteEncrypted = (conversationId: string, messageId: string) =>
-	onMessages<void>("deleteMessage", { conversationId, messageId }, (made) =>
+	onMessages<void>("deleteMessage", { conversationId, messageId, drawn: drawnHere(conversationId) }, (made) =>
 		made.deleteMessage(conversationId, messageId),
 	);
 /** The person's Dismiss of a message that never went: the API's ID of one the queue says went after all, else null. */

@@ -29,6 +29,7 @@ import {
 	removal,
 	sameMembers,
 	sameUsers,
+	type Drawn,
 	type HeldMembers,
 } from "./members";
 import { REFUSED_GENERATIONS, type EngineStore } from "./store";
@@ -971,13 +972,16 @@ export class Conversations {
 	 * removal (`due`) isn't said: what goes there next commits that removal first (encrypt's pending_proposals), and is
 	 * held to the conversation once it's in.
 	 */
-	async #othersIn(id: string, held: Held, due: boolean): Promise<ConversationState | null> {
+	async #othersIn(id: string, held: Held, due: boolean, carried?: Drawn | null): Promise<ConversationState | null> {
 		if (due) return null;
+		const users = { name: "other_members" as const, users: held.members.map((member) => member.user_id) };
+		// Another tab's, where the person wrote (N-I2): the group holds nobody beyond it either.
+		if (carried !== undefined && (!carried || heldBeyond(held, carried, this.#parts.user))) return users;
 		const drawn = await this.#parts.shown(id, false);
 		if (drawn && !heldBeyond(held, drawn, this.#parts.user)) return null;
 		const again = await this.#parts.shown(id, true);
 		if (again && !heldBeyond(held, again, this.#parts.user)) return null;
-		return { name: "other_members", users: held.members.map((member) => member.user_id) };
+		return users;
 	}
 
 	/**
@@ -987,15 +991,15 @@ export class Conversations {
 	 * conversation out. Never waived for a removal that waits: what's sent is made only once it's committed (the core's
 	 * ready_to_send). False without a group.
 	 */
-	async holdsOthers(conversationId: string): Promise<boolean> {
+	async holdsOthers(conversationId: string, carried?: Drawn | null): Promise<boolean> {
 		let held = await this.#group(conversationId);
 		if (!held) return false;
-		let others = await this.#othersIn(conversationId, held, false);
+		let others = await this.#othersIn(conversationId, held, false, carried);
 		// What differs may be a commit the queue has that this device hasn't read (N-M9): read whole, then held again.
 		if (others) {
 			await this.sync(conversationId, true);
 			held = await this.#group(conversationId);
-			others = held && (await this.#othersIn(conversationId, held, false));
+			others = held && (await this.#othersIn(conversationId, held, false, carried));
 		}
 		if (others) this.#set(conversationId, others);
 		else if (this.#states.get(conversationId)?.name === "other_members") {
