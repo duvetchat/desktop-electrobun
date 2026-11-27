@@ -88,7 +88,7 @@
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
 	import { confirmRestart, refusalWords } from "$lib/e2e/member-changes";
-	import { drawnRows } from "$lib/e2e/engine/content";
+	import { drawnRows, pageRows } from "$lib/e2e/engine/content";
 	import { FilesGone, gifFile, sealedSize, shownFile } from "$lib/e2e/engine/files";
 	import { gifBytes, outgoingFiles } from "$lib/e2e/thumbnails";
 	import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
@@ -532,7 +532,7 @@
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
-				const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
+				const newMsgs = pageRows(fetched).filter((m) => !existingIds.has(m.id));
 				return { ...all, [convId]: [...newMsgs, ...existing] };
 			});
 			// The newest page: the list reaches the present.
@@ -628,7 +628,7 @@
 
 			const allIds = new Set<string>();
 			const combined: DirectMessage[] = [];
-			for (const m of [...rawAbove, anchor, ...rawBelow]) {
+			for (const m of pageRows([...rawAbove, anchor, ...rawBelow])) {
 				if (!allIds.has(m.id)) {
 					allIds.add(m.id);
 					combined.push(m);
@@ -670,7 +670,7 @@
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
-				return { ...all, [convId]: [...existing, ...fetched.filter((m) => !existingIds.has(m.id))] };
+				return { ...all, [convId]: [...existing, ...pageRows(fetched).filter((m) => !existingIds.has(m.id))] };
 			});
 			hasMoreBelow = fetched.length >= 100;
 		} catch (err) {
@@ -706,7 +706,7 @@
 			hasMoreBelow = false;
 			loadedBelowTo = "";
 			belowFailedAt = 0;
-			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], fetched) }));
+			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], pageRows(fetched)) }));
 			listFetched = true;
 			return true;
 		} catch (err) {

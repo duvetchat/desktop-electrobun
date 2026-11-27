@@ -89,6 +89,14 @@ export const drawnRow = (row: { id: string; seq?: number; type?: number }, typed
 	row.seq !== undefined || NOTICE_TYPES.has(row.type ?? 0) || typed(row.id) !== undefined;
 
 /**
+ * The API's rows of a page as a conversation's list takes them (#575, N-M4): none that's neither numbered nor a notice,
+ * whatever ID it carries, as the live event's (connection.ts), so the typed text vouches only for the row this client
+ * built, never for one of the API's that names it. What's left to load goes by the page as it came.
+ */
+export const pageRows = <T extends { id: string; seq?: number; type?: number }>(rows: T[]): T[] =>
+	rows.filter((row) => drawnRow(row, () => undefined));
+
+/**
  * The rows a conversation draws (Ruling 15): none that's neither numbered nor a notice but the person's own being sent
  * (drawnRow); and an encrypted row from before the user joined it (its ID below their membership's) that this device
  * doesn't hold goes, and the one notice above the chat says why (`beforeJoining`). A notice of the server's, a row

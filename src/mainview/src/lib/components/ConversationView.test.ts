@@ -86,11 +86,23 @@ test("a conversation shown again shows the list a view of this gateway session l
 	);
 });
 
+// #575 (N-M4): every page the view takes in drops the API's rows neither numbered nor notices as it comes, as the live
+// event does: an older page, a jump's, a newer page and the newest.
+test("every page the view takes in goes through pageRows", () => {
+	const view = source("ConversationView.svelte");
+	expect(view.match(/pageRows\(fetched\)\.filter\(\(m\) => !existingIds\.has\(m\.id\)\)/g)).toHaveLength(2);
+	expect(view).toContain("for (const m of pageRows([...rawAbove, anchor, ...rawBelow])) {");
+	expect(view).toContain("withPresent(all[convId] ?? [], pageRows(fetched))");
+	// Five fetches, a jump's two among them, into four merges, each through it.
+	expect(view.match(/getDirectMessages(After)?\(convId/g)).toHaveLength(5);
+	expect(view.match(/pageRows\(/g)).toHaveLength(4);
+});
+
 test("only pages a view fetched make its list worth keeping: the newest page, a jump's, the present's", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain("if (!before) listFetched = true;");
 	expect(view).toMatch(/\[convId\]: combined \}\)\);\s*listFetched = true;/);
-	expect(view).toMatch(/withPresent\(all\[convId\] \?\? \[\], fetched\) \}\)\);\s*listFetched = true;/);
+	expect(view).toMatch(/withPresent\(all\[convId\] \?\? \[\], pageRows\(fetched\)\) \}\)\);\s*listFetched = true;/);
 });
 
 test("the new group dialog goes by what's picked: one friend's DM, or a group", () => {

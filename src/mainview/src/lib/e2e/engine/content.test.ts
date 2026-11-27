@@ -7,7 +7,7 @@ import { formatDate } from "$lib/i18n/format";
 import { bytesBase64 } from "$lib/staged-images";
 import { directMessageToMessage } from "$lib/types";
 import * as content from "../conversation-content.svelte";
-import { drawnRows, type Held, type MessageContent, type ShownMessage } from "./content";
+import { drawnRows, pageRows, type Held, type MessageContent, type ShownMessage } from "./content";
 import { notice, NOTICES } from "../notices";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -261,6 +261,19 @@ describe("what a conversation draws", () => {
 		const callNotice = row(ID, { seq: undefined, type: 3, attachments: [file] });
 		expect(drawnRows([callNotice], undefined, holding(held({}))).rows).toEqual([callNotice]);
 		expect(directMessageToMessage(callNotice, members, holding(held({})))?.attachments).toBeNull();
+	});
+
+	// #575 (N-M4): the API's rows never stand for one being sent. A page's row neither numbered nor a notice goes as the
+	// page comes in, as the live event's does, whatever ID it carries: the typed text vouches only for the row this client
+	// built, never for one of the API's that names it.
+	test("a page's row neither numbered nor a notice goes as the page comes in, whatever ID it carries", () => {
+		const NOTICE = "0193a4b2-0000-7000-8000-000000000071";
+		const page = [
+			row(ID, { seq: undefined, type: 1 }),
+			row(QUOTED, { seq: 2 }),
+			row(NOTICE, { seq: undefined, type: 3 }),
+		];
+		expect(pageRows(page).map(({ id }) => id)).toEqual([QUOTED, NOTICE]);
 	});
 
 	test("a row the engine hasn't applied yet is loading, neither empty nor waiting", () => {
