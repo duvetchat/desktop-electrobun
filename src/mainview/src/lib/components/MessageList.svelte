@@ -185,7 +185,7 @@
 		/** The message being edited in its own row: its text becomes a box, and its hover bar goes. */
 		editingMessageId?: string | null;
 		/** Saves the edit of a message, in its own row. */
-		onSaveEdit?: (messageId: string, content: string) => void | Promise<void>;
+		onSaveEdit?: (messageId: string, content: string) => void | string | Promise<void | string>;
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		/** The custom emojis of every Space the user is in, by Space, as the reaction pickers show them. */

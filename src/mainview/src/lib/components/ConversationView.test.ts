@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import en from "../../../messages/en.json";
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
 
@@ -238,7 +239,7 @@ test("a changed key's notice shows in each conversation with that person, and a 
 	expect(view).toMatch(/async function dmVoiceNote\(blob: Blob\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
 	// A no keeps the edit box and its text (review, Minor 8): Chat's saveEdit closes it only on a yes.
 	expect(view).toMatch(
-		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean> \{\s*if \(!\(await askBeforeSend\(\)\)\) return false;/,
+		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean \| string> \{\s*if \(!\(await askBeforeSend\(\)\)\) return false;/,
 	);
 	expect(view).toContain(
 		'if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);',
@@ -252,4 +253,19 @@ test("a DM with a verified contact wears its mark", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toMatch(/\{#if dmPartner && encryption\.contacts\.verified\[dmPartner\]\}\s*<VerifiedMark\b/);
 	expect(view).toMatch(/openConversation\(convId\)/);
+});
+
+// T-M1: an edit the engine refuses (its group holds someone the conversation doesn't show, or it can't be made now) is
+// said at its message, and its box keeps what was typed, as nothing was made of it. The view waits for the engine to
+// take or refuse it, never for the API's answer, which the engine waits for on its own.
+test("a refused edit is said at its message, its box keeping what was typed", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(
+		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean \| string> \{[^]*?try \{\s*await editEncrypted\(conversation\.id, messageId, content\);\s*return true;\s*\} catch \(error\) \{[^]*?return editRefusal\(error\);/,
+	);
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");',
+	);
+	expect(view).toMatch(/function editRefusal\(err: unknown\): string \{[^]*?return t\("e2e_edit_failed"\);\s*\}/);
+	expect(en.e2e_edit_failed).toBe("Couldn't save your edit");
 });

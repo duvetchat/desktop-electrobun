@@ -331,6 +331,8 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			fake.loseAnswer({ method: "PATCH", path: `${messagesPath(conversation)}/${sent.id}` });
 			await a.engine.editMessage(conversation, sent.id, "second words");
 			expect(await textOn(a, conversation, sent.id)).toBe("second words");
+			// Its request goes in a turn of its own (T-M1), whose wait the clock then passes.
+			await turnEnded(a);
 			a.clock.advance(2_000);
 			await until(async () => (await textOn(b, conversation, sent.id)) === "second words");
 			const edits = (await b.api.queue(conversation, 0)).entries.filter((entry) => entry.kind === "edit");
@@ -341,6 +343,7 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			]);
 
 			await a.engine.deleteMessage(conversation, sent.id);
+			await turnEnded(a);
 			const deletion = (await b.api.queue(conversation, 0)).entries.find((entry) => entry.kind === "delete")!;
 			expect(await through()).toBe(deletion.seq);
 			expect(await a.engine.messages(conversation, [sent.id])).toEqual([]);
@@ -498,6 +501,32 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 		SLOW,
 	);
 
+	// T-M1: the view waits for the engine to take or refuse an edit, never for the API's answer. Its bytes made and kept,
+	// it's taken, and shown here; its request goes in a turn of its own.
+	test(
+		"an edit is taken before its request is answered",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const send = (device: TestDevice, text: string) =>
+				device.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
+			const [anas, bos] = [(await send(a, "Ana's"))!, (await send(b, "Bo's"))!];
+			// Edits' requests wait until two have come.
+			fake.gather({ method: "PATCH", path: new RegExp(`^${messagesPath(conversation)}/`) }, 2);
+			const taken = a.engine.editMessage(conversation, anas.id, "Ana's, edited");
+			const first = await Promise.race([
+				taken.then(() => "taken"),
+				new Promise((resolve) => setTimeout(() => resolve("waiting for the API's answer"), 2_000)),
+			]);
+			expect(first).toBe("taken");
+			expect(await textOn(a, conversation, anas.id)).toBe("Ana's, edited");
+			// Bo's edit's request lets both go.
+			await b.engine.editMessage(conversation, bos.id, "Bo's, edited");
+			await until(async () => (await textOn(b, conversation, anas.id)) === "Ana's, edited");
+			await until(async () => (await textOn(a, conversation, bos.id)) === "Bo's, edited");
+		},
+		SLOW,
+	);
+
 	// I3: an edit or a deletion is the API's word too. One not answered yet is kept in the record (never its text) and
 	// made again at the next start; a message's changes go one after the other; one refused for good is told; an update
 	// (426) keeps it; the pause (503) waits as long as it says.
@@ -530,19 +559,22 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			// Refused for good, a change is told.
 			fake.refuse({ method: "PATCH", path }, 403, { error: "only its author changes a message" });
 			await device.engine.editMessage(conversation, sent.id, "four");
+			await turnEnded(device);
 			expect(refused).toEqual([[conversation, sent.id, "edit"]]);
 			// The pause: tried again once its Retry-After passed, not before.
 			fake.refuse({ method: "PATCH", path }, 503, undefined, { "Retry-After": "60" });
 			const paused = patches();
 			await device.engine.editMessage(conversation, sent.id, "five");
+			await turnEnded(device);
 			device.clock.advance(2_000);
 			await turnEnded(device);
 			expect(patches()).toBe(paused + 1);
 			device.clock.advance(58_000);
 			await until(async () => (await textOn(b, conversation, sent.id)) === "five");
-			// An update (426) keeps it for after the update: started again, it goes.
+			// An update (426) keeps it for after the update, which the device waits for: started again, it goes.
 			fake.refuse({ method: "DELETE", path }, 426);
-			await rejection(device.engine.deleteMessage(conversation, sent.id));
+			await device.engine.deleteMessage(conversation, sent.id);
+			await turnEnded(device);
 			expect(device.engine.state).toMatchObject({ name: "update" });
 			await restart();
 			await until(async () => (await b.engine.messages(conversation, [sent.id])).length === 0);
@@ -682,6 +714,7 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			});
 			fake.cutRequest({ method: "GET", path: `/api/users/@me/conversations/${conversation}/mls/queue` });
 			await a.engine.editMessage(conversation, sent.id, "two");
+			await turnEnded(a);
 			a.clock.advance(2_000);
 			await until(async () => (await textOn(b, conversation, sent.id)) === "two");
 		},

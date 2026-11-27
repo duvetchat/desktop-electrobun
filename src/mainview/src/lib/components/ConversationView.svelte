@@ -929,14 +929,24 @@
 		failedNonces = new Set([...failedNonces, ...rows.map((row) => row.id)]);
 	}
 
-	// An edit of the person's message: this device's database shows it at once, and the engine sends it. A no to the
-	// question before it keeps the edit box, and what was typed in it (Chat's saveEdit).
-	async function dmSaveEdit(messageId: string, content: string): Promise<boolean> {
+	// An edit of the person's message: this device's database shows it at once, and the engine sends it, whose answer
+	// this doesn't wait for. A no to the question before it keeps the edit box, and what was typed in it (Chat's
+	// saveEdit); so does the engine's refusal, which the box says (T-M1), as nothing was made of it.
+	async function dmSaveEdit(messageId: string, content: string): Promise<boolean | string> {
 		if (!(await askBeforeSend())) return false;
-		editEncrypted(conversation.id, messageId, content).catch((error: unknown) => {
+		try {
+			await editEncrypted(conversation.id, messageId, content);
+			return true;
+		} catch (error) {
 			console.error("[e2e] An edit wasn't made:", error);
-		});
-		return true;
+			return editRefusal(error);
+		}
+	}
+
+	// What an edit the engine didn't make says at its message: the view's words when its group differs.
+	function editRefusal(err: unknown): string {
+		if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");
+		return t("e2e_edit_failed");
 	}
 
 	// A notice (no seq: a pin's, a call's, a share's) is deleted as before; an encrypted message with its author's

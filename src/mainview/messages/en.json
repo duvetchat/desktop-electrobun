@@ -141,6 +141,7 @@
 	"e2e_devices_lead": "Each place you're signed in to Duvet. Those on your device list read your encrypted conversations.",
 	"e2e_devices_loading": "Loading your devices…",
 	"e2e_dismiss": "Dismiss",
+	"e2e_edit_failed": "Couldn't save your edit",
 	"e2e_edit_refused": "Your edit couldn't be saved for everyone.",
 	"e2e_failed": "Encrypted conversations couldn't open on this device.",
 	"e2e_file_altered": "This file isn't the one its sender sent, so it isn't shown.",

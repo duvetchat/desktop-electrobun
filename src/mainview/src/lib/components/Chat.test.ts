@@ -124,7 +124,17 @@ describe("a conversation's send", () => {
 	// Review, Minor 8: an edit the conversation kept from going (the person's no) keeps its box open, with its text.
 	test("an edit its conversation says no to keeps its box, and what was typed in it", () => {
 		expect(chat).toMatch(
-			/async function saveEdit\(messageId: string, content: string\) \{[^]*?=== false\) return;[^]*?cancelEdit\(\);\s*\}/,
+			/async function saveEdit\(messageId: string, content: string\)[^{]*\{[^]*?=== false\) return;[^]*?cancelEdit\(\);\s*\}/,
 		);
+	});
+
+	// T-M1: one it refused keeps its box too, and hands the box what to say at the message.
+	test("an edit its conversation refuses keeps its box, with what was typed, and says why there", () => {
+		expect(chat).toMatch(
+			/async function saveEdit\(messageId: string, content: string\): Promise<string \| void> \{[^]*?if \(typeof saved === "string"\) return saved;[^]*?cancelEdit\(\);\s*\}/,
+		);
+		const editor = source("InlineMessageEditor.svelte");
+		expect(editor).toMatch(/const said = await onSave\(text\);\s*refused = typeof said === "string" \? said : null;/);
+		expect(editor).toMatch(/\{#if refused\}\s*<p role="alert"[^>]*>\{refused\}<\/p>\s*\{\/if\}/);
 	});
 });

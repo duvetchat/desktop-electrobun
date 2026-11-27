@@ -763,8 +763,8 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 			});
 			await until(() => holds.length === 1);
 			fake.refuse({ method: "PATCH", path: `/api/users/@me/conversations/${conversation}/messages/${before.id}` }, 426);
-			await rejection(a.engine.editMessage(conversation, before.id, "edited"));
-			expect(a.engine.state).toMatchObject({ name: "update" });
+			await a.engine.editMessage(conversation, before.id, "edited");
+			await until(() => a.engine.state.name === "update");
 			letGo();
 			expect(await going).not.toBeNull();
 			expect(await a.engine.pendingMessages(conversation)).toEqual([]);

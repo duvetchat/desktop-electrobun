@@ -915,6 +915,7 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			const drawn = { type: listed.type, owner_id: listed.owner_id, members: listed.members };
 			fake.refuse({ method: "PATCH", path: `${messagesPath(conversation)}/${first.id}` }, 500);
 			await b.engine.editMessage(conversation, first.id, "edited", drawn);
+			await turnEnded(b);
 			// Ana adds Eve, whom that tab doesn't draw: what it sends now waits.
 			await a.engine.addMember(conversation, eve);
 			await sameGroup([a, b, e], conversation);

@@ -404,7 +404,8 @@ export class Sends {
 	 * An edit (with its text) or a deletion (null) of the user's message: made by the core, which shows it here at once,
 	 * kept, and sent once the message's changes before it are answered; the entry its answer gives goes to the core.
 	 * Without an answer its bytes go again later; refused for good, it's told (`refused`). A client too old for it (426)
-	 * keeps it for after the update.
+	 * keeps it for after the update. This answers once it's made and kept, or refused: its request goes in a turn of its
+	 * own, which the person's view doesn't wait for (T-M1).
 	 */
 	async change(id: string, message: string, text: string | null, drawn?: Drawn | null): Promise<void> {
 		await this.#groups.current(id);
@@ -421,7 +422,7 @@ export class Sends {
 		const changes = this.#changesOf(key);
 		changes.list.push(change);
 		// One before it still waits for its answer: this one goes after it.
-		if (changes.list.length === 1) await this.#drain(key);
+		if (changes.list.length === 1) this.#soon(() => this.#drain(key));
 	}
 
 	/** Stops waiting: what waits stays, in the core and in the record, for the next start. */

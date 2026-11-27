@@ -132,6 +132,7 @@
 	"e2e_devices_lead": "The line at the top of Settings → Devices. A device list is the account's signed list of the devices that may read encrypted conversations.",
 	"e2e_devices_loading": "In Settings → Devices while the list of the person's devices is being fetched.",
 	"e2e_dismiss": "[short] The label of the × that hides the bar about encrypted conversations until the page loads again (for a screen reader).",
+	"e2e_edit_failed": "Under the edit box of the person's own message in an encrypted conversation, when this device didn't make the edit: the box keeps what was typed. When the conversation's members changed it says e2e_members_changed instead.",
 	"e2e_edit_refused": "A toast when the server refuses for good an edit of the person's own encrypted message: this device shows it, the others don't.",
 	"e2e_failed": "A bar at the bottom of the app: the database of encrypted conversations didn't open on this device, or the server refused this device. Duvet tries again by itself when it can.",
 	"e2e_file_altered": "Shown on a file of an encrypted message whose bytes don't match what its message says of them.",

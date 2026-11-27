@@ -700,6 +700,8 @@ export class E2EEngine {
 	/**
 	 * An edit of the user's message: shown here at once, then sent after the message's changes before it, and its answer's
 	 * entry applied. Without an answer it's kept, and goes again later and at the next start; refused for good, it's told.
+	 * Settled once it's made and kept here, or refused (its group holds someone the conversation doesn't show): its
+	 * request's answer isn't waited for (T-M1).
 	 */
 	editMessage(conversationId: string, messageId: string, text: string, drawn?: Drawn | null): Promise<void> {
 		return this.#act(() => this.#sends.change(conversationId, messageId, text, drawn));
@@ -707,7 +709,7 @@ export class E2EEngine {
 
 	/**
 	 * A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. From another
-	 * tab (`drawn`), as an edit, held to the people that tab draws too (N-I2).
+	 * tab (`drawn`), as an edit, held to the people that tab draws too (N-I2); settled as an edit is.
 	 */
 	deleteMessage(conversationId: string, messageId: string, drawn?: Drawn | null): Promise<void> {
 		return this.#act(() => this.#sends.change(conversationId, messageId, null, drawn));
