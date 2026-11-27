@@ -140,7 +140,8 @@ describe("the app's own updates (#456)", () => {
 		const cases: SetUp[] = [
 			{ otherKey: true },
 			{ facts: { hash: "otherbuild" } },
-			{ facts: { platform: "stable-macos-arm64" } },
+			// Another system than the one the test runs on: on a Mac, stable-macos-<arch> is its own.
+			{ facts: { platform: platformPrefix("stable", process.platform === "darwin" ? "linux" : "darwin") } },
 			{ facts: { platform: "canary-win-x64" } },
 			{ facts: { version: "1.1.0" } },
 			{ hashes: ["../../evil"], facts: { hash: "newbuild01" } },
