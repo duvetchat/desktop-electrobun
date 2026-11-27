@@ -14,6 +14,7 @@ import type { CoreHost } from "../host";
 import { E2EEngine, type BackupShown, type Clock, type EngineState } from "../engine/engine";
 import { shownFile, type ShownFile } from "../engine/files";
 import type { IdentityMade } from "../engine/identity";
+import { keepMade } from "../engine/legacy";
 import type { EngineStore } from "../engine/store";
 import type { FakeApi, GatewayEvent } from "./fake-api";
 import { BunCoreHost } from "./host-bun";
@@ -264,6 +265,18 @@ export interface HeldGroup {
 /** The conversation's group as the device's core holds it, or null without one. */
 export const groupOf = (device: TestDevice, conversation: string): Promise<HeldGroup | null> =>
 	device.host.handle<HeldGroup>({ cmd: "group", conversation_id: conversation }).catch(() => null);
+
+/**
+ * The conversation was made on this device, as the person's createConversation makes one (#574): its record is its
+ * people as the API lists them now, which the group this device founds holds. A test's conversation the fake made
+ * stands for one its owner's device made.
+ */
+export async function madeHere(device: TestDevice, conversation: string): Promise<void> {
+	const conv = (await device.api.conversations()).find(({ id }) => id === conversation);
+	if (!conv) throw new Error(`${device.user} isn't in ${conversation}`);
+	const members = conv.members.map((member) => member.user_id);
+	keepMade(device.store, conv.id, conv.type === 2 ? { owner: conv.owner_id, members } : { members });
+}
 
 /** Waits until every device holds the conversation's group at one generation and epoch, with one authenticator. */
 export async function sameGroup(devices: TestDevice[], conversation: string, ms = 60_000): Promise<HeldGroup> {

@@ -27,6 +27,14 @@ export interface GatewayEvent {
 	data: any;
 }
 
+/** A conversation as the API lists it (GET …/conversations): what a test's lie of it changes. */
+export interface ListedConversation {
+	id: string;
+	type: number;
+	owner_id: string;
+	members: { id: string; conversation_id: string; user_id: string; created_at: string; updated_at: string }[];
+}
+
 /** Which requests a switch takes: its method (any without one) and its path, as written or by a pattern. */
 export interface RouteMatch {
 	method?: string;
@@ -668,6 +676,11 @@ export class FakeApi {
 	/** How the API lists a user's devices to them (GET …/devices): as they are, unless a test has it lie, as a server
 	 * could. */
 	devicesAs: <View extends { id: string }>(devices: View[]) => View[] = (devices) => devices;
+	/**
+	 * How the API lists a conversation to `viewer` (GET …/conversations): as it is, unless a test has it lie, as a server
+	 * could, of its type, its owner or its members.
+	 */
+	conversationsAs: <View extends ListedConversation>(view: View, viewer: string) => View = (view) => view;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -1243,7 +1256,8 @@ export class FakeApi {
 				"GET",
 				`${me}/conversations`,
 				"session",
-				({ session, device }) => ok(this.#conversationsOf(session.user).map((c) => this.#view(c, device))),
+				({ session, device }) =>
+					ok(this.#conversationsOf(session.user).map((c) => this.conversationsAs(this.#view(c, device), session.user))),
 				true,
 			),
 			route("POST", `${me}/conversations`, "session", (ctx) => this.#createConversation(ctx)),

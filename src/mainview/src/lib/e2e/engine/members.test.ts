@@ -12,6 +12,7 @@ import {
 	commitByHand,
 	firstDevice,
 	groupOf,
+	madeHere,
 	rejection,
 	restarted,
 	sameGroup,
@@ -61,6 +62,7 @@ async function groupOfThree(cyHost?: (host: CoreHost) => CoreHost) {
 	const a = await firstDevice(fake, ana);
 	const b = await firstDevice(fake, bo);
 	const c = await firstDevice(fake, cy, cyHost ? { host: cyHost(testHost()) } : {});
+	await madeHere(a, conversation);
 	await a.engine.openConversation(conversation);
 	const made = await sameGroup([a, b, c], conversation);
 	return { ...setup, ana, bo, cy, a, b, c, conversation, made };
@@ -208,6 +210,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -240,6 +243,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const five = await friendsOf(fake, ana, 5);
@@ -264,6 +268,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const others = Array.from({ length: 19 }, () => fake.addUser());
 			const conversation = fake.addConversation({ type: "group", members: [ana, ...others], owner: ana });
 			const a = await firstDevice(fake, ana);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			const extra = fake.addUser();
 			fake.befriend(ana, extra);
@@ -368,6 +373,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
 			const a = await firstDevice(fake, ana);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			// Bo's first device comes after the group was made, and its external commit is refused each time.
 			const refused = new CoreError("rule_violation", "the group info doesn't verify", { rule: "invalid_group_info" });
@@ -391,6 +397,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -417,6 +424,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const a = await firstDevice(fake, ana);
 			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -448,6 +456,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			let before: (() => Promise<void>) | null = null;
 			const a = await firstDevice(fake, ana, { host: hooked(testHost(), "add_members", () => before) });
 			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -479,6 +488,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const a = await firstDevice(fake, ana, { host: hooked(testHost(), "remove_members", () => before) });
 			let b = await firstDevice(fake, bo);
 			const c = await firstDevice(fake, cy);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b, c], conversation);
 			await b.engine.stop();
@@ -507,6 +517,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);

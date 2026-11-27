@@ -42,6 +42,7 @@ import {
 } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
+import { keepMade } from "./legacy";
 import { checkRoom } from "./members";
 import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
@@ -618,10 +619,14 @@ export class E2EEngine {
 	/**
 	 * The person's new DM or group (PLAN-E2E-CLIENTES.md, Task 22): the API makes the conversation, then this device its
 	 * group at once, as any member of a DM and a group's owner may; one past 20 members, its owner among them, is refused
-	 * before anything is asked. Before this device is ready, its group is made once it is. The API's conversation.
+	 * before anything is asked. Its group holds this user and the person's picks, of the kind they asked for (#574): the
+	 * conversation's record, kept as the API answers, which the founding is held to, whatever the API lists after. Before
+	 * this device is ready, its group is made once it is. The API's conversation.
 	 */
 	async createConversation(made: NewConversationRequest): Promise<Conversation> {
-		if (made.type === 2) checkRoom(new Set([this.#parts.user, ...made.user_ids]).size);
+		const { user, store } = this.#parts;
+		const people = [...new Set([user, ...(made.type === 2 ? made.user_ids : [made.user_id])])];
+		if (made.type === 2) checkRoom(people.length);
 		let conv: Conversation;
 		try {
 			conv = await this.#parts.api.createConversation(made);
@@ -631,6 +636,7 @@ export class E2EEngine {
 			}
 			throw error;
 		}
+		keepMade(store, conv.id, made.type === 2 ? { owner: user, members: people } : { members: people });
 		await this.openConversation(conv.id).catch((error: unknown) => {
 			console.error("[e2e] The new conversation's group waits for its next open:", error);
 		});

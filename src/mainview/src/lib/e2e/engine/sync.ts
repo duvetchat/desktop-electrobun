@@ -19,7 +19,7 @@ import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
 import { observeUsers, withIdentities } from "./identity";
-import { dropRecord, legacyRecord } from "./legacy";
+import { dropRecord, forgetRecord, isRecord, legacyRecord, type LegacyRecord } from "./legacy";
 import {
 	addition,
 	checkAddition,
@@ -35,8 +35,9 @@ import { REFUSED_GENERATIONS, type EngineStore } from "./store";
 /**
  * What a conversation says over its message box of its group (PLAN-E2E-CLIENTES.md, «Avisos»): blocked, with who may
  * restart it (this user, its owner, or nobody, for a group under an external sender other than the pinned one); waiting
- * for its owner to make it; waiting for another member to let this device back in; members other than its record's,
- * or than those its group holds; or, while it goes on, the members who can't receive what's sent yet (`no_device`).
+ * for its owner to make it; waiting for another member to let this device back in; members other than its record's
+ * (or than any it can account for, as it would found the group: #574), or than those its group holds; or, while it
+ * goes on, the members who can't receive what's sent yet (`no_device`).
  */
 export type ConversationState =
 	| { name: "blocked"; restart: "mine" | "owner" | "none"; owner: string | null }
@@ -677,18 +678,24 @@ export class Conversations {
 	}
 
 	/**
-	 * Makes the group of a conversation the API lists without one, with every member's key packages. A creation of this
-	 * device's that the core still holds never reached the API (its request cut, then the app closed): the core is told
-	 * no answer came, which drops a creation whole, before anything is claimed, and the group is made again. Were the old
-	 * request to land after all, this creation loses its 409, and the device joins by external commit.
+	 * Makes the group of a conversation the API lists without one, with every member's key packages, but only with the
+	 * people this device can account for (#founding): any others, and nothing is claimed or made, and the person says
+	 * whether to go on with those listed (`accept`). A creation of this device's that the core still holds never reached
+	 * the API (its request cut, then the app closed): the core is told no answer came, which drops a creation whole,
+	 * before anything is claimed, and the group is made again. Were the old request to land after all, this creation
+	 * loses its 409, and the device joins by external commit.
 	 */
 	async #make(conv: Conversation) {
+		const founding = this.#founding(conv);
+		if (founding === undefined || (founding && !isRecord(conv, founding))) {
+			return this.#membersChanged(conv, conv.mls?.generation ?? 0);
+		}
 		if (await this.#group(conv.id)) {
 			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
 		}
 		let commit: Commit;
 		try {
-			commit = await makeGroup(this.#parts, conv, this.#sender, legacyRecord(this.#parts.store, conv));
+			commit = await makeGroup(this.#parts, conv, this.#sender, founding);
 		} catch (error) {
 			// Members other than the record's: the person says whether to go on.
 			if (error instanceof CoreError && error.rule === "member_list_mismatch") {
@@ -697,6 +704,23 @@ export class Conversations {
 			throw error;
 		}
 		await this.#commit(conv, "make", commit);
+	}
+
+	/**
+	 * Whom this device founds the conversation's group with (#574): those it can account for, never the API's word alone
+	 * on who they are or the kind, which gives their order only. The record (the person's picks, of the kind they asked
+	 * for, as they made it here; a conversation from before the cutover as first listed); without one, a DM's two users,
+	 * this one among them; or the members listed, once the person said yes to them in this generation (null: none to
+	 * hold them to). Undefined, none it can account for: a group made on another device.
+	 */
+	#founding(conv: Conversation): LegacyRecord | null | undefined {
+		const record = legacyRecord(this.#parts.store, conv);
+		if (record) return record;
+		const yes = this.#accepted.get(conv.id);
+		if (yes?.generation === (conv.mls?.generation ?? 0) && yes.members === membersKey(conv)) return null;
+		const users = conv.members.map((member) => member.user_id);
+		if (conv.type === 1 && users.length === 2 && users.includes(this.#parts.user)) return { members: users };
+		return undefined;
 	}
 
 	/**
@@ -878,6 +902,8 @@ export class Conversations {
 		if (held && held.generation >= (conv.mls?.generation ?? 0)) {
 			for (const kept of [this.#otherSender, this.#removed]) kept.delete(conv.id);
 			this.#joinsLost.delete(conv.id);
+			// In its group: a conversation made after the cutover changes by the group's own rules from here on (#574).
+			if (!conv.legacy) forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
 				this.#set(conv.id, this.#goingOn(conv.id));

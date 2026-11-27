@@ -400,6 +400,45 @@ describe.skipIf(!coreLibrary)("a group whose external sender isn't the API's is 
 	);
 });
 
+describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its people account for", () => {
+	// #574: a device founds a group only with members it can account for. Its creator, with itself and the person's
+	// picks, of the kind they asked for: the API's listing gives their order, never who they are or the kind.
+	test(
+		"the API lists a third member to the creator's engine, and no group with them is founded",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const claimed: string[] = [];
+			useFake(fake, (request) => {
+				const claim = /^\/api\/users\/([^/]+)\/key-packages\/claim$/.exec(new URL(request.url).pathname);
+				if (claim?.[1]) claimed.push(claim[1]);
+			});
+			const a = await firstDevice(fake, ana);
+			await firstDevice(fake, bo);
+			await firstDevice(fake, eve);
+			// The server hands out Eve's key packages to Ana, as to a friend of hers.
+			fake.befriend(ana, eve);
+			// The page's request is answered as asked; the engine's listings after it make each a group Ana owns, with Eve.
+			fake.conversationsAs = (view, viewer) => {
+				if (viewer !== ana || view.members.some((member) => member.user_id === eve)) return view;
+				const added = { ...view.members[0]!, id: crypto.randomUUID(), user_id: eve };
+				return { ...view, type: 2, owner_id: ana, members: [...view.members, added] };
+			};
+			const made = [
+				await a.engine.createConversation({ type: 1, user_id: bo }),
+				await a.engine.createConversation({ type: 2, name: "the two of them", user_ids: [bo] }),
+			];
+			await turnEnded(a);
+			for (const { id } of made) {
+				expect(await groupOf(a, id)).toBeNull();
+				expect(a.engine.conversationState(id)).toEqual({ name: "members_changed" });
+			}
+			expect(claimed).not.toContain(eve);
+		},
+		SLOW,
+	);
+});
+
 describe.skipIf(!coreLibrary)("the server's deleted IDs delete nothing the client holds", () => {
 	// The core's contract: a deletion is its author's tombstone (decision 16); backup_import's `deleted` erases only what
 	// an import brought; and an entry the queue serves with `deleted` opens nothing. The device's files of it may go from

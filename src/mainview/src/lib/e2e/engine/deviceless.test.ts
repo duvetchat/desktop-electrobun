@@ -8,6 +8,7 @@ import {
 	approvedDevice,
 	firstDevice,
 	groupOf,
+	madeHere,
 	rejection,
 	restarted,
 	sameGroup,
@@ -129,6 +130,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			// Bo has a device, unseen for 45 days; Cy never had one.
 			const b = await firstDevice(fake, bo);
 			fake.setActive(bo, false);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			// Both are named over the message box, and told to the core, which notes what this device sends them.
 			expect(a.engine.conversationState(conversation)).toEqual({ name: "no_device", users: [bo, cy] });
@@ -183,6 +185,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			fake.befriend(ana, dee);
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			expect(a.engine.conversationState(conversation)).toBeNull();
@@ -242,6 +245,7 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			fake.befriend(ana, dee);
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			fake.refuse({ method: "PUT", path: KEY_PACKAGES }, 500, { error: "internal server error" });

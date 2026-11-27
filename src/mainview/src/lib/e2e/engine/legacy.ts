@@ -1,9 +1,13 @@
-// The record of a conversation from before the cutover (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»; Ruling 14): its
-// owner and members as this device first listed them, which every welcome and external commit into its group is held to
-// (the core's `expected`), until the person says yes to the members of today. Then the record goes, and none is made
-// again for that conversation. The session holds what it made or let go, so a store that can't keep it (its storage full
-// or refused) still holds the conversation to it until the app closes.
+// The record of a conversation's people (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»; Ruling 14; #574): who this device
+// can account for in it, which the group it founds and every welcome and external commit into it are held to (the
+// core's `expected`). For a conversation from before the cutover, its owner and members as this device first listed
+// them, until the person says yes to the members of today: then the record goes, and none is made again for that
+// conversation. For one the person made here, this user and those they picked, of the kind they asked for, as it's
+// made: it goes once this device holds its group, which changes only by its own rules from then on. The session holds
+// what it made or let go, so a store that can't keep it (its storage full or refused) still holds the conversation to
+// it until the app closes.
 import type { Conversation } from "$lib/api/conversations";
+import { sameUsers } from "./members";
 import type { EngineStore } from "./store";
 
 /** The records, by conversation: false for one whose record the person let go. */
@@ -42,28 +46,61 @@ function records(store: EngineStore): Map<string, LegacyRecord | false> {
 	return read;
 }
 
-/** A conversation's record, kept for the session and in the store, with every other this session holds. */
-function keep(store: EngineStore, conversationId: string, record: LegacyRecord | false) {
+/** What this session holds of the store's records, made the first time it's asked. */
+function heldBy(store: EngineStore): Map<string, LegacyRecord | false> {
 	let held = session.get(store);
 	if (!held) session.set(store, (held = new Map()));
-	held.set(conversationId, record);
+	return held;
+}
+
+/** A conversation's record, kept for the session and in the store, with every other this session holds. */
+function keep(store: EngineStore, conversationId: string, record: LegacyRecord | false) {
+	heldBy(store).set(conversationId, record);
 	store.write(LEGACY_RECORDS, Object.fromEntries(records(store)));
 }
 
 /**
- * The conversation's record: none for one from after the cutover, or one whose record the person let go; else the one
- * kept, or, the first time this device sees the conversation, its owner (a group's) and members as listed now.
+ * The conversation's record: the one kept, of a conversation made here or from before the cutover; none for one whose
+ * record went (let go, or its group held); else, for a conversation from before the cutover the first time this device
+ * sees it, its owner (a group's) and members as listed now.
  */
 export function legacyRecord(store: EngineStore, conv: Conversation): LegacyRecord | null {
-	if (!conv.legacy) return null;
-	const kept = records(store);
-	const record = kept.get(conv.id);
+	const record = records(store).get(conv.id);
 	if (record !== undefined) return record || null;
+	if (!conv.legacy) return null;
 	const members = conv.members.map((member) => member.user_id);
 	const made = conv.type === 2 ? { owner: conv.owner_id, members } : { members };
 	keep(store, conv.id, made);
 	return made;
 }
 
+/** The person made the conversation here: its record is this user and their picks, of the kind they asked for. */
+export const keepMade = (store: EngineStore, conversationId: string, record: LegacyRecord) =>
+	keep(store, conversationId, record);
+
 /** The person said yes to the members of today: the record goes, and none is made again. */
 export const dropRecord = (store: EngineStore, conversationId: string) => keep(store, conversationId, false);
+
+/**
+ * This device holds the group of a conversation made after the cutover: its record goes from the store, and this
+ * session holds none for it from now on.
+ */
+export function forgetRecord(store: EngineStore, conversationId: string) {
+	const kept = records(store);
+	if (!kept.get(conversationId)) return;
+	heldBy(store).set(conversationId, false);
+	kept.delete(conversationId);
+	store.write(LEGACY_RECORDS, kept.size ? Object.fromEntries(kept) : null);
+}
+
+/**
+ * Whether the conversation as the API lists it has the record's people (the core's is_record): its kind (a DM's
+ * record has no owner) and a group's owner exactly, and its users whatever their order.
+ */
+export const isRecord = (conv: Conversation, record: LegacyRecord) =>
+	conv.type === (record.owner === undefined ? 1 : 2) &&
+	(record.owner === undefined || conv.owner_id === record.owner) &&
+	sameUsers(
+		conv.members.map((member) => member.user_id),
+		record.members,
+	);
