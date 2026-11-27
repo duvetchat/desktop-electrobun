@@ -179,12 +179,13 @@ describe("Settings' devices", () => {
 	// removal signs takes off too, is named there, by its ID's start, and is what goes with the person's yes.
 	test("name the devices the server no longer lists, which the list takes off too", () => {
 		const notes = removalNotes(PHONE, { along: [], away: [GONE, PHONE.id] }, [THIS, PHONE, BROWSER]);
-		expect(notes).toContain(en.e2e_device_remove_away.replace("{names}", GONE.slice(0, 8)));
+		const away = `Your password change took ${GONE.slice(0, 8)} off your account: this takes it off your device list too.`;
+		expect(notes).toContain(away);
 		expect(dropped({ along: [BROWSER.id], away: [GONE, PHONE.id] }, PHONE.id)).toEqual([BROWSER.id, GONE]);
 		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE] }, async () => {});
 		const message = confirmStore.pending?.message ?? "";
 		confirmStore.cancel();
-		expect(message).toContain(en.e2e_device_remove_away.replace("{names}", GONE.slice(0, 8)));
+		expect(message).toContain(away);
 	});
 
 	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.

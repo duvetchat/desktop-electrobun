@@ -30,12 +30,13 @@
 
 	/**
 	 * The sentences naming what a list leaves out beside what's asked, or none: the devices an earlier removal takes along
-	 * (M3), and those the server no longer lists (#575), which GET …/devices leaves out, by the start of their IDs.
+	 * (M3), and those the API no longer lists (#575), which GET …/devices leaves out, by the start of their IDs, in the
+	 * words a first list names them with, as the mobile app does.
 	 */
 	function dropLines({ along, away }: Drops, devices: readonly Device[] | null): string[] {
 		return [
 			...(along.length ? [t("e2e_device_remove_along", { names: namesOf(along, devices) })] : []),
-			...(away.length ? [t("e2e_device_remove_away", { names: namesOf(away, devices) })] : []),
+			...(away.length ? [t("e2e_device_remove_away", { names: namesOf(away, devices), count: away.length })] : []),
 		];
 	}
 
