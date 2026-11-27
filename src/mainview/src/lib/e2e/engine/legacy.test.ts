@@ -22,6 +22,7 @@ import {
 	recordMade,
 	type LegacyRecord,
 } from "./legacy";
+import type { EngineStore } from "./store";
 
 // A conversation from before the cutover (PLAN-E2E-CLIENTES.md, «Entrar a un grupo», its record; Ruling 14): its members
 // as this device first saw them, which its group must have, until the person says the members of today are fine.
@@ -293,6 +294,25 @@ describe("the record of a group this device let go (#553)", () => {
 		expect(legacyRecord(after, group())).toEqual(yes);
 		forgetRecord(after, "c");
 		expect(legacyRecord(after, group(true))).toBeNull();
+	});
+
+	// The tests above run in one session, whose own copy of each record hides the store's (#584, FG-M9): the app again,
+	// a session of its own over the same record, holds nothing of the first's, and finds what each forget took the place
+	// of in the store alone.
+	test("what it took the place of comes back through the store, in a session that never held it", () => {
+		const store = memoryStore();
+		const again: EngineStore = { read: (key) => store.read(key), write: (key, value) => store.write(key, value) };
+		const first = legacyRecord(store, group(true, ["ana", "bo", "cy"]));
+		keepForgotten(store, "c", forgotten);
+		// A yes let go, under a forget of its own.
+		const yes = { ...group(true), id: "d" };
+		keepChosen(store, "d", { owner: "ana", members: ["ana", "bo"] });
+		forgetRecord(store, "d");
+		keepForgotten(store, "d", forgotten);
+		expect(legacyRecord(again, group(true))).toEqual(forgotten);
+		forgetRecord(again, "c");
+		forgetRecord(again, "d");
+		expect([legacyRecord(again, group(true)), legacyRecord(again, yes)]).toEqual([first, null]);
 	});
 
 	test("one the store kept reads exact only as true, and nothing else as a record", () => {
