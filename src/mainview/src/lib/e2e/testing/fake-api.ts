@@ -681,6 +681,11 @@ export class FakeApi {
 	 * could, of its type, its owner or its members, or leave it out (null).
 	 */
 	conversationsAs: <View extends ListedConversation>(view: View, viewer: string) => View | null = (view) => view;
+	/**
+	 * Whether the API takes a message, an edit or a deletion of another generation, or of an epoch further behind than
+	 * it takes (its 409 `stale message`), as a server could: what goes is then of whichever group its device made it for.
+	 */
+	takesStale = false;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -2165,10 +2170,13 @@ export class FakeApi {
 	#checkGroup(conv: Conversation, device: Device, framed: NonNullable<ReturnType<typeof framing>>) {
 		const { group } = conv;
 		if (!group) throw fail(409, "no group yet");
-		if (framed.generation !== group.generation || framed.epoch! < group.epoch - LIMITS.epochs_behind) {
+		const stale = framed.generation !== group.generation || framed.epoch! < group.epoch - LIMITS.epochs_behind;
+		if (stale && !this.takesStale) {
 			throw fail(409, "stale message", { generation: group.generation, epoch: group.epoch });
 		}
-		if (framed.epoch! > group.epoch) throw fail(400, "the message is of an epoch the group hasn't reached");
+		if (framed.generation === group.generation && framed.epoch! > group.epoch) {
+			throw fail(400, "the message is of an epoch the group hasn't reached");
+		}
 		if (!conv.leaves.has(device.id)) throw fail(403, "this device isn't in the group");
 		return framed;
 	}

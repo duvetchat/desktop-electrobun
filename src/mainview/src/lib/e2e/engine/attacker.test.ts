@@ -7,7 +7,9 @@ import { bytesBase64 } from "$lib/staged-images";
 import { MAX_FILE_NAME } from "../conventions";
 import { FakeApi, type GatewayEvent } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
+import type { CoreHost } from "../host";
 import {
+	answeringHost,
 	approvedDevice,
 	filesOn,
 	firstDevice,
@@ -20,6 +22,7 @@ import {
 	sendWritten,
 	shownKey,
 	testDevice,
+	testHost,
 	turnEnded,
 	until,
 	useFake,
@@ -65,6 +68,33 @@ async function send(device: TestDevice, conversation: string, text: string): Pro
 	const sent = await device.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
 	if (!sent) throw new Error(`the message "${text}" wasn't sent`);
 	return sent;
+}
+
+/** The users the device's core holds in the conversation's group: none without one. */
+const heldUsers = async (device: TestDevice, conversation: string) =>
+	((await groupOf(device, conversation))?.members ?? []).map((member) => member.user_id);
+
+/** What the conversation's queue holds of `kinds` from `user`, each by the generation and epoch it was made for. */
+const madeAt = async (device: TestDevice, conversation: string, user: string, kinds: string[]) =>
+	(await device.api.queue(conversation, 0)).entries
+		.filter((entry) => kinds.includes(entry.kind) && entry.sender_user === user)
+		.map(({ kind, generation, epoch }) => ({ kind, generation, epoch }));
+
+/**
+ * A core whose first encrypt once `armed` says so runs `then` after it made its bytes, before it answers: what the
+ * server does while the device holds bytes it hasn't sent.
+ */
+function afterBytes(armed: () => boolean, then: () => Promise<void>): CoreHost {
+	const core = testHost();
+	let done = false;
+	return answeringHost(core, (command) => {
+		if (command.cmd !== "encrypt" || done || !armed()) return undefined;
+		done = true;
+		return core.handle({ ...command, cmd: "encrypt" }).then(async (made) => {
+			await then();
+			return made;
+		});
+	});
 }
 
 /** Ana's and Bo's first devices in their DM, whose group Ana made; every request the fake saw goes to `seen` first. */
@@ -512,10 +542,10 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
-	// Nothing more goes there: an edit and a deletion wait too, as a message does, while the group holds someone the
-	// conversation as drawn doesn't show.
+	// Nothing more goes there: an edit and a deletion asked for while the group holds someone the conversation as drawn
+	// doesn't show are refused, made nowhere, as Android refuses them (R-C1's twins).
 	test(
-		"an edit and a deletion wait while the group holds someone its page doesn't draw",
+		"an edit and a deletion asked for while the group holds someone its page doesn't draw are refused",
 		async () => {
 			const fake = new FakeApi();
 			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
@@ -539,11 +569,13 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			const [first, second] = [await send(b, id, "first"), await send(b, id, "second")];
 			// From now on Bo's page draws the group without Eve.
 			hidden = true;
-			await b.engine.editMessage(id, first.id, "edited");
-			await b.engine.deleteMessage(id, second.id);
+			expect(await rejection(b.engine.editMessage(id, first.id, "edited"))).toMatchObject({ code: "other_members" });
+			expect(await rejection(b.engine.deleteMessage(id, second.id))).toMatchObject({ code: "other_members" });
 			await turnEnded(b);
 			expect(changes).toEqual([]);
 			expect(b.engine.conversationState(id)).toMatchObject({ name: "other_members" });
+			expect(await textOn(b, id, first.id)).toBe("first");
+			expect(await textOn(b, id, second.id)).toBe("second");
 		},
 		SLOW,
 	);
@@ -769,8 +801,9 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			const drawn = { ...listed, members: listed.members.filter((member) => member.user_id !== eve) };
 			const sent = b.engine.sendMessage({ conversation_id: id, nonce: crypto.randomUUID(), text: "for Ana", drawn });
 			expect(await rejection(sent)).toMatchObject({ code: "other_members" });
-			await b.engine.editMessage(id, first.id, "edited", drawn);
-			await b.engine.deleteMessage(id, first.id, drawn);
+			const edited = b.engine.editMessage(id, first.id, "edited", drawn);
+			expect(await rejection(edited)).toMatchObject({ code: "other_members" });
+			expect(await rejection(b.engine.deleteMessage(id, first.id, drawn))).toMatchObject({ code: "other_members" });
 			await turnEnded(b);
 			expect(changes).toEqual([]);
 			expect((await e.api.queue(id, 0)).entries.filter((entry) => entry.kind === "message")).toHaveLength(1);
@@ -857,6 +890,218 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 			const again = await restarted(fake, b);
 			await sameGroup([a, again], conversation);
 			expect(again.engine.conversationState(conversation)).toBeNull();
+		},
+		SLOW,
+	);
+});
+
+describe.skipIf(!coreLibrary)("what goes is made for the group that was compared", () => {
+	// R-C1: the look answers for the group as its read left it. What goes is made after that read, for that group, and
+	// only a comparison that reads nothing runs between the bytes and their request; bytes the core kept from before the
+	// group moved (it gives them back while the group is within 5 epochs of them) are made again. The server here takes
+	// stale bytes, as it could: its 409 guards nothing.
+
+	/** Ana's and Eve's devices in the group Eve's founded, of Eve (its owner), Ana and Bo: Bo's page draws it as Ana's
+	 * group of Ana and him (from `hidden` on, when given). */
+	async function evesGroup(hidden: () => boolean = () => true) {
+		const fake = new FakeApi();
+		fake.takesStale = true;
+		const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+		useFake(fake);
+		const conversation = fake.addConversation({ type: "group", members: [eve, ana, bo], owner: eve });
+		fake.conversationsAs = (view, viewer) =>
+			viewer === bo && view.id === conversation && hidden()
+				? { ...view, owner_id: ana, members: view.members.filter((member) => member.user_id !== eve) }
+				: view;
+		const [e, a] = [await firstDevice(fake, eve), await firstDevice(fake, ana)];
+		await madeHere(e, conversation);
+		await e.engine.openConversation(conversation);
+		await sameGroup([e, a], conversation);
+		return { fake, ana, bo, eve, e, a, conversation };
+	}
+
+	/** Eve leaves, and Ana's device commits her removal, as the API proposes it. */
+	async function eveLeaves(e: TestDevice, a: TestDevice, eve: string, conversation: string) {
+		await e.engine.leaveConversation(conversation);
+		await until(async () => (a.clock.advance(5_000), !(await heldUsers(a, conversation)).includes(eve)), {
+			what: "Ana's device committing Eve's removal",
+		});
+	}
+
+	/** What a promise settles to: null, or what it rejects with. */
+	const outcome = (promise: Promise<unknown>) =>
+		promise.then(
+			() => null,
+			(error: unknown) => error,
+		);
+
+	// Attack 1: Ana takes Cy out once Bo's device made his message's bytes, of the epoch that holds Cy. The server keeps
+	// her commit from his device until his look reads the queue: the look passes on the group as it became.
+	test(
+		"a removal Bo's device reads only once its bytes are made: nothing of the epoch that held Cy goes",
+		async () => {
+			const fake = new FakeApi();
+			fake.takesStale = true;
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			let deaf = false;
+			const a = await firstDevice(fake, ana);
+			const host = afterBytes(
+				() => deaf,
+				() => a.engine.removeMember(conversation, cy),
+			);
+			const b = await firstDevice(fake, bo, { host, hears: (event) => !(deaf && event.type.startsWith("MLS_")) });
+			const c = await firstDevice(fake, cy);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			deaf = true;
+			const sent = await send(b, conversation, "after Cy left");
+			const after = (await groupOf(a, conversation))!;
+			expect(await heldUsers(a, conversation)).not.toContain(cy);
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([
+				{ kind: "message", generation: after.generation, epoch: after.epoch },
+			]);
+			expect(sent).toMatchObject({ generation: after.generation, epoch: after.epoch });
+			await until(async () => (await textOn(a, conversation, sent.id)) === "after Cy left");
+		},
+		SLOW,
+	);
+
+	// Attack 2: the server's own account founds the group, and Bo's first device comes in by an external commit, into a
+	// group that holds Eve. She leaves once his message's bytes are made, and Ana's device commits her removal, which the
+	// server keeps from his device until his look reads it.
+	test(
+		"an external join into a group that holds Eve, her removal read by the look: nothing of her epoch goes",
+		async () => {
+			const { fake, bo, eve, e, a, conversation } = await evesGroup();
+			let deaf = false;
+			const host = afterBytes(
+				() => deaf,
+				() => eveLeaves(e, a, eve, conversation),
+			);
+			const b = await firstDevice(fake, bo, { host, hears: (event) => !(deaf && event.type.startsWith("MLS_")) });
+			await sameGroup([e, a, b], conversation);
+			expect(await madeAt(a, conversation, bo, ["commit"])).toHaveLength(1);
+			expect(await heldUsers(b, conversation)).toContain(eve);
+			deaf = true;
+			const sent = await send(b, conversation, "for Ana");
+			const after = (await groupOf(a, conversation))!;
+			expect(await madeAt(a, conversation, bo, ["message"])).toEqual([
+				{ kind: "message", generation: after.generation, epoch: after.epoch },
+			]);
+			expect(sent).toMatchObject({ generation: after.generation, epoch: after.epoch });
+		},
+		SLOW,
+	);
+
+	// An edit and a deletion asked for while the group holds someone the page doesn't draw: refused, made nowhere, as
+	// nothing more goes there. Eve's removal comes after, read by the look of whatever Bo's device would try: nothing of
+	// her epoch goes.
+	test(
+		"an edit or a deletion made while the group differs is never sent as made",
+		async () => {
+			let hidden = false;
+			const { fake, bo, eve, e, a, conversation } = await evesGroup(() => hidden);
+			let deaf = false;
+			const b = await firstDevice(fake, bo, { hears: (event) => !(deaf && event.type.startsWith("MLS_")) });
+			await sameGroup([e, a, b], conversation);
+			const [first, second] = [await send(b, conversation, "first"), await send(b, conversation, "second")];
+			// From now on Bo's page draws the group as Ana's, without Eve, and his device hears none of its commits.
+			hidden = true;
+			deaf = true;
+			const edited = await outcome(b.engine.editMessage(conversation, first.id, "edited"));
+			const deleted = await outcome(b.engine.deleteMessage(conversation, second.id));
+			await eveLeaves(e, a, eve, conversation);
+			const after = (await groupOf(a, conversation))!;
+			for (let round = 0; round < 4; round++) {
+				b.clock.advance(60_000);
+				await turnEnded(b);
+			}
+			const made = await madeAt(a, conversation, bo, ["edit", "delete"]);
+			expect(made.filter((entry) => entry.generation !== after.generation || entry.epoch < after.epoch)).toEqual([]);
+			expect(edited).toMatchObject({ code: "other_members" });
+			expect(deleted).toMatchObject({ code: "other_members" });
+			expect(await textOn(b, conversation, first.id)).toBe("first");
+			expect(await textOn(b, conversation, second.id)).toBe("second");
+		},
+		SLOW,
+	);
+
+	// Bytes kept from an epoch gone by: a message whose request had no answer, and an edit's. The group moves (Cy's
+	// removal, which Bo's device applies as it comes), and what goes after is made again for the group as it is.
+	test(
+		"a message's or an edit's bytes made before the group moved are made again before they go",
+		async () => {
+			const fake = new FakeApi();
+			fake.takesStale = true;
+			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+			const [a, b, c] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, cy)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b, c], conversation);
+			const first = await send(b, conversation, "first");
+			// His next message and his edit find no answer.
+			fake.refuse({ method: "POST", path: messagesPath(conversation) }, 500);
+			fake.refuse({ method: "PATCH", path: `${messagesPath(conversation)}/${first.id}` }, 500);
+			const message = { conversation_id: conversation, nonce: crypto.randomUUID(), text: "second" };
+			await rejection(b.engine.sendMessage(message));
+			await b.engine.editMessage(conversation, first.id, "edited");
+			await a.engine.removeMember(conversation, cy);
+			const after = await sameGroup([a, b], conversation);
+			const sent = await b.engine.sendMessage(message);
+			await until(async () => (b.clock.advance(2_000), (await madeAt(a, conversation, bo, ["edit"])).length > 0), {
+				what: "Bo's edit",
+			});
+			const at = { generation: after.generation, epoch: after.epoch };
+			expect(sent).toMatchObject(at);
+			expect(await madeAt(a, conversation, bo, ["edit"])).toEqual([{ kind: "edit", ...at }]);
+			await until(async () => (await textOn(a, conversation, first.id)) === "edited");
+		},
+		SLOW,
+	);
+
+	// A change the record kept from an earlier start, made again at the next while the group holds someone the page
+	// doesn't draw: nothing is made then. What goes is made once the look passes, after Eve's removal, which the server
+	// keeps from Bo's device until that look reads it.
+	test(
+		"a kept change made again at a start while the group differs goes with bytes made after the look",
+		async () => {
+			const fake = new FakeApi();
+			fake.takesStale = true;
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			useFake(fake);
+			fake.befriend(ana, eve);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			fake.conversationsAs = (view, viewer) =>
+				viewer === bo && view.id === conversation
+					? { ...view, members: view.members.filter((member) => member.user_id !== eve) }
+					: view;
+			const [a, b, e] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, eve)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			const first = await send(b, conversation, "first");
+			// His edit finds no answer, and his app closes; meanwhile Ana adds Eve, whom his page doesn't draw.
+			fake.refuse({ method: "PATCH", path: `${messagesPath(conversation)}/${first.id}` }, 500);
+			await b.engine.editMessage(conversation, first.id, "edited");
+			await b.engine.stop();
+			await a.engine.addMember(conversation, eve);
+			await sameGroup([a, e], conversation);
+			const again = await restarted(fake, b, { hears: (event) => !event.type.startsWith("MLS_") });
+			await turnEnded(again);
+			expect(await heldUsers(again, conversation)).toContain(eve);
+			await eveLeaves(e, a, eve, conversation);
+			const after = (await groupOf(a, conversation))!;
+			await until(async () => (again.clock.advance(60_000), (await madeAt(a, conversation, bo, ["edit"])).length > 0), {
+				what: "Bo's edit",
+			});
+			expect(await madeAt(a, conversation, bo, ["edit"])).toEqual([
+				{ kind: "edit", generation: after.generation, epoch: after.epoch },
+			]);
 		},
 		SLOW,
 	);

@@ -1001,7 +1001,8 @@ export class Conversations {
 	 * conversation as its page draws it doesn't, or the page doesn't draw it (N-C1), which the conversation then says
 	 * (`other_members`). The core's group and the page's drawing alone, never the engine's listing, which may leave the
 	 * conversation out. Never waived for a removal that waits: what's sent is made only once it's committed (the core's
-	 * ready_to_send). False without a group.
+	 * ready_to_send). False without a group. A look before bytes are made, never after them (R-C1): its read can move the
+	 * group, after which `differs` is the one comparison.
 	 */
 	async holdsOthers(conversationId: string, carried?: Drawn | null): Promise<boolean> {
 		let held = await this.#group(conversationId);
@@ -1013,10 +1014,28 @@ export class Conversations {
 			held = await this.#group(conversationId);
 			others = held && (await this.#othersIn(conversationId, held, false, carried));
 		}
-		if (others) this.#set(conversationId, others);
-		else if (this.#states.get(conversationId)?.name === "other_members") {
-			this.#set(conversationId, this.#goingOn(conversationId));
-		}
+		return this.#say(conversationId, others);
+	}
+
+	/**
+	 * After bytes are made (R-C1): holdsOthers' comparison, of the group as the core holds it, which the bytes are of,
+	 * with no read of the queue, which could move it. Whom it holds that the conversation doesn't show is said.
+	 */
+	async differs(conversationId: string, carried?: Drawn | null): Promise<boolean> {
+		const held = await this.#group(conversationId);
+		return this.#say(conversationId, held && (await this.#othersIn(conversationId, held, false, carried)));
+	}
+
+	/** The generation and epoch of the conversation's group as the core holds it: null without one. */
+	async epochOf(conversationId: string): Promise<{ generation: number; epoch: number } | null> {
+		const held = await this.#group(conversationId);
+		return held && { generation: held.generation, epoch: held.epoch };
+	}
+
+	/** Whom the group holds that the conversation doesn't show, said, or no longer: whether there's anyone. */
+	#say(id: string, others: ConversationState | null): boolean {
+		if (others) this.#set(id, others);
+		else if (this.#states.get(id)?.name === "other_members") this.#set(id, this.#goingOn(id));
 		return others !== null;
 	}
 

@@ -2,11 +2,13 @@
 // person's messages, their edits and their deletions. The core encrypts a message and keeps it as pending, its bytes
 // with it, until `sent` binds it to the API's ID: the same nonce gives the same bytes again, so one whose answer was lost
 // goes again as it was, and the API answers it with the message it posted. What waits in a conversation goes first, in
-// the order it was made, its queue applied before; once one's bytes no member can open any more, it and each one after
-// it are encrypted again, in their order, under new nonces, each still known by the nonce the person sent it with. An
-// edit and a deletion the core makes anew each time: a message's go one after the other, each kept until its answer
-// comes (in memory with its bytes, and in the record without them, made again at the next start), and the entry the
-// answer gives goes to the core. Only the core keeps text: the record keeps what goes with each message in the clear.
+// the order it was made, its queue applied before; once one's bytes are of a group that moved, or no member can open
+// them any more, the queue is read (a copy the API took binds its message), and it and each one after it are encrypted
+// again, in their order, under new nonces, each still known by the nonce the person sent it with. What goes is made
+// after the look at its group, for the group that look left (R-C1). An edit and a deletion the core makes anew each
+// time: a message's go one after the other, each kept until its answer comes (in memory with its bytes, made again once
+// its group moved, and in the record without them, made again at the next start), and the entry the answer gives goes
+// to the core. Only the core keeps text: the record keeps what goes with each message in the clear.
 // A message's files (files.ts) are sealed as it's first made, and their sealed bytes stay in this page's memory alone
 // until it's sent: a retry or a remake sends the same bytes, which the API takes again by their IDs, and one whose
 // bytes went with the app waits for the person's Dismiss. Only the core's calls take the engine's turn: a message's
@@ -61,14 +63,24 @@ export type Pending = ShownMessage & Partial<Clear> & { files_gone?: true };
 
 type ChangeKind = "edit" | "delete";
 
-/** An edit or a deletion of the person's, made: its bytes, sent again as they are until an answer comes. */
+/** Bytes the core made, of the group's generation and epoch it made them at. */
+interface Made {
+	ciphertext: string;
+	generation: number;
+	epoch: number;
+}
+
+/**
+ * An edit or a deletion of the person's: its bytes, sent again as they are until an answer comes, while the group is
+ * the one they were made for; made again once it moved, and made only after a look that passed (null till then).
+ */
 interface Change {
 	conversation: string;
 	message: string;
 	kind: ChangeKind;
 	/** An edit's text, made into bytes again when the API says no member could open them any more. */
 	text: string | null;
-	ciphertext: string;
+	made: Made | null;
 	remade: boolean;
 	/** The people the tab it was made in draws there, as a message's (Outgoing's `drawn`): in memory alone. */
 	drawn?: Drawn | null;
@@ -143,6 +155,18 @@ const held = (error: unknown) =>
 /** The API's (a 409): the bytes are of another generation of the group, or too many epochs behind it. */
 const staleAnswer = (error: unknown) =>
 	error instanceof FetchError && error.response?.status === 409 && error.response.data?.error === "stale message";
+/** What waits for the person's yes: a verified contact's key changed (decision 25). */
+const keysChanged = (users: string[]) =>
+	new CoreError("key_changed", "a verified contact's key changed: the person says whether to send", { users });
+/** What waits while the conversation's group holds someone the conversation doesn't show (#574). */
+const othersHeld = () =>
+	new CoreError("other_members", "this conversation's group holds people the conversation doesn't show");
+/**
+ * Bytes the core gave back for a nonce it has, of a group that moved since they were made (it gives them while the
+ * group is within 5 epochs of them): never sent, the flush makes them again, as stale ones (R-C1).
+ */
+const madeBefore = () =>
+	new CoreError("rule_violation", "the message's bytes are of a group that moved since", { rule: "stale_message" });
 
 export class Sends {
 	readonly #parts: EngineParts;
@@ -354,10 +378,13 @@ export class Sends {
 	 */
 	async change(id: string, message: string, text: string | null, drawn?: Drawn | null): Promise<void> {
 		await this.#groups.current(id);
+		// The look, before its bytes (R-C1): asked for while the group holds someone the conversation doesn't show, it's
+		// refused, made nowhere, as nothing more goes there (#574).
+		if (await this.#groups.holdsOthers(id, drawn)) throw othersHeld();
 		const kind = text === null ? "delete" : "edit";
-		const change: Change = { conversation: id, message, kind, text, ciphertext: "", remade: false };
+		const change: Change = { conversation: id, message, kind, text, made: null, remade: false };
 		if (drawn !== undefined) change.drawn = drawn;
-		change.ciphertext = await this.#make(change);
+		change.made = await this.#make(change);
 		const key = changeKey(id, message);
 		this.#keepChange(key, change);
 		this.#hooks.changed(id, [message]);
@@ -427,8 +454,9 @@ export class Sends {
 					}
 					const tail = rows.slice(at);
 					const made = await this.#turn(async () => {
-						// The core learns the epochs the API is at first, so the new bytes are of them.
-						if (staleAnswer(error)) await this.#groups.sync(id, true);
+						// The queue is read first: the core learns the epochs the API is at, so the new bytes are of them, and
+						// binds the copy of one the API took after all (its answer lost), which then isn't made again.
+						await this.#groups.sync(id, true);
 						// What a Dismiss let go meanwhile isn't made again.
 						const now = new Set((await this.#waiting(id)).rows.map((other) => other.nonce));
 						return this.#again(
@@ -468,20 +496,27 @@ export class Sends {
 		const made = await this.#turn(async () => {
 			const waiting = await pendingRows(this.#parts.host, id);
 			if (!waiting.some((other) => other.nonce === nonce)) return null;
+			const carried = this.#carried.get(first);
+			// The look, before its bytes (R-C1): its read may move the group (a commit applied, a join), and what goes is
+			// made for the group as the read left it. One that holds someone the conversation doesn't show (#574): it waits,
+			// for the person's yes first where a changed key asks it, as once its bytes are made.
+			if (await this.#groups.holdsOthers(id, carried)) {
+				const holding = await this.#hooks.held(id);
+				throw holding.length ? keysChanged(holding) : othersHeld();
+			}
 			// Stale bytes are the flush's to make again: handed out, not a failure of the turn's.
 			const encrypted = await this.#encrypt(id, nonce, text, row.attachments).catch((error: unknown) => {
 				if (!staleBytes(error)) throw error;
 				return { stale: error };
 			});
 			if ("stale" in encrypted) return encrypted;
+			if (!(await this.#ofGroupNow(id, encrypted))) return { stale: madeBefore() };
 			// Whom it reaches whose changed key waits for the person's yes, known by now (its encrypt may have just observed
 			// it), read in the same turn.
 			const holding = await this.#hooks.held(id);
-			// Its group holds someone the conversation doesn't show (#574): the conversation says so, and it waits, its
-			// bytes kept, once no changed key asks first. Read after its encrypt committed any removal that waited.
-			if (!holding.length && (await this.#groups.holdsOthers(id, this.#carried.get(first)))) {
-				throw new CoreError("other_members", "this conversation's group holds people the conversation doesn't show");
-			}
+			// After the bytes, one comparison that reads nothing: its encrypt may have committed a removal that waited, and
+			// what came with it. A difference waits, its bytes kept, once no changed key asks first.
+			if (!holding.length && (await this.#groups.differs(id, carried))) throw othersHeld();
 			return { ...encrypted, holding };
 		});
 		if (!made) return null;
@@ -491,11 +526,7 @@ export class Sends {
 		if (this.#dismissing.has(first)) return null;
 		// A verified contact's changed key: it waits for the person's yes, its bytes kept, as decision 25 asks before
 		// anything more goes there.
-		if (holding.length) {
-			throw new CoreError("key_changed", "a verified contact's key changed: the person says whether to send", {
-				users: holding,
-			});
-		}
+		if (holding.length) throw keysChanged(holding);
 		// Its own send's upload, whichever flush this is: its progress and its Cancel, which may have come already.
 		const own = this.#uploads.get(first);
 		own?.signal?.throwIfAborted();
@@ -649,15 +680,10 @@ export class Sends {
 	 * leaves and removals to commit, a commit of its own that waits for its word (settled as «Un commit sin respuesta»
 	 * says), a group to join or make.
 	 */
-	async #encrypt(
-		id: string,
-		nonce: string,
-		text: string | null,
-		attachments: readonly unknown[],
-	): Promise<{ ciphertext: string }> {
+	async #encrypt(id: string, nonce: string, text: string | null, attachments: readonly unknown[]): Promise<Made> {
 		const run = () =>
 			withIdentities(this.#parts, () =>
-				this.#parts.host.handle<{ ciphertext: string }>({
+				this.#parts.host.handle<Made>({
 					...{ cmd: "encrypt", conversation_id: id, nonce },
 					envelope: { ...(text ? { text } : {}), ...(attachments.length ? { attachments } : {}) },
 				}),
@@ -686,20 +712,27 @@ export class Sends {
 		this.#paused.set(id, cancel);
 	}
 
-	/** An edit's or a deletion's bytes, as the core makes them now. */
-	async #make(change: Change): Promise<string> {
-		const { ciphertext } = await withIdentities(this.#parts, () =>
-			this.#parts.host.handle<{ ciphertext: string }>({
+	/** An edit's or a deletion's bytes, as the core makes them now, with the group's generation and epoch they're of. */
+	#make(change: Change): Promise<Made> {
+		return withIdentities(this.#parts, () =>
+			this.#parts.host.handle<Made>({
 				...{ cmd: change.kind, conversation_id: change.conversation, message_id: change.message },
 				...(change.text === null ? {} : { text: change.text }),
 			}),
 		);
-		return ciphertext;
+	}
+
+	/** Whether bytes are of the conversation's group as the core holds it now, its generation and epoch (R-C1). */
+	async #ofGroupNow(id: string, made: Made): Promise<boolean> {
+		const now = await this.#groups.epochOf(id);
+		return now !== null && now.generation === made.generation && now.epoch === made.epoch;
 	}
 
 	/**
 	 * A change the record kept from an earlier start, made again: a deletion as it was (the core takes one again on the
 	 * row it erased), an edit from the row's text, which is its last edit's. A message no longer held here has none.
+	 * While its group holds someone the page doesn't show, none is made: its request makes it after a look that passes
+	 * (R-C1).
 	 */
 	async #remake(key: string, kept: KeptChange): Promise<void> {
 		const { conversation_id: id, message_id: message, kind } = kept;
@@ -709,9 +742,9 @@ export class Sends {
 			if (row?.status !== "ok") return this.#forgetChange(key);
 			text = row.text ?? "";
 		}
-		const change: Change = { conversation: id, message, kind, text, ciphertext: "", remade: false };
+		const change: Change = { conversation: id, message, kind, text, made: null, remade: false };
 		try {
-			change.ciphertext = await this.#make(change);
+			if (!(await this.#groups.holdsOthers(id))) change.made = await this.#make(change);
 		} catch (error) {
 			// The core has nothing of the message any more (its conversation let go): nothing to send.
 			if (error instanceof CoreError && error.code === "not_found") return this.#forgetChange(key);
@@ -755,28 +788,41 @@ export class Sends {
 	}
 
 	/**
-	 * An edit's or a deletion's request, its bytes as they are: null once answered (its entry to the core, or a refusal
-	 * for good, told), else how long to wait before it goes again (the pause's Retry-After). Bytes the API says no member
-	 * could open now are made again, once.
+	 * An edit's or a deletion's request: null once answered (its entry to the core, or a refusal for good, told), else
+	 * how long to wait before it goes again (the pause's Retry-After). Its bytes go as they are while the group is the one
+	 * they were made for, the look passed; else they're made now, after it (R-C1). Bytes the API says no member could
+	 * open now are made again, once, after the queue's read.
 	 */
 	async #sendChange(change: Change, changes: Changes): Promise<number | null> {
 		const { conversation: id, message, kind } = change;
 		// An edit is new text: while a verified contact's changed key waits for the person's yes it waits as an unanswered
-		// one does, its bytes as the core last made them, and the yes sends it (review, I2); a deletion carries no text.
-		// Either waits while the group holds someone the conversation doesn't show (#574): nothing more goes there.
+		// one does, and the yes sends it (review, I2); a deletion carries no text. Either waits while the group holds
+		// someone the conversation doesn't show (#574): nothing more goes there. That look reads the queue (N-M9).
 		if (
 			(kind === "edit" && (await this.#hooks.held(id)).length) ||
 			(await this.#groups.holdsOthers(id, change.drawn))
 		) {
 			return this.#backoff(changes);
 		}
+		let made = change.made;
+		if (!made || !(await this.#ofGroupNow(id, made))) {
+			try {
+				made = change.made = await this.#make(change);
+			} catch (error) {
+				// The message isn't held here any more (deleted, or its conversation let go): nothing to send.
+				if (error instanceof CoreError && error.code === "not_found" && error.what === "message") return null;
+				throw error;
+			}
+		}
+		// After the bytes, one comparison that reads nothing: what goes is of the group compared.
+		if (await this.#groups.differs(id, change.drawn)) return this.#backoff(changes);
 		let entry: MlsEntry;
 		try {
 			const { api } = this.#parts;
 			const answer =
 				kind === "edit"
-					? await api.editMessage(id, message, change.ciphertext)
-					: await api.deleteMessage(id, message, change.ciphertext);
+					? await api.editMessage(id, message, made.ciphertext)
+					: await api.deleteMessage(id, message, made.ciphertext);
 			entry = answer.entry;
 		} catch (error) {
 			if (error instanceof UpdateRequiredError) throw error;
@@ -787,7 +833,7 @@ export class Sends {
 			if (unanswered(error)) return this.#backoff(changes);
 			if (staleAnswer(error) && !change.remade) {
 				await this.#groups.sync(id, true);
-				change.ciphertext = await this.#make(change);
+				change.made = null;
 				change.remade = true;
 				return this.#sendChange(change, changes);
 			}

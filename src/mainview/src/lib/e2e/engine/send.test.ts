@@ -216,9 +216,14 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			expect(sends).toHaveLength(2);
 			expect(sends[0]!).toBeGreaterThan(read);
 
-			// A new message goes after them. (The second's first try went to the first: what waits goes first.)
+			// Bo's renewal moved the group since their bytes were made: they went with bytes made again, under new nonces, in
+			// their order (R-C1). A new message goes after them. (The second's first try went to the first: what waits goes
+			// first.)
 			await again.engine.sendMessage({ conversation_id: conversation, nonce: third, text: "third" });
-			expect((await posts()).map((post) => post.body.nonce)).toEqual([first, first, first, second, third]);
+			const sent = (await posts()).map((post) => post.body.nonce);
+			expect(sent).toHaveLength(5);
+			expect([sent[0], sent[1], sent[4]]).toEqual([first, first, third]);
+			expect(new Set([first, second, third, sent[2], sent[3]]).size).toBe(5);
 			const bo = await restarted(fake, b);
 			const ids = await queued(bo, conversation);
 			expect(ids).toHaveLength(3);
