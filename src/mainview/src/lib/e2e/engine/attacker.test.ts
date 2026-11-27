@@ -1882,6 +1882,44 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		SLOW,
 	);
 
+	// A kept change ends only once its message isn't on the device (#584, FG-M2, as a try's #sendChange has it): out of
+	// its group, the core answers not_found of the group for an edit or a deletion whose message it holds, and the change
+	// waits for the next start or READY.
+	test(
+		"an edit waiting across a start while the device holds no group goes once the device is back in",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const a = await firstDevice(fake, ana);
+			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			const message = await send(b, conversation, "as written");
+			await until(async () => (await textOn(a, conversation, message.id)) === "as written");
+			// Bo's edit finds no answer, and waits.
+			fake.cutRequest({ method: "PATCH", path: `${messagesPath(conversation)}/${message.id}` });
+			await b.engine.editMessage(conversation, message.id, "edited");
+			// His next session is told there's no group: his device lets it go, and starts without it.
+			let lying = true;
+			fake.conversationsAs = (view, viewer) =>
+				lying && viewer === bo && view.id === conversation ? { ...view, mls: null } : view;
+			b = await restarted(fake, b);
+			expect(await groupOf(b, conversation)).toBeNull();
+			// Listed with its group again, his device comes back in, and the edit goes with its next start.
+			lying = false;
+			await b.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			b = await restarted(fake, b);
+			await until(async () => (await textOn(a, conversation, message.id)) === "edited", {
+				what: "Bo's edit on Ana's device",
+			});
+		},
+		SLOW,
+	);
+
 	// The record holds the users: a DM listed with someone else once its group is let go founds nothing with them, and
 	// asks the person first, as the founding of a group with members other than its record's does.
 	test(

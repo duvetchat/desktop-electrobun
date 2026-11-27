@@ -766,7 +766,8 @@ export class Sends {
 	 * A change the record kept from an earlier start, made again: a deletion as it was (the core takes one again on the
 	 * row it erased), an edit from the row's text, which is its last edit's. A message no longer held here has none.
 	 * While its group holds someone the page doesn't show, none is made: its request makes it after a look that passes
-	 * (R-C1).
+	 * (R-C1). Out of its group, or with none (the core's not_found of its membership or its group), it stays in the
+	 * record for the next start or READY (#584).
 	 */
 	async #remake(key: string, kept: KeptChange): Promise<void> {
 		const { conversation_id: id, message_id: message, kind } = kept;
@@ -784,9 +785,10 @@ export class Sends {
 		try {
 			if (!(await this.#groups.holdsOthers(id, change.drawn))) change.made = await this.#make(change);
 		} catch (error) {
-			// The core has nothing of the message any more (its conversation let go): nothing to send.
-			if (error instanceof CoreError && error.code === "not_found") return this.#forgetChange(key);
-			throw error;
+			if (!(error instanceof CoreError && error.code === "not_found")) throw error;
+			// The core has nothing of the message any more (deleted, or its conversation let go): nothing to send.
+			if (error.what === "message") this.#forgetChange(key);
+			return;
 		}
 		this.#changesOf(key).list.push(change);
 	}
