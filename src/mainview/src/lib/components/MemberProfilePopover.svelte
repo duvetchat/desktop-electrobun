@@ -405,13 +405,15 @@
 							</div>
 
 							<!-- Their direct conversation, opened as their menu's Message opens it (the app's page): the one there is, or
-							     a new one. -->
+							     a new one. Whose it is, read before the card closes: what opens it for one person (a message's author, a
+							     mention, someone in a voice room) lets go of them as it closes, and member went with them. -->
 							{#if canMessage}
 								<button
 									class="{buttonClass('primary')} mt-3 w-full"
 									onclick={() => {
+										const { id } = member;
 										onOpenChange(false);
-										chatWith(member.id);
+										chatWith(id);
 									}}
 								>
 									<MessageCircle class="size-4" />
