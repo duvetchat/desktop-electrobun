@@ -11,7 +11,7 @@ import type { EngineParts } from "./engine";
 import type { Failures } from "./failures";
 import { isShareKey, type ShareKey } from "./history";
 import { withIdentities } from "./identity";
-import { KEPT_APPROVALS, KEPT_LATER, KEPT_TRANSFERS, type EngineStore } from "./store";
+import { KEPT_APPROVALS, KEPT_LATER, type EngineStore } from "./store";
 
 /** The most messages a page of the inbox has (the API's most). */
 const PAGE = 100;
@@ -50,9 +50,8 @@ const forLater = ({ code, field }: CoreError) =>
  * (Task 26), so deleting the inbox through it loses nothing, and another user's is dropped. Anything else goes to
  * receive_direct, with the identity the API serves for the user today (what a rotation's transfer is checked against)
  * and its sender's certificate, from the sender's served identity. A package's key goes to `onKey` (Task 30), which
- * keeps it; one it couldn't keep stays in the inbox. A transfer the core keeps for later (`not_found` `code`: an
- * approval whose code wasn't accepted yet) is kept in the record, as is one the core can't take yet (`forLater`), which
- * each round tries again first; one no core here can read goes, as does one whose call is cut five rounds running
+ * keeps it; one it couldn't keep stays in the inbox. One the core can't take yet (`forLater`) is kept in the record,
+ * which each round tries again first; one no core here can read goes, as does one whose call is cut five rounds running
  * (`tries`, by its ID). One that doesn't open is counted for the API as a failure to decrypt (`direct`). A rotation's
  * transfer that keeps a device this device's own waiting change takes off is refused (`removed_device_listed`,
  * duvetchat/e2e#49), which `relisted` hears: that change can never finish. True when the inbox brought a rotation's
@@ -122,8 +121,6 @@ export async function takeInbox(
 					return false;
 				}
 				console.warn(`[e2e] A message from another device failed ${tried} times (${error.code}), and goes.`);
-			} else if (error.code === "not_found" && error.what === "code") {
-				if (!keep(store, KEPT_TRANSFERS, message)) return false;
 			} else if (forLater(error)) {
 				if (!keep(store, KEPT_LATER, message)) return false;
 				later = true;

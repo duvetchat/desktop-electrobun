@@ -52,6 +52,36 @@ describe("the inbox's pages", () => {
 	});
 });
 
+// #575 (M4): a transfer the core kept for an approval's code went to a record nothing read: an approval's steps travel
+// as frames now (KEPT_APPROVALS), so a bare one the core can't take goes, as any message no core here can read.
+describe("a transfer the core can't take for an approval's code", () => {
+	test("goes, and nothing keeps it for a later that never comes", async () => {
+		const [user, other] = ["0193a4b2-0000-7000-8000-00000000a0a1", "0193a4b2-0000-7000-8000-00000000b0b1"];
+		const message: InboxMessage = {
+			...{ id: "0193a4b2-0000-7000-8000-000000000001", from_user_id: other, from_device_id: other },
+			...{ message: "bWVzc2FnZQ==", created_at: "2026-11-26T10:00:00Z" },
+		};
+		const cleared: string[] = [];
+		const store = memoryStore();
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parts the inbox reads, and nothing else
+		const parts = {
+			user,
+			store,
+			api: {
+				inbox: async () => [message],
+				clearInbox: async (through: string) => void cleared.push(through),
+				identity: async () => null,
+			},
+			host: {
+				handle: async () => Promise.reject(new CoreError("not_found", "no approval waits", { what: "code" })),
+			},
+		} as unknown as EngineParts;
+		await takeInbox(parts, new Map());
+		expect(cleared).toEqual([message.id]);
+		expect(store.read("transfers")).toBeNull();
+	});
+});
+
 // The inbox (PLAN-E2E-CLIENTES.md, «El buzón»): what other devices sent this one, read at start, at each READY and on
 // DEVICE_MESSAGE; each message deleted only once it's handled.
 const SLOW = 180_000;
@@ -133,7 +163,8 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			const log: string[] = [];
 			const host = watchedHost(testHost(), log, (cmd) => {
 				if (cmd !== "receive_direct") return null;
-				// The first message the core reads is cut midway; the second after that is a transfer the core keeps for later.
+				// The first message the core reads is cut midway; the second after that is a transfer the core takes for an
+				// approval's code, which goes (#575, M4).
 				if (cut) return ((cut = false), new CoreError("internal", "the call was cut"));
 				if (++refusedByCode === 2) return new CoreError("not_found", "no approval accepted its code", { what: "code" });
 				return null;
@@ -152,10 +183,10 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			const [first, second] = [await commitment(), await commitment()];
 			fake.holdEvents();
 			const sent: string[] = [];
-			for (const message of [frame(first), btoa("not the core's"), btoa("kept for later"), frame(second)]) {
+			for (const message of [frame(first), btoa("not the core's"), btoa("an approval's transfer"), frame(second)]) {
 				sent.push((await other.api.sendToDevice(device, message)).id);
 			}
-			const [firstFrame, , kept, lastFrame] = sent;
+			const [firstFrame, , , lastFrame] = sent;
 			expect(sent).toHaveLength(4);
 			// The first round keeps the frame, then stops at the cut call: only the frame is deleted.
 			a.connect(device);
@@ -163,7 +194,7 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			await until(async () => (await a.api.inbox()).length === 3);
 			expect((await a.api.inbox()).map((message) => message.id)).toEqual(sent.slice(1));
 
-			// The next READY reads it again: what the core can't read is dropped, the transfer kept, the frame kept. Of a
+			// The next READY reads it again: what the core can't read is dropped, the transfer too, the frame kept. Of a
 			// device's commitments the approval's flow keeps the newest (Task 26): one sent again replaces the one before,
 			// in the take that follows the inbox's round in the engine's turn, once the inbox is empty (#533).
 			a.connect(device);
@@ -171,7 +202,7 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			await a.engine.uploadLater(); // the engine's turn after the inbox's
 			expect(firstFrame).toBeDefined();
 			expect((a.store.read<{ id: string }[]>("approvals") ?? []).map((message) => message.id)).toEqual([lastFrame!]);
-			expect((a.store.read<{ id: string }[]>("transfers") ?? []).map((message) => message.id)).toEqual([kept!]);
+			expect(a.store.read("transfers")).toBeNull();
 			await Promise.all([a.engine.stop(), other.engine.stop()]);
 		},
 		SLOW,
@@ -271,23 +302,23 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			const fake = new FakeApi();
 			const ana = fake.addUser();
 			useFake(fake);
-			// The page's record, whose storage refuses the kept transfers while it's full.
+			// The page's record, whose storage refuses the messages kept for later while it's full.
 			let full = true;
 			const setItem = localStorage.setItem.bind(localStorage);
 			spyOn(localStorage, "setItem").mockImplementation((key: string, value: string) => {
-				if (full && key === `duvet.e2e.${ana}.transfers`) {
+				if (full && key === `duvet.e2e.${ana}.later`) {
 					throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
 				}
 				setItem(key, value);
 			});
 			const log: string[] = [];
-			// The core keeps every message for later: a transfer whose approval's code wasn't accepted yet.
-			const later = new CoreError("not_found", "no approval accepted its code", { what: "code" });
+			// The core can take none of its messages yet: a key its task gives the field of (Tasks 22 and 30).
+			const later = new CoreError("bad_command", "a field is missing", { field: "group_info" });
 			const host = watchedHost(testHost(), log, (cmd) => (cmd === "receive_direct" ? later : null));
 			const a = await firstDevice(fake, ana, { host, store: pageStore(ana) });
 			const other = testDevice(fake, ana);
 			await other.engine.start();
-			const { id } = await other.api.sendToDevice(a.registered[0]!, btoa("a transfer for later"));
+			const { id } = await other.api.sendToDevice(a.registered[0]!, btoa("a key for later"));
 
 			// The round reads it, and the record refuses it: it stays in the inbox, for the next round.
 			await until(() => log.includes("receive_direct"));
@@ -298,7 +329,7 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			full = false;
 			a.connect(a.registered[0]!);
 			await until(async () => (await a.api.inbox()).length === 0);
-			expect((pageStore(ana).read<{ id: string }[]>("transfers") ?? []).map((message) => message.id)).toEqual([id]);
+			expect((pageStore(ana).read<{ id: string }[]>("later") ?? []).map((message) => message.id)).toEqual([id]);
 			await Promise.all([a.engine.stop(), other.engine.stop()]);
 		},
 		SLOW,
