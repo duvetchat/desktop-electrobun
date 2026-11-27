@@ -65,6 +65,21 @@ export async function removal(parts: EngineParts, conv: Conversation, user: stri
 /** A conversation's people as a page draws them (#574): its kind, a group's owner, its members' users. */
 export type Drawn = Pick<Conversation, "type" | "owner_id"> & { members: Pick<ConversationMember, "user_id">[] };
 
+/** A drawing as a record kept it (R-M1), checked as it's read: null for none, undefined for anything else. */
+export function drawnIn(value: unknown): Drawn | null | undefined {
+	if (value === null) return null;
+	if (typeof value !== "object" || !("type" in value) || !("owner_id" in value) || !("members" in value)) return;
+	const { type, owner_id, members } = value;
+	if ((type !== 1 && type !== 2) || typeof owner_id !== "string" || !Array.isArray(members)) return;
+	const users: Drawn["members"] = [];
+	for (const member of members) {
+		if (typeof member !== "object" || member === null || !("user_id" in member)) return;
+		if (typeof member.user_id !== "string") return;
+		users.push({ user_id: member.user_id });
+	}
+	return { type, owner_id, members: users };
+}
+
 /** The users the core's group holds that the API's conversation no longer lists: whom a restart leaves out. */
 export const leftOut = (held: HeldMembers, conv: Drawn) =>
 	held.members.map((member) => member.user_id).filter((user) => !conv.members.some((m) => m.user_id === user));

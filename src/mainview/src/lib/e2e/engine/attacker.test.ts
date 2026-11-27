@@ -811,6 +811,52 @@ describe.skipIf(!coreLibrary)("a new conversation's group holds only whom its pe
 		SLOW,
 	);
 
+	// R-M1: what another tab carried outlives the leader's engine. A message that tab left waiting, and its edit kept
+	// unanswered, are held to its drawing at the next leader's start too (here the same device's engine started again, on
+	// the record the tabs share), whatever that leader's page draws.
+	test(
+		"what another tab left waiting is held to that tab's drawing after the leader's restart",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo, eve] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			const changes: string[] = [];
+			useFake(fake, (request) => {
+				const change = request.method === "PATCH" || request.method === "DELETE";
+				if (change && /\/messages\/[^/]+$/.test(new URL(request.url).pathname)) changes.push(request.method);
+			});
+			fake.befriend(ana, eve);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const [a, b, e] = [await firstDevice(fake, ana), await firstDevice(fake, bo), await firstDevice(fake, eve)];
+			await madeHere(a, conversation);
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			const first = await send(b, conversation, "first");
+			// Bo's other tab draws the group as it is now: its edit is made, and finds no answer.
+			const listed = (await b.api.conversations()).find((conv) => conv.id === conversation)!;
+			const drawn = { type: listed.type, owner_id: listed.owner_id, members: listed.members };
+			fake.refuse({ method: "PATCH", path: `${messagesPath(conversation)}/${first.id}` }, 500);
+			await b.engine.editMessage(conversation, first.id, "edited", drawn);
+			// Ana adds Eve, whom that tab doesn't draw: what it sends now waits.
+			await a.engine.addMember(conversation, eve);
+			await sameGroup([a, b, e], conversation);
+			const nonce = crypto.randomUUID();
+			const sent = b.engine.sendMessage({ conversation_id: conversation, nonce, text: "for Ana", drawn });
+			expect(await rejection(sent)).toMatchObject({ code: "other_members" });
+			// The leader's engine starts again, its own page drawing Eve, and sends what waits at its READY and later.
+			const again = await restarted(fake, b);
+			await turnEnded(again);
+			again.connect(again.registered.at(-1) ?? null);
+			for (let round = 0; round < 4; round++) {
+				again.clock.advance(60_000);
+				await turnEnded(again);
+			}
+			expect(await madeAt(a, conversation, bo, ["message"])).toHaveLength(1);
+			expect(changes).toEqual(["PATCH"]);
+			expect((await again.engine.pendingMessages(conversation)).map((row) => row.nonce)).toEqual([nonce]);
+		},
+		SLOW,
+	);
+
 	// The one honest case: a member who left stays in the group until a member's commit takes them out, under the API's
 	// proposal of their removal. It isn't said, and what goes there next commits that removal first.
 	test(

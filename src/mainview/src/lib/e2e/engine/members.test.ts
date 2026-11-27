@@ -23,6 +23,7 @@ import {
 	useFake,
 	type TestDevice,
 } from "../testing/engines";
+import { drawnIn, type Drawn } from "./members";
 
 // Who is in a conversation (PLAN-E2E-CLIENTES.md, Task 22; «Qué se manda», its members' rows): a new conversation's
 // group made at once, the owner's additions and removals, one user and one commit a request, a member's leave and the
@@ -182,6 +183,22 @@ async function epochTaken(fake: FakeApi, device: TestDevice, conversation: strin
 /** The API's members of the conversation, as the device's session lists them. */
 const membersOf = async (device: TestDevice, conversation: string) =>
 	(await device.api.conversations()).find((conv) => conv.id === conversation)?.members.map((m) => m.user_id) ?? [];
+
+// R-M1: a drawing the record kept, read back: as it was, or nothing a page could have drawn.
+test("a kept drawing is read as a drawing, or not at all", () => {
+	const drawn: Drawn = { type: 2, owner_id: "ana", members: [{ user_id: "ana" }, { user_id: "bo" }] };
+	expect(drawnIn(drawn)).toEqual(drawn);
+	expect(drawnIn({ ...drawn, members: [{ user_id: "ana", extra: 1 }] })).toEqual({
+		...drawn,
+		members: [{ user_id: "ana" }],
+	});
+	expect(drawnIn(null)).toBeNull();
+	for (const odd of [undefined, "group", { ...drawn, type: 3 }, { ...drawn, owner_id: 1 }, { ...drawn, members: {} }]) {
+		expect(drawnIn(odd)).toBeUndefined();
+	}
+	expect(drawnIn({ ...drawn, members: [{ user_id: 2 }] })).toBeUndefined();
+	expect(drawnIn({ ...drawn, members: [null] })).toBeUndefined();
+});
 
 describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 	test(

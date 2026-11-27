@@ -23,7 +23,7 @@ import type { EngineParts } from "./engine";
 import { FilesGone, SealedFiles, type OutgoingFile } from "./files";
 import { withIdentities } from "./identity";
 import { AGAIN } from "./inbox";
-import type { Drawn } from "./members";
+import { drawnIn, type Drawn } from "./members";
 import { PENDING_CHANGES, PENDING_SENDS } from "./store";
 import type { Conversations } from "./sync";
 
@@ -42,7 +42,7 @@ export interface Outgoing {
 	files?: OutgoingFile[];
 	/**
 	 * The people the tab it was written in draws there, when that's another than the one running the engine (N-I2): its
-	 * delivery is held to them too (null: that tab draws no such conversation). In memory alone, with what waits.
+	 * delivery is held to them too (null: that tab draws no such conversation). Kept with what waits (R-M1).
 	 */
 	drawn?: Drawn | null;
 }
@@ -51,11 +51,26 @@ export interface Outgoing {
 type Clear = Omit<Outgoing, "nonce" | "text" | "files" | "drawn">;
 
 /**
- * What the record keeps by a message's nonce: what goes with it in the clear; once its bytes were made again under this
- * nonce, the nonce the person sent it with (`first`), which the views and the engine know it by; and its place among
- * what waits (`place`), given as it's first kept and carried by its remakes, which it goes in.
+ * Who wrote what waits (R-M1), which every delivery of it is held to beside the page that delivers it: another tab, by
+ * what it drew there at its last send of it (`drawn`), or the page that runs the engine (`here`), whose drawing is the
+ * delivering page's own.
  */
-type Kept = Clear & { first?: string; place?: number };
+type Writer = { drawn: Drawn | null } | { here: true };
+
+/** A writer as a record keeps it, checked as it's read: null for one kept before writers were, or anything else. */
+function writerIn(drawn: unknown, here: unknown): Writer | null {
+	if (here === true) return { here: true };
+	const people = drawn === undefined ? undefined : drawnIn(drawn);
+	return people === undefined ? null : { drawn: people };
+}
+
+/**
+ * What the record keeps by a message's nonce: what goes with it in the clear; once its bytes were made again under this
+ * nonce, the nonce the person sent it with (`first`), which the views and the engine know it by; its place among what
+ * waits (`place`), given as it's first kept and carried by its remakes, which it goes in; and who wrote it (Writer),
+ * without which it waits for the tab it was written in to send it again.
+ */
+type Kept = Clear & { first?: string; place?: number; drawn?: Drawn | null; here?: true };
 
 /** A message of the person's still being sent: the core's row, by the nonce they sent it with, with what goes with it in
  * the clear; `files_gone` when its files' sealed bytes went with the app, so it can only be dismissed. */
@@ -82,7 +97,7 @@ interface Change {
 	text: string | null;
 	made: Made | null;
 	remade: boolean;
-	/** The people the tab it was made in draws there, as a message's (Outgoing's `drawn`): in memory alone. */
+	/** The people the tab it was made in draws there, as a message's (Outgoing's `drawn`), kept with it (R-M1). */
 	drawn?: Drawn | null;
 }
 
@@ -96,11 +111,14 @@ interface Changes {
 }
 
 /** What the record keeps of a message whose changes aren't all answered: never their text. A deletion among them is
- * what's made again at the next start, else an edit from the row's text, which is its last edit's. */
+ * what's made again at the next start, else an edit from the row's text, which is its last edit's; held to who made its
+ * last change (Writer), without which it waits for a change of that tab's. */
 interface KeptChange {
 	conversation_id: string;
 	message_id: string;
 	kind: ChangeKind;
+	drawn?: Drawn | null;
+	here?: true;
 }
 
 /** What a conversation's messages tell the engine: which changed on this device, the person's that the API took (by
@@ -148,10 +166,10 @@ const unanswered = (error: unknown) => {
 /** The core's word that no member could open the message's bytes any more. */
 const staleBytes = (error: unknown) =>
 	error instanceof CoreError && error.code === "rule_violation" && error.rule === "stale_message";
-/** A message held for the person's yes, a verified contact's key changed (#deliver): it waits, as an unanswered one
- * does. */
+/** A message held for the person's yes, a verified contact's key changed (#deliver), or for its tab: it waits, as an
+ * unanswered one does. */
 const held = (error: unknown) =>
-	error instanceof CoreError && (error.code === "key_changed" || error.code === "other_members");
+	error instanceof CoreError && ["key_changed", "other_members", "other_tab"].includes(error.code);
 /** The API's (a 409): the bytes are of another generation of the group, or too many epochs behind it. */
 const staleAnswer = (error: unknown) =>
 	error instanceof FetchError && error.response?.status === 409 && error.response.data?.error === "stale message";
@@ -161,6 +179,8 @@ const keysChanged = (users: string[]) =>
 /** What waits while the conversation's group holds someone the conversation doesn't show (#574). */
 const othersHeld = () =>
 	new CoreError("other_members", "this conversation's group holds people the conversation doesn't show");
+/** What a record kept before its writer was (R-M1): it waits for the tab it was written in to send it again. */
+const otherTab = () => new CoreError("other_tab", "this message waits for the tab it was written in to send it again");
 /**
  * Bytes the core gave back for a nonce it has, of a group that moved since they were made (it gives them while the
  * group is within 5 epochs of them): never sent, the flush makes them again, as stale ones (R-C1).
@@ -210,8 +230,11 @@ export class Sends {
 	readonly #out = new Map<string, { stop: AbortController; done: Promise<DirectMessage | null> }>();
 	/** The messages a Dismiss takes now, by the person's nonce: none of their rows is sent once its turn comes. */
 	readonly #dismissing = new Set<string>();
-	/** What the tab each message waiting here was written in draws there, by the nonce the person sent it with (N-I2). */
-	readonly #carried = new Map<string, Drawn | null>();
+	/**
+	 * Who wrote each message waiting here (N-I2, R-M1), by the nonce the person sent it with: as this session heard it,
+	 * beside the record, which a full storage may not keep.
+	 */
+	readonly #carried = new Map<string, Writer>();
 
 	constructor(
 		parts: EngineParts,
@@ -237,14 +260,19 @@ export class Sends {
 	 */
 	async send(out: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
 		const { conversation_id: id, nonce, text, files, drawn, ...clear } = out;
-		// Each send of it from another tab says what that tab draws now, which every delivery of it is held to.
-		if (drawn !== undefined) this.#carried.set(nonce, drawn);
+		// Each send of it from another tab says what that tab draws now, which every delivery of it is held to; one from
+		// the page that runs the engine leaves another tab's as it was (R-M1: kept with it in the record).
+		const writer: Writer = drawn !== undefined ? { drawn } : (this.#writerOf(nonce) ?? { here: true });
 		const waits = await this.#turn(async (): Promise<{ went: string | null } | null> => {
 			await this.#groups.current(id);
 			const { rows, older } = await this.#waiting(id);
 			// What no longer waits is let go of first: one made again that went is then known by the person's nonce.
 			await this.#prune(id, [...rows, ...older]);
-			if (this.#nonceNow(rows, nonce)) return null;
+			if (this.#nonceNow(rows, nonce)) {
+				this.#carried.set(nonce, writer);
+				this.#written(nonce, writer);
+				return null;
+			}
 			// Made again, it went under its new nonce, as its answer or its copy said: it was sent, and its copy shows.
 			const went = this.#went.get(nonce);
 			if (went) {
@@ -256,7 +284,8 @@ export class Sends {
 				throw new CoreError("too_many_waiting", `${WAITING_MOST} messages wait to be sent in this conversation`);
 			}
 			const sealed = files?.length ? await SealedFiles.of(this.#parts.host, files) : null;
-			this.#keep(nonce, { conversation_id: id, ...clear });
+			this.#carried.set(nonce, writer);
+			this.#keep(nonce, { conversation_id: id, ...clear, ...writer });
 			try {
 				await this.#encryptNew(id, nonce, text ?? null, sealed);
 			} catch (error) {
@@ -288,7 +317,8 @@ export class Sends {
 	async pending(id: string): Promise<Pending[]> {
 		const record = this.#record();
 		return (await this.#waiting(id)).rows.map((row) => {
-			const { first, place: _place, ...clear }: Partial<Kept> = (row.nonce ? record[row.nonce] : undefined) ?? {};
+			const kept: Partial<Kept> = (row.nonce ? record[row.nonce] : undefined) ?? {};
+			const { first, place: _place, drawn: _drawn, here: _here, ...clear } = kept;
 			const nonce = first ?? row.nonce;
 			const gone = row.attachments.length > 0 && !(nonce && this.#files.has(nonce));
 			return { ...row, ...clear, nonce, ...(gone ? { files_gone: true as const } : {}) };
@@ -496,7 +526,9 @@ export class Sends {
 		const made = await this.#turn(async () => {
 			const waiting = await pendingRows(this.#parts.host, id);
 			if (!waiting.some((other) => other.nonce === nonce)) return null;
-			const carried = this.#carried.get(first);
+			const writer = this.#writerOf(first);
+			if (!writer) throw otherTab();
+			const carried = "drawn" in writer ? writer.drawn : undefined;
 			// The look, before its bytes (R-C1): its read may move the group (a commit applied, a join), and what goes is
 			// made for the group as the read left it. One that holds someone the conversation doesn't show (#574): it waits,
 			// for the person's yes first where a changed key asks it, as once its bytes are made.
@@ -736,6 +768,9 @@ export class Sends {
 	 */
 	async #remake(key: string, kept: KeptChange): Promise<void> {
 		const { conversation_id: id, message_id: message, kind } = kept;
+		// Kept before its writer was (R-M1): it waits for a change of that tab's, which keeps one.
+		const writer = writerIn(kept.drawn, kept.here);
+		if (!writer) return;
 		let text: string | null = null;
 		if (kind === "edit") {
 			const [row] = await shownMessages(this.#parts.host, id, [message]);
@@ -743,8 +778,9 @@ export class Sends {
 			text = row.text ?? "";
 		}
 		const change: Change = { conversation: id, message, kind, text, made: null, remade: false };
+		if ("drawn" in writer) change.drawn = writer.drawn;
 		try {
-			if (!(await this.#groups.holdsOthers(id))) change.made = await this.#make(change);
+			if (!(await this.#groups.holdsOthers(id, change.drawn))) change.made = await this.#make(change);
 		} catch (error) {
 			// The core has nothing of the message any more (its conversation let go): nothing to send.
 			if (error instanceof CoreError && error.code === "not_found") return this.#forgetChange(key);
@@ -871,15 +907,37 @@ export class Sends {
 		return Object.fromEntries(
 			Object.entries(kept)
 				.filter(([, clear]) => typeof clear?.conversation_id === "string")
-				.map(([nonce, { first, place, ...clear }]): [string, Kept] => [
+				.map(([nonce, { first, place, drawn, here, ...clear }]): [string, Kept] => [
 					nonce,
 					{
 						...clear,
 						...(typeof first === "string" ? { first } : {}),
 						...(typeof place === "number" ? { place } : {}),
+						...writerIn(drawn, here),
 					},
 				]),
 		);
+	}
+
+	/** Who wrote the message the person sent under `first`: as this session heard it, else as the record keeps it. */
+	#writerOf(first: string): Writer | null {
+		const heard = this.#carried.get(first);
+		if (heard) return heard;
+		const kept = Object.entries(this.#record()).find(([nonce, one]) => nonce === first || one.first === first);
+		return kept ? writerIn(kept[1].drawn, kept[1].here) : null;
+	}
+
+	/** Who sent the message the person sent under `first` last, kept with each of its rows' records (R-M1). */
+	#written(first: string, writer: Writer) {
+		const record = this.#record();
+		const its = ([nonce, kept]: [string, Kept]) => nonce === first || kept.first === first;
+		if (!Object.entries(record).some(its)) return;
+		const rewrite = ([nonce, kept]: [string, Kept]): [string, Kept] => {
+			if (!its([nonce, kept])) return [nonce, kept];
+			const { drawn: _drawn, here: _here, ...rest } = kept;
+			return [nonce, { ...rest, ...writer }];
+		};
+		this.#parts.store.write(PENDING_SENDS, Object.fromEntries(Object.entries(record).map(rewrite)));
 	}
 
 	/** A message kept by its nonce, in its place: a new one after every message that waits. */
@@ -939,20 +997,26 @@ export class Sends {
 	#keptChanges(): Record<string, KeptChange> {
 		const kept = this.#parts.store.read<Record<string, KeptChange>>(PENDING_CHANGES) ?? {};
 		return Object.fromEntries(
-			Object.entries(kept).filter(
-				([, change]) =>
-					typeof change?.conversation_id === "string" &&
-					typeof change.message_id === "string" &&
-					(change.kind === "edit" || change.kind === "delete"),
-			),
+			Object.entries(kept)
+				.filter(
+					([, change]) =>
+						typeof change?.conversation_id === "string" &&
+						typeof change.message_id === "string" &&
+						(change.kind === "edit" || change.kind === "delete"),
+				)
+				.map(([key, { conversation_id, message_id, kind, drawn, here }]): [string, KeptChange] => [
+					key,
+					{ conversation_id, message_id, kind, ...writerIn(drawn, here) },
+				]),
 		);
 	}
 
-	/** A change made: the record keeps its message's, a deletion over an edit. */
+	/** A change made: the record keeps its message's, a deletion over an edit, with who made it last (R-M1). */
 	#keepChange(key: string, change: Change) {
 		const kept = this.#keptChanges();
 		const kind = kept[key]?.kind === "delete" ? "delete" : change.kind;
-		kept[key] = { conversation_id: change.conversation, message_id: change.message, kind };
+		const writer: Writer = change.drawn !== undefined ? { drawn: change.drawn } : { here: true };
+		kept[key] = { conversation_id: change.conversation, message_id: change.message, kind, ...writer };
 		this.#parts.store.write(PENDING_CHANGES, kept);
 	}
 
