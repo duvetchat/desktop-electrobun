@@ -85,6 +85,7 @@
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
 	import {
+		alsoRemoved,
 		approvalActions,
 		changeKeys,
 		createDM,
@@ -1134,12 +1135,14 @@
 		<EncryptionGate
 			encryption={encryption.state}
 			backup={encryption.backup}
+			serverKeyChanged={encryption.serverKeyChanged}
 			web={!isElectrobunWindow()}
 			onMakeIdentity={makeIdentity}
 			onKeySaved={keySaved}
 			onLater={uploadLater}
 			onStartOver={startOver}
 			onChangeKeys={changeKeys}
+			onAlsoRemoved={alsoRemoved}
 			onFinishWithout={finishKeysWithout}
 			{setupActions}
 			{approvalActions}

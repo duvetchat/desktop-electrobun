@@ -12,15 +12,18 @@ import {
 	commitByHand,
 	firstDevice,
 	groupOf,
+	madeHere,
 	rejection,
 	restarted,
 	sameGroup,
+	sayYes,
 	testHost,
 	turnEnded,
 	until,
 	useFake,
 	type TestDevice,
 } from "../testing/engines";
+import { drawnIn, type Drawn } from "./members";
 
 // Who is in a conversation (PLAN-E2E-CLIENTES.md, Task 22; «Qué se manda», its members' rows): a new conversation's
 // group made at once, the owner's additions and removals, one user and one commit a request, a member's leave and the
@@ -61,6 +64,7 @@ async function groupOfThree(cyHost?: (host: CoreHost) => CoreHost) {
 	const a = await firstDevice(fake, ana);
 	const b = await firstDevice(fake, bo);
 	const c = await firstDevice(fake, cy, cyHost ? { host: cyHost(testHost()) } : {});
+	await madeHere(a, conversation);
 	await a.engine.openConversation(conversation);
 	const made = await sameGroup([a, b, c], conversation);
 	return { ...setup, ana, bo, cy, a, b, c, conversation, made };
@@ -180,6 +184,22 @@ async function epochTaken(fake: FakeApi, device: TestDevice, conversation: strin
 const membersOf = async (device: TestDevice, conversation: string) =>
 	(await device.api.conversations()).find((conv) => conv.id === conversation)?.members.map((m) => m.user_id) ?? [];
 
+// R-M1: a drawing the record kept, read back: as it was, or nothing a page could have drawn.
+test("a kept drawing is read as a drawing, or not at all", () => {
+	const drawn: Drawn = { type: 2, owner_id: "ana", members: [{ user_id: "ana" }, { user_id: "bo" }] };
+	expect(drawnIn(drawn)).toEqual(drawn);
+	expect(drawnIn({ ...drawn, members: [{ user_id: "ana", extra: 1 }] })).toEqual({
+		...drawn,
+		members: [{ user_id: "ana" }],
+	});
+	expect(drawnIn(null)).toBeNull();
+	for (const odd of [undefined, "group", { ...drawn, type: 3 }, { ...drawn, owner_id: 1 }, { ...drawn, members: {} }]) {
+		expect(drawnIn(odd)).toBeUndefined();
+	}
+	expect(drawnIn({ ...drawn, members: [{ user_id: 2 }] })).toBeUndefined();
+	expect(drawnIn({ ...drawn, members: [null] })).toBeUndefined();
+});
+
 describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 	test(
 		"making a DM makes its group at once",
@@ -208,6 +228,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -240,6 +261,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const five = await friendsOf(fake, ana, 5);
@@ -264,6 +286,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const others = Array.from({ length: 19 }, () => fake.addUser());
 			const conversation = fake.addConversation({ type: "group", members: [ana, ...others], owner: ana });
 			const a = await firstDevice(fake, ana);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			const extra = fake.addUser();
 			fake.befriend(ana, extra);
@@ -368,6 +391,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
 			const a = await firstDevice(fake, ana);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			// Bo's first device comes after the group was made, and its external commit is refused each time.
 			const refused = new CoreError("rule_violation", "the group info doesn't verify", { rule: "invalid_group_info" });
@@ -391,6 +415,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -417,6 +442,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const a = await firstDevice(fake, ana);
 			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -448,6 +474,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			let before: (() => Promise<void>) | null = null;
 			const a = await firstDevice(fake, ana, { host: hooked(testHost(), "add_members", () => before) });
 			let b = await firstDevice(fake, bo);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -479,6 +506,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const a = await firstDevice(fake, ana, { host: hooked(testHost(), "remove_members", () => before) });
 			let b = await firstDevice(fake, bo);
 			const c = await firstDevice(fake, cy);
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b, c], conversation);
 			await b.engine.stop();
@@ -507,6 +535,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			const [d] = await friendsOf(fake, ana, 1);
@@ -698,11 +727,11 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 				c.clock.advance(60_000);
 				await turnEnded(c);
 			}
-			expect(c.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(c.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect((await groupOf(c, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
 			// On his yes, it joins the new generation by an external commit.
-			await c.engine.acceptMembers(conversation);
+			await sayYes(c, conversation);
 			const held = await sameGroup([b, c], conversation);
 			expect(held.generation).toBe(1);
 			expect(c.engine.conversationState(conversation)).toBeNull();
@@ -723,10 +752,10 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 				c.clock.advance(60_000);
 				await turnEnded(c);
 			}
-			expect(c.engine.conversationState(conversation)).toEqual({ name: "members_changed" });
+			expect(c.engine.conversationState(conversation)).toMatchObject({ name: "members_changed" });
 			expect((await groupOf(c, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
-			await c.engine.acceptMembers(conversation);
+			await sayYes(c, conversation);
 			expect((await sameGroup([a, b, c], conversation)).generation).toBe(1);
 		},
 		SLOW,
@@ -746,7 +775,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await turnEnded(back);
 			expect((await groupOf(back, conversation))?.generation).toBe(0);
 			expect(requests.filter((request) => request.endsWith(`/${conversation}/mls/group-info`))).toEqual([]);
-			await back.engine.acceptMembers(conversation);
+			await sayYes(back, conversation);
 			expect((await sameGroup([a, b, back], conversation)).generation).toBe(1);
 		},
 		SLOW,
@@ -763,7 +792,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await missedRestart(fake, a, conversation, [cy]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
 			expect((await groupOf(b, conversation))?.generation).toBe(0);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			const held = await sameGroup([a, b], conversation);
 			expect(held.generation).toBe(1);
 			expect(usersOf(held)).toEqual([ana, bo].sort());
@@ -781,7 +810,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			let { a } = group;
 			await missedRestart(fake, a, conversation, [cy]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			expect((await sameGroup([a, b], conversation)).generation).toBe(1);
 			// Dee joins generation 1 with no device yet, then it's blocked, and restarted without her.
 			const dee = fake.addUser();
@@ -793,7 +822,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			await missedRestart(fake, a, conversation, [dee]);
 			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", 20_000);
 			expect((await groupOf(b, conversation))?.generation).toBe(1);
-			await b.engine.acceptMembers(conversation);
+			await sayYes(b, conversation);
 			expect((await sameGroup([a, b], conversation)).generation).toBe(2);
 		},
 		SLOW,
@@ -816,7 +845,7 @@ describe.skipIf(!coreLibrary)("who is in a conversation", () => {
 			const back = await restarted(fake, b);
 			await until(() => back.engine.conversationState(conversation)?.name === "members_changed");
 			expect((await groupOf(back, conversation))?.generation).toBe(0);
-			await back.engine.acceptMembers(conversation);
+			await sayYes(back, conversation);
 			const held = await sameGroup([a, back], conversation);
 			expect(held.generation).toBe(1);
 			expect(usersOf(held)).toEqual([ana, bo].sort());

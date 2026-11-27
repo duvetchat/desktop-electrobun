@@ -2,10 +2,10 @@
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { Device } from "$lib/api/e2e";
 	import { CoreError } from "$lib/e2e/errors";
-	import { onlyDevice } from "$lib/e2e/engine/devices";
+	import { onlyDevice, type Drops } from "$lib/e2e/engine/devices";
 	import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
-	import { formatList, formatNumber } from "$lib/i18n/format";
+	import { formatDate, formatList, formatNumber } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 
 	/**
@@ -14,29 +14,62 @@
 	 */
 	export interface DevicesEngine {
 		readonly encryption: { readonly state: EngineState; readonly backup: BackupShown };
-		removeDevice(deviceId: string, changeKeys: boolean): Promise<void>;
-		changeKeys(): Promise<void>;
+		/** `named`: what the list leaves out beside the device that the person was shown, which alone goes (#575). */
+		removeDevice(deviceId: string, changeKeys: boolean, named: string[]): Promise<void>;
+		changeKeys(named?: string[]): Promise<void>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off. */
 		finishKeysWithout(): Promise<void>;
-		/** What an earlier removal that never went up takes along with the next list or change of keys. */
-		alsoRemoved(): Promise<string[]>;
+		/** What the next list or change of keys leaves out beside what's asked (M3, #575). */
+		alsoRemoved(): Promise<Drops>;
 		removeThisDevice(): Promise<void>;
 	}
 
-	/** The sentence naming the devices an earlier removal takes along (M3), by name, or none. */
-	function alongLine(along: readonly string[], devices: readonly Device[] | null): string | null {
-		if (along.length === 0) return null;
-		const names = along.map((id) => devices?.find((device) => device.id === id)?.name ?? id.slice(0, 8));
-		return t("e2e_device_remove_along", { names: formatList(names) });
+	/** A device by its name, its client and when it was added. */
+	function knownWords({ name, client, created_at }: { name: string; client: string; created_at: string }): string {
+		return t("e2e_device_known", { name, client, date: formatDate(Date.parse(created_at), { dateStyle: "medium" }) });
 	}
 
 	/**
-	 * What the removal of a device says beside its question: the start of its ID, as Bun's own box names it in full
-	 * (M7), and the devices an earlier removal takes along (M3).
+	 * A device a list leaves out, by what's known of it (#575, N-M7): its name, its client and when it was added, as
+	 * listed now or as this device last saw it, and as it first saw it too when the API named it otherwise since (R-M3:
+	 * the last name is the API's word); by the start of its ID only when nothing else is.
 	 */
-	export function removalNotes(device: Device, along: readonly string[], devices: readonly Device[] | null): string[] {
-		const line = alongLine(along, devices);
-		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...(line ? [line] : [])];
+	function deviceWords(id: string, devices: readonly Device[] | null, known: Drops["known"]): string {
+		const seen = devices?.find((device) => device.id === id) ?? known?.[id];
+		if (!seen) return t("e2e_device_by_id", { id: id.slice(0, 8) });
+		const first = known?.[id]?.first;
+		return first ? t("e2e_device_renamed", { first: knownWords(first), last: knownWords(seen) }) : knownWords(seen);
+	}
+
+	/**
+	 * The sentences naming what a list leaves out beside what's asked, or none: the devices an earlier removal takes along
+	 * (M3), and each the API no longer lists (#575), which GET …/devices leaves out, with the person's way out: never the
+	 * server's story in the app's voice (N-M7).
+	 */
+	function dropLines({ along, away, known }: Drops, devices: readonly Device[] | null): string[] {
+		return [
+			...(along.length
+				? [t("e2e_device_remove_along", { names: formatList(along.map((id) => deviceWords(id, devices, known))) })]
+				: []),
+			...away.map((id) => t("e2e_device_remove_away", { device: deviceWords(id, devices, known) })),
+		];
+	}
+
+	/** Every device a list leaves out beside what's asked: what the person is shown, and what alone may go (#575). */
+	export const dropped = ({ along, away }: Drops, asked?: string) =>
+		[...new Set([...along, ...away])].filter((id) => id !== asked);
+
+	/**
+	 * What the removal of a device says beside its question: the start of its ID, as Bun's own box names it in full
+	 * (M7), and what the list leaves out beside it (M3, #575).
+	 */
+	export function removalNotes(device: Device, drops: Drops, devices: readonly Device[] | null): string[] {
+		const beside = {
+			along: drops.along.filter((id) => id !== device.id),
+			away: drops.away.filter((id) => id !== device.id),
+			...(drops.known ? { known: drops.known } : {}),
+		};
+		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...dropLines(beside, devices)];
 	}
 
 	/**
@@ -47,6 +80,7 @@
 	 */
 	export function removalProblem(error: unknown): string {
 		if (error instanceof CoreError && error.code === "approval_waits") return t("e2e_approval_waits");
+		if (error instanceof CoreError && error.code === "devices_changed") return t("e2e_device_remove_changed");
 		if (error instanceof CoreError && error.code === "bad_command" && error.field === "certificates") {
 			return t("e2e_device_unfinished");
 		}
@@ -57,16 +91,18 @@
 		return getApiError(error, t("e2e_device_action_failed"));
 	}
 
-	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3); a failure in words. */
+	/**
+	 * Asks before changing the keys, naming what the new list leaves out (M3, #575), which alone goes on the yes; a
+	 * failure in words.
+	 */
 	export function askToChangeKeys(
 		devices: readonly Device[] | null,
-		along: readonly string[],
-		run: () => Promise<void>,
+		drops: Drops,
+		run: (named: string[]) => Promise<void>,
 	): Promise<void> {
-		const line = alongLine(along, devices);
-		const message = line ? `${t("e2e_change_keys_confirm")} ${line}` : t("e2e_change_keys_confirm");
+		const message = [t("e2e_change_keys_confirm"), ...dropLines(drops, devices)].join(" ");
 		return confirmAction(message, t("e2e_change_keys"), () =>
-			run().catch((error: unknown) => {
+			run(dropped(drops)).catch((error: unknown) => {
 				throw new Error(removalProblem(error), { cause: error });
 			}),
 		);
@@ -113,7 +149,6 @@
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { stuckText } from "$lib/components/e2e/EncryptionGate.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
-	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
 	import SettingsGroup from "./SettingsGroup.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
@@ -135,7 +170,7 @@
 		onRemove,
 		onChangeKeys,
 		onFinishWithout = async () => {},
-		onAlsoRemoved = async () => [],
+		onAlsoRemoved = async () => ({ along: [], away: [] }),
 		onRemoveThis,
 	}: {
 		/** The user's devices, null until they're read. */
@@ -151,13 +186,14 @@
 		storageKept?: boolean | null;
 		now?: number;
 		onReload: () => void;
-		onRemove: (deviceId: string, changeKeys: boolean) => Promise<void>;
-		/** Also Finish, for a change that waits. */
-		onChangeKeys: () => Promise<void>;
+		/** `named`: what the list leaves out beside the device that the person was shown (#575). */
+		onRemove: (deviceId: string, changeKeys: boolean, named: string[]) => Promise<void>;
+		/** Also Finish, for a change that waits; `named`, what the new list leaves out that the person was shown. */
+		onChangeKeys: (named?: string[]) => Promise<void>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off. */
 		onFinishWithout?: () => Promise<void>;
-		/** What an earlier removal that never went up takes along with the next one. */
-		onAlsoRemoved?: () => Promise<string[]>;
+		/** What the next list or change of keys leaves out beside what's asked (M3, #575). */
+		onAlsoRemoved?: () => Promise<Drops>;
 		onRemoveThis: () => Promise<void>;
 	} = $props();
 
@@ -174,30 +210,30 @@
 	);
 
 	let removing = $state<Device | null>(null);
-	let along = $state<string[]>([]);
+	let drops = $state<Drops>({ along: [], away: [] });
 	let lost = $state(false);
 	let busy = $state(false);
 	let failure = $state<string | null>(null);
 
-	/** What an earlier removal takes along, or none when it can't be told. */
-	const readAlong = () =>
-		onAlsoRemoved().catch((error: unknown) => {
-			console.error("[e2e] What an earlier removal takes along wasn't read:", error);
-			return [];
+	/** What the next list leaves out beside what's asked, or none when it can't be told: then nothing more may go. */
+	const readDrops = () =>
+		onAlsoRemoved().catch((error: unknown): Drops => {
+			console.error("[e2e] What the next list leaves out wasn't read:", error);
+			return { along: [], away: [] };
 		});
 
 	function askToRemove(device: Device) {
 		removing = device;
-		along = [];
+		drops = { along: [], away: [] };
 		lost = false;
 		failure = null;
-		void readAlong().then((ids) => {
-			if (removing === device) along = ids.filter((id) => id !== device.id);
+		void readDrops().then((read) => {
+			if (removing === device) drops = read;
 		});
 	}
 
 	async function askToChange() {
-		await askToChangeKeys(devices, await readAlong(), onChangeKeys);
+		await askToChangeKeys(devices, await readDrops(), (named) => onChangeKeys(named));
 	}
 
 	async function remove() {
@@ -206,10 +242,12 @@
 		busy = true;
 		failure = null;
 		try {
-			await onRemove(device.id, lost && device.listed);
+			await onRemove(device.id, lost && device.listed, dropped(drops, device.id));
 			removing = null;
 		} catch (error) {
 			failure = removalProblem(error);
+			// What changed is read again, and named, for the person's next yes.
+			if (error instanceof CoreError && error.code === "devices_changed") drops = await readDrops();
 		} finally {
 			busy = false;
 		}
@@ -325,7 +363,7 @@
 	{t("e2e_device_remove_text")}
 	{#snippet body()}
 		{#if removing}
-			{#each removalNotes(removing, along, devices) as note (note)}
+			{#each removalNotes(removing, drops, devices) as note (note)}
 				<p class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4]">{note}</p>
 			{/each}
 		{/if}

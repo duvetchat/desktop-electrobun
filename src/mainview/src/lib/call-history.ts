@@ -166,7 +166,8 @@ export function callRow(
 	me: string | undefined,
 ): CallRow | null {
 	const joined = conversation?.members.find((m) => m.user_id === me)?.id;
-	const line = callNoticeLine(directMessageToMessage(notice, conversation?.members ?? []), me, joined);
+	const message = directMessageToMessage(notice, conversation?.members ?? []);
+	const line = message && callNoticeLine(message, me, joined);
 	if (!line || !notice.call || !notice.conversation_id) return null;
 	const other = conversation && otherMember(conversation, me);
 	return {

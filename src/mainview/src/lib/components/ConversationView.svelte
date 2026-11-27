@@ -88,7 +88,7 @@
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
 	import { confirmRestart, refusalWords } from "$lib/e2e/member-changes";
-	import { drawnRows } from "$lib/e2e/engine/content";
+	import { drawnRows, pageRows } from "$lib/e2e/engine/content";
 	import { FilesGone, gifFile, sealedSize, shownFile } from "$lib/e2e/engine/files";
 	import { gifBytes, outgoingFiles } from "$lib/e2e/thumbnails";
 	import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
@@ -413,11 +413,11 @@
 
 	// What this device holds of the conversation's messages, the person's typed text of their own, and how far its queue
 	// is applied (PLAN-E2E-CLIENTES.md, «La vista de una conversación»).
-	const onDevice = $derived(contentOf(conversation.id));
+	const onDevice = $derived(contentOf(conversation.id, me?.id));
 
 	// Map DirectMessage → Message for MessageList: an encrypted message's text, and its quote's, are what this device's
 	// own database holds of them, asked for as they show.
-	function toMessage(msg: DirectMessage): Message {
+	function toMessage(msg: DirectMessage): Message | null {
 		const quoted = msg.referenced_message?.message_id;
 		want(conversation.id, [...(msg.seq === undefined ? [] : [msg.id]), ...(quoted ? [quoted] : [])]);
 		return directMessageToMessage(msg, conversation.members, onDevice);
@@ -434,7 +434,7 @@
 			raw.filter((m) => m.seq !== undefined).map((m) => m.id),
 		);
 		const joined = conversation.members.find((m) => m.user_id === me?.id)?.id;
-		return drawnRows(raw, joined, onDevice.held);
+		return drawnRows(raw, joined, onDevice);
 	});
 	const beforeJoining = $derived(drawn.beforeJoining);
 
@@ -483,7 +483,7 @@
 		for (const msg of raw) {
 			seen.add(msg.id);
 			const held = onDevice.held(msg.id);
-			const typed = onDevice.typed(msg.id);
+			const typed = onDevice.typed(msg.id, msg.author_id);
 			const quotedId = msg.referenced_message?.message_id;
 			const quoted = quotedId ? onDevice.held(quotedId) : undefined;
 			const through = held === null ? onDevice.through() : null;
@@ -498,6 +498,8 @@
 				result.push(entry.message);
 			} else {
 				const mapped = toMessage(msg);
+				// A row the conversation doesn't draw (#575) isn't listed.
+				if (!mapped) continue;
 				messageCache.set(msg.id, { message: mapped, raw: msg, held, typed, quoted, through });
 				result.push(mapped);
 			}
@@ -530,7 +532,7 @@
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
-				const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
+				const newMsgs = pageRows(fetched).filter((m) => !existingIds.has(m.id));
 				return { ...all, [convId]: [...newMsgs, ...existing] };
 			});
 			// The newest page: the list reaches the present.
@@ -626,7 +628,7 @@
 
 			const allIds = new Set<string>();
 			const combined: DirectMessage[] = [];
-			for (const m of [...rawAbove, anchor, ...rawBelow]) {
+			for (const m of pageRows([...rawAbove, anchor, ...rawBelow])) {
 				if (!allIds.has(m.id)) {
 					allIds.add(m.id);
 					combined.push(m);
@@ -668,7 +670,7 @@
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
-				return { ...all, [convId]: [...existing, ...fetched.filter((m) => !existingIds.has(m.id))] };
+				return { ...all, [convId]: [...existing, ...pageRows(fetched).filter((m) => !existingIds.has(m.id))] };
 			});
 			hasMoreBelow = fetched.length >= 100;
 		} catch (err) {
@@ -704,7 +706,7 @@
 			hasMoreBelow = false;
 			loadedBelowTo = "";
 			belowFailedAt = 0;
-			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], fetched) }));
+			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], pageRows(fetched)) }));
 			listFetched = true;
 			return true;
 		} catch (err) {
@@ -803,6 +805,8 @@
 		if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");
 		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
 		if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);
+		if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");
+		if (err instanceof CoreError && err.code === "other_tab") return t("e2e_other_tab");
 		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
 	}
 
@@ -926,14 +930,24 @@
 		failedNonces = new Set([...failedNonces, ...rows.map((row) => row.id)]);
 	}
 
-	// An edit of the person's message: this device's database shows it at once, and the engine sends it. A no to the
-	// question before it keeps the edit box, and what was typed in it (Chat's saveEdit).
-	async function dmSaveEdit(messageId: string, content: string): Promise<boolean> {
+	// An edit of the person's message: this device's database shows it at once, and the engine sends it, whose answer
+	// this doesn't wait for. A no to the question before it keeps the edit box, and what was typed in it (Chat's
+	// saveEdit); so does the engine's refusal, which the box says (T-M1), as nothing was made of it.
+	async function dmSaveEdit(messageId: string, content: string): Promise<boolean | string> {
 		if (!(await askBeforeSend())) return false;
-		editEncrypted(conversation.id, messageId, content).catch((error: unknown) => {
+		try {
+			await editEncrypted(conversation.id, messageId, content);
+			return true;
+		} catch (error) {
 			console.error("[e2e] An edit wasn't made:", error);
-		});
-		return true;
+			return editRefusal(error);
+		}
+	}
+
+	// What an edit the engine didn't make says at its message: the view's words when its group differs.
+	function editRefusal(err: unknown): string {
+		if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");
+		return t("e2e_edit_failed");
 	}
 
 	// A notice (no seq: a pin's, a call's, a share's) is deleted as before; an encrypted message with its author's
@@ -1266,10 +1280,9 @@
 	<ConversationState
 		conversationState={groupState}
 		{ownerName}
-		memberNames={conversation.members.map((member) => member.user.alias ?? member.user.username)}
 		{memberName}
 		onRestart={restartEncryption}
-		onAccept={() => acceptMembers(conversation.id)}
+		onAccept={(people) => acceptMembers(conversation.id, people)}
 	/>
 	<!-- What other members shared of its history with this person, added on their word (Task 30) -->
 	<SharedHistoryOffer

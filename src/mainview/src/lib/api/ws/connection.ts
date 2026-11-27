@@ -153,6 +153,7 @@ import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
 import { deviceText, moveTyped } from "$lib/e2e/conversation-content.svelte";
+import { drawnRow } from "$lib/e2e/engine/content";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -1799,7 +1800,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			if (raw.user_id !== get(currentUser)?.id) noteConversationMemberStatus(userStatusCache, raw.user_id, raw);
 			conversations.update((list) =>
 				list.map((c) => {
-					if (c.id !== raw.conversation_id) return c;
+					// A DM is its two people, whom its view shows (N-I1): an addition to one isn't taken.
+					if (c.id !== raw.conversation_id || c.type === 1) return c;
 					const alreadyHas = c.members.some((m) => m.id === raw.member_id || m.user_id === raw.user_id);
 					// Shown again with the presence just kept.
 					if (alreadyHas) return { ...c };
@@ -1870,10 +1872,13 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			});
 			if (msg.author_id === get(currentUser)?.id) endOwnTyping(conversationId);
 			dmMessages.update((all) => {
-				// As a room's (MESSAGE_CREATE): only into a list there is, or one a view holds.
+				// As a room's (MESSAGE_CREATE): only into a list there is, or one a view holds. Never a row that's neither
+				// numbered nor a notice, which no member sent (#575).
+				if (!drawnRow(msg, () => undefined)) return all;
 				if (!all[conversationId] && !dmMessages.holds(conversationId)) return all;
 				const existing = all[conversationId] ?? [];
-				if (msg.nonce) {
+				// A pending row is the person's own: only their own message takes its place, and its typed text (#575, M2).
+				if (msg.nonce && msg.author_id === get(currentUser)?.id) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
 						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).

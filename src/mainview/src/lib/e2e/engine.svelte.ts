@@ -9,12 +9,17 @@ import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
 import { logout, onSignOut } from "$lib/api/auth";
-import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
+import {
+	getConversations,
+	type Conversation,
+	type ConversationMember,
+	type DirectMessage,
+} from "$lib/api/conversations";
 import { e2eApi, type NewConversationRequest } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { useDeviceSearch } from "$lib/search";
-import { dmMessages } from "$lib/stores.svelte";
+import { conversations, dmMessages, friendsReady } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
 import { deviceName, forgetDevice } from "./client";
@@ -40,6 +45,8 @@ import {
 	type ShownMessage,
 } from "./engine/engine";
 import { SHARE_RANGES } from "./engine/history";
+import type { LegacyRecord } from "./engine/legacy";
+import type { Drawn } from "./engine/members";
 import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
@@ -93,6 +100,46 @@ const toOpen = new Set<string>();
 /** What stops the upload of each message another tab asked this leader to send, by its nonce: that tab's Cancel. */
 const othersUploads = new Map<string, AbortController>();
 
+/** Whether the page listed its conversations: READY's lists came, or the engine's first need of them did it here. */
+let pageListed = false;
+friendsReady.subscribe((ready) => {
+	if (ready) pageListed = true;
+});
+/** The page's own first listing, made for the engine before READY's lists are in: one for all who ask meanwhile. */
+let firstListing: Promise<void> | null = null;
+
+/**
+ * The conversation as this page draws it (#574): its store's, which READY and the conversations' events keep. Before
+ * the page's first listing is in, the engine's first need of it lists them, which the store takes, so a start's resend
+ * waits for it (N-C1). With `fresh`, the API's listing of it again, which the store takes too (added, where it drew
+ * none), so the person sees what the engine holds its group to; a listing that leaves it out leaves the page's copy,
+ * which the group stays held to. Null for one the page doesn't draw.
+ */
+export async function shownConversation(conversationId: string, fresh: boolean): Promise<Conversation | null> {
+	const drawn = () => get(conversations).find((conv) => conv.id === conversationId) ?? null;
+	if (!pageListed) {
+		firstListing ??= getConversations()
+			.then((list) => {
+				if (!pageListed) conversations.set(list);
+				pageListed = true;
+			})
+			.finally(() => {
+				firstListing = null;
+			});
+		await firstListing;
+		return drawn();
+	}
+	if (!fresh) return drawn();
+	const listed = (await getConversations()).find((conv) => conv.id === conversationId);
+	if (!listed) return drawn();
+	conversations.update((all) =>
+		all.some((conv) => conv.id === conversationId)
+			? all.map((conv) => (conv.id === conversationId ? { ...conv, ...listed } : conv))
+			: [listed, ...all],
+	);
+	return listed;
+}
+
 /** The conversation opened, by the page's engine, or by the one it's about to have. */
 function openOnEngine(conversationId: string): Promise<void> {
 	if (engine) return engine.openConversation(conversationId);
@@ -110,10 +157,12 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		user: userId,
 		deviceName: deviceName(),
 		registered: (device) => deviceRegistered(userId, device),
+		shown: shownConversation,
 	});
 	made.onState((state) => {
 		encryption.state = state;
 		encryption.cutoverAt = made.cutoverAt;
+		encryption.serverKeyChanged = made.serverKeyChanged;
 		// The user's other tabs show it too: a new device's setup moves on here, in the tab that leads.
 		tabs?.stateChanged();
 		// Ready, the rows the views asked for before may be there now.
@@ -270,7 +319,8 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
 			openConversation: (id: string) => openOnEngine(id),
 			restartGroup: ({ conversationId, leaving }: MessageParams) => live().restartGroup(conversationId, leaving),
-			acceptMembers: (id: string) => engine?.acceptMembers(id),
+			acceptMembers: ({ conversationId, people }: { conversationId: string; people: LegacyRecord }) =>
+				engine?.acceptMembers(conversationId, people),
 			createConversation: (made: NewConversationRequest) => live().createConversation(made),
 			addMember: ({ conversationId, userId: user }: MessageParams) => live().addMember(conversationId, user ?? ""),
 			removeMember: ({ conversationId, userId: user }: MessageParams) =>
@@ -290,6 +340,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			dismissShared: ({ shareId }: MessageParams) => live().dismissShared(shareId ?? ""),
 			offers: (id: string) => engine?.offers(id) ?? [],
 			cutoverAt: () => engine?.cutoverAt ?? null,
+			serverKeyChanged: () => engine?.serverKeyChanged ?? false,
 			// The person's contacts (Task 28).
 			contacts: () => engine?.contacts() ?? { changes: {}, verified: {} },
 			// What the encrypted backup shows (Task 32).
@@ -312,17 +363,18 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 				live().openFile(key, attachmentId, sealed),
 			fileNames: () => live().fileNames(),
 			fileFailed: () => live().fileFailed(),
-			editMessage: ({ conversationId, messageId, text }: MessageParams) =>
-				live().editMessage(conversationId, messageId ?? "", text ?? ""),
-			deleteMessage: ({ conversationId, messageId }: MessageParams) =>
-				live().deleteMessage(conversationId, messageId ?? ""),
+			editMessage: ({ conversationId, messageId, text, drawn }: MessageParams) =>
+				live().editMessage(conversationId, messageId ?? "", text ?? "", drawn),
+			deleteMessage: ({ conversationId, messageId, drawn }: MessageParams) =>
+				live().deleteMessage(conversationId, messageId ?? "", drawn),
 			discardMessage: ({ conversationId, nonce }: MessageParams) => live().discardMessage(conversationId, nonce ?? ""),
 			read: ({ conversationId, ids }: MessageParams) => live().read(conversationId, ids ?? []),
 			search: (request: DeviceSearch) => live().search(request),
 			heldBefore: ({ conversationId, seq }: MessageParams) => live().heldBefore(conversationId, seq ?? 0),
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
-			removeDevice: ({ deviceId, changeKeys }: DeviceParams) => live().removeDevice(deviceId, { changeKeys }),
-			changeKeys: () => live().changeKeys(),
+			removeDevice: ({ deviceId, changeKeys, named }: DeviceParams) =>
+				live().removeDevice(deviceId, { changeKeys, named }),
+			changeKeys: (named?: string[]) => live().changeKeys([], named),
 			finishKeysWithout: () => live().finishKeysWithout(),
 			alsoRemoved: () => live().alsoRemoved(),
 			removeThisDevice: async () => {
@@ -335,6 +387,15 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 		lead: async () => {
 			engine = engineFor(userId, await platform.webHost(), platform);
 			await engine.start();
+		},
+		// A lead that threw (a tab from before a deploy can't load the host's chunk) leads nothing (#575, M3): an engine
+		// it made goes, the tab says so, and it asks for the lock again, the next tab leading meanwhile.
+		onLeadFailed: (error) => {
+			console.error("[e2e] This tab couldn't open encrypted conversations; it tries again soon:", error);
+			const made = engine;
+			engine = null;
+			void made?.stop().catch((stopped: unknown) => console.error("[e2e] Its engine didn't stop:", stopped));
+			encryption.state = { name: "failed", lostKey: false };
 		},
 		onLeader: () => void follow(),
 		onState: () => void follow(),
@@ -359,6 +420,7 @@ async function follow(): Promise<void> {
 	if (!asked || asked.leader) return;
 	encryption.state = await asked.call<EngineState>("state").catch(() => encryption.state);
 	encryption.cutoverAt = await asked.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
+	encryption.serverKeyChanged = await asked.call<boolean>("serverKeyChanged").catch(() => encryption.serverKeyChanged);
 	encryption.contacts = await asked.call<ContactsShown>("contacts").catch(() => encryption.contacts);
 	encryption.backup = await asked.call<BackupShown>("backup").catch(() => encryption.backup);
 	if (encryption.state.name === "ready") refreshAll();
@@ -373,17 +435,12 @@ async function followConversation(conversationId: string): Promise<void> {
 	if (offers !== undefined) showOffers(conversationId, offers);
 }
 
-type ConversationTap = "openConversation" | "acceptMembers";
-
-/** The person's act on a conversation, run by the engine of this tab or of the one that leads. */
-function onConversation(method: ConversationTap, conversationId: string): Promise<void> {
-	if (tabs) return tabs.call<void>(method, conversationId).finally(() => followConversation(conversationId));
-	if (method === "openConversation") return openOnEngine(conversationId);
-	return engine?.[method](conversationId) ?? Promise.resolve();
-}
-
 /** The conversation opened: its group goes on, or is made where this user may (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»). */
-export const openConversation = (conversationId: string) => onConversation("openConversation", conversationId);
+export function openConversation(conversationId: string): Promise<void> {
+	if (tabs)
+		return tabs.call<void>("openConversation", conversationId).finally(() => followConversation(conversationId));
+	return openOnEngine(conversationId);
+}
 /**
  * Restart encryption, over a blocked group this user may restart: whom it would leave out that the person hasn't
  * confirmed (`leaving`), and nothing restarted while there are some; none once it restarts.
@@ -392,12 +449,21 @@ export const restartGroup = (conversationId: string, leaving: readonly string[] 
 	onMessages<string[]>("restartGroup", { conversationId, leaving: [...leaving] }, (made) =>
 		made.restartGroup(conversationId, leaving),
 	).finally(() => followConversation(conversationId));
-/** Open with these members, over a conversation whose members aren't those this device first saw. */
-export const acceptMembers = (conversationId: string) => onConversation("acceptMembers", conversationId);
+/**
+ * Open with these members, over a conversation whose members aren't those this device first saw: the yes to the people
+ * its question named (`members_changed`'s), which this device goes in with (N-M10).
+ */
+export function acceptMembers(conversationId: string, people: LegacyRecord): Promise<void> {
+	const params = { conversationId, people };
+	if (tabs) return tabs.call<void>("acceptMembers", params).finally(() => followConversation(conversationId));
+	return engine?.acceptMembers(conversationId, people) ?? Promise.resolve();
+}
 
 /** What a tab asks of the leader's engine about a conversation's messages, or its members. */
 interface MessageParams {
 	conversationId: string;
+	/** The people the asking tab draws there (drawnHere). */
+	drawn?: Drawn | null;
 	ids?: string[];
 	messageId?: string;
 	text?: string;
@@ -457,6 +523,17 @@ function live(): E2EEngine {
 	return engine;
 }
 
+/**
+ * The people this tab draws in a conversation (N-I2): what's sent, edited or deleted from here carries them, and the tab
+ * that leads holds its delivery to them beside its own drawing, as each tab draws from its own READY. Null where it
+ * draws none.
+ */
+function drawnHere(conversationId: string): Drawn | null {
+	const conv = get(conversations).find((one) => one.id === conversationId);
+	if (!conv) return null;
+	return { type: conv.type, owner_id: conv.owner_id, members: conv.members.map(({ user_id }) => ({ user_id })) };
+}
+
 /** The person's act on a conversation's messages: by this page's engine, or the tab that leads (Ruling 16). */
 function onMessages<T>(method: string, params: unknown, run: (made: E2EEngine) => Promise<T>): Promise<T> {
 	if (tabs) return tabs.call<T>(method, params);
@@ -473,18 +550,21 @@ export function sendEncrypted(message: Outgoing, upload?: UploadOptions): Promis
 		upload?.signal?.addEventListener("abort", () => void tabs?.call("cancelUpload", message.nonce).catch(() => {}), {
 			once: true,
 		});
-		return tabs.call<DirectMessage | null>("sendMessage", message);
+		return tabs.call<DirectMessage | null>("sendMessage", { ...message, drawn: drawnHere(message.conversation_id) });
 	}
-	return engine ? engine.sendMessage(message, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
+	// The page that leads carries its drawing too, on the web (T-M2): once it closes, the next leader holds what it left
+	// waiting to it, as another tab's. The desktop app's one page holds its own by what it draws then.
+	const own = tabs ? { ...message, drawn: drawnHere(message.conversation_id) } : message;
+	return engine ? engine.sendMessage(own, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
 }
 /** An edit of the person's message, which shows at once. */
 export const editEncrypted = (conversationId: string, messageId: string, text: string) =>
-	onMessages<void>("editMessage", { conversationId, messageId, text }, (made) =>
+	onMessages<void>("editMessage", { conversationId, messageId, text, drawn: drawnHere(conversationId) }, (made) =>
 		made.editMessage(conversationId, messageId, text),
 	);
 /** A deletion of the person's message, for everyone. */
 export const deleteEncrypted = (conversationId: string, messageId: string) =>
-	onMessages<void>("deleteMessage", { conversationId, messageId }, (made) =>
+	onMessages<void>("deleteMessage", { conversationId, messageId, drawn: drawnHere(conversationId) }, (made) =>
 		made.deleteMessage(conversationId, messageId),
 	);
 /** The person's Dismiss of a message that never went: the API's ID of one the queue says went after all, else null. */
@@ -621,10 +701,17 @@ export async function stopEngine(): Promise<void> {
 	engine = null;
 	started = false;
 	toOpen.clear();
+	// What the engine showed goes with it (#575, M6): a recovery key on screen, what each conversation said, the cutover.
+	encryption.state = { name: "starting" };
+	encryption.conversations = {};
+	encryption.cutoverAt = null;
+	encryption.serverKeyChanged = false;
 	encryption.offers = {};
 	// What the next user's engine shows of their contacts, and of their backup, is theirs.
 	encryption.contacts = { changes: {}, verified: {} };
 	encryption.backup = { state: "uploading" };
+	// The next engine's first need of the conversations lists them again, as a new page would.
+	pageListed = false;
 	// What the device's database showed goes from memory, nothing searches it, and what it decrypted goes too.
 	useReader(null);
 	useDeviceSearch(null);
@@ -639,6 +726,8 @@ export async function stopEngine(): Promise<void> {
 interface DeviceParams {
 	deviceId: string;
 	changeKeys: boolean;
+	/** What the list leaves out beside the device that the person was shown (#575). */
+	named?: string[];
 }
 
 /** The person's act on their devices, by this page's engine or the tab that leads: the state it leaves, shown. */
@@ -648,14 +737,26 @@ function onDevices<T>(method: string, params: unknown, run: (made: E2EEngine) =>
 	return engine ? run(engine) : Promise.reject(new Error("encrypted conversations aren't ready on this device"));
 }
 
-/** Another device of the person's, taken off their account; with new keys for one that was lost (Settings → Devices). */
-export const removeDevice = (deviceId: string, changeKeys = false) =>
-	onDevices("removeDevice", { deviceId, changeKeys }, (made) => made.removeDevice(deviceId, { changeKeys }));
-/** Change security keys, or Finish a change made before the app closed: its new recovery key shows next. */
-export const changeKeys = () => onDevices("changeKeys", undefined, (made) => made.changeKeys());
+/**
+ * Another device of the person's, taken off their account; with new keys for one that was lost (Settings → Devices).
+ * `named`, what the list leaves out beside it that the person was shown (alsoRemoved, #575): nothing else goes.
+ */
+export const removeDevice = (deviceId: string, changeKeys = false, named: string[] = []) =>
+	onDevices("removeDevice", { deviceId, changeKeys, named }, (made) =>
+		made.removeDevice(deviceId, { changeKeys, named }),
+	);
+/**
+ * Change security keys, leaving out only what the person was shown (`named`, #575), or Finish a change made before the
+ * app closed: its new recovery key shows next.
+ */
+export const changeKeys = (named: string[] = []) =>
+	onDevices("changeKeys", named, (made) => made.changeKeys([], named));
 /** A change of keys that can't finish, gone on with without the devices another device took off (duvetchat/e2e#49). */
 export const finishKeysWithout = () => onDevices("finishKeysWithout", undefined, (made) => made.finishKeysWithout());
-/** What an earlier removal that never went up takes along with the next list or change of keys (M3). */
+/**
+ * What the next list or change of keys leaves out beside what's asked: what an earlier removal that never went up takes
+ * along (M3), and the devices the API no longer lists (#575).
+ */
 export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 
 /** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */

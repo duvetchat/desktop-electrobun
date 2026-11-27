@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
-import type { Conversation } from "$lib/api/conversations";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
@@ -576,11 +576,51 @@ describe("a live message of a chat nobody loaded", () => {
 		const releaseRoom = stores.channelMessages.keep(room);
 		const releaseConv = stores.dmMessages.keep(conv);
 		deliver("MESSAGE_CREATE", { id: message(85), room_id: room, author_id: ALICE, content: "hi" });
-		deliver("DM_MESSAGE_CREATE", { id: message(86), conversation_id: conv, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_CREATE", { id: message(86), conversation_id: conv, author_id: ALICE, content: null, seq: 1 });
 		releaseRoom();
 		releaseConv();
 		expect(get(stores.channelMessages)[room]?.map((m) => m.id)).toEqual([message(85)]);
 		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([message(86)]);
+	});
+
+	// #575 (I1): a conversation's row that's neither numbered nor a notice is no message a member sent, whatever it
+	// carries: it isn't listed.
+	test("a conversation's row neither numbered nor a notice isn't listed", () => {
+		const conv = conversation(74);
+		const release = stores.dmMessages.keep(conv);
+		const sealed = { id: message(88), key: "a2V5", sha256: "c2hh", size: 3, name: "photo.png", said: "image/png" };
+		const file = {
+			...{ id: message(88), message_id: message(87), filename: "photo.png", content_type: "image/png", size_bytes: 3 },
+			...{ created_at: "", url: "/attachments/a", sealed: { ...sealed, url: "/attachments/a" } },
+		};
+		deliver("DM_MESSAGE_CREATE", {
+			...{ id: message(87), conversation_id: conv, author_id: ALICE, content: null, type: 1, attachments: [file] },
+		});
+		release();
+		expect(get(stores.dmMessages)[conv] ?? []).toEqual([]);
+	});
+
+	// #575 (M2): a pending row is the person's own: a message with its nonce takes its place only when it's theirs too,
+	// so the text they typed never shows under someone else's name.
+	test("a conversation's pending row gives way only to the person's own message with its nonce", async () => {
+		const { contentOf, keepTyped } = await import("$lib/e2e/conversation-content.svelte");
+		ready({});
+		const conv = conversation(75);
+		const release = stores.dmMessages.keep(conv);
+		const nonce = "f3c1d7a2-0000-4c8d-9e0f-1a2b3c4d5e75";
+		keepTyped(conv, nonce, "my words");
+		const pending: DirectMessage = {
+			...{ id: nonce, conversation_id: conv, author_id: ME, content: null, type: MessageType.Text, nonce },
+			...{ created_at: "", updated_at: "" },
+		};
+		stores.dmMessages.update((all) => ({ ...all, [conv]: [pending] }));
+		deliver("DM_MESSAGE_CREATE", {
+			...{ id: message(89), conversation_id: conv, author_id: ALICE, content: null, type: 0, seq: 3, nonce },
+		});
+		release();
+		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([nonce, message(89)]);
+		expect(contentOf(conv, ME).typed(message(89), ALICE)).toBeUndefined();
+		expect(contentOf(conv, ME).typed(nonce, ME)).toBe("my words");
 	});
 });
 
@@ -848,6 +888,32 @@ describe("end-to-end encryption's events", () => {
 			release();
 			stopListening();
 		}
+	});
+
+	// N-I1: a DM is its two people, whom its view shows: a member's addition to one isn't taken, as the engine holds the
+	// DM's group to the page's drawing of it. A group's is.
+	test("a member's addition to a DM isn't taken; a group's is", () => {
+		const [dm, group] = [conversation(97), conversation(98)];
+		const at = { created_at: "2026-11-25T00:00:00Z", updated_at: "2026-11-25T00:00:00Z" };
+		const member = (where: string, user: string) => ({
+			...{ id: crypto.randomUUID(), conversation_id: where, user_id: user, ...at },
+			user: { id: user, username: user, alias: null, avatar: null, banner: null },
+		});
+		const drawnAs = (id: string, type: 1 | 2) => ({
+			...{ id, type, name: null, owner_id: ALICE, members: [member(id, ALICE), member(id, ME)] },
+			...{ ...at, deleted_at: null },
+		});
+		stores.conversations.set([drawnAs(dm, 1), drawnAs(group, 2)]);
+		const third = crypto.randomUUID();
+		for (const id of [dm, group]) {
+			deliver("CONVERSATION_MEMBER_ADD", { conversation_id: id, member_id: crypto.randomUUID(), user_id: third });
+		}
+		const users = (id: string) =>
+			get(stores.conversations)
+				.find((c) => c.id === id)
+				?.members.map((m) => m.user_id);
+		expect(users(dm)).toEqual([ALICE, ME]);
+		expect(users(group)).toEqual([ALICE, ME, third]);
 	});
 
 	// #550 (step 5's engines review, Minor 6): a group's owner handed on as they leave goes by CONVERSATION_UPDATE, which

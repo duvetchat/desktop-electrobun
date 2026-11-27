@@ -1653,8 +1653,8 @@
 			web={!desktopApp}
 			{storageKept}
 			onReload={() => void loadDevices()}
-			onRemove={async (deviceId, keys) => {
-				await engine.removeDevice(deviceId, keys);
+			onRemove={async (deviceId, keys, named) => {
+				await engine.removeDevice(deviceId, keys, named);
 				await loadDevices();
 			}}
 			onChangeKeys={engine.changeKeys}

@@ -38,8 +38,14 @@ export interface BrowserTabsOptions {
 	 * with `internal`, as it may have been made, and goes to no other tab (#559). One no tab took goes on as any.
 	 */
 	once?: readonly string[];
-	/** Runs once this tab holds the lock, before it serves anyone: opens the core and starts the engine. */
+	/**
+	 * Runs once this tab holds the lock, before it serves anyone: opens the core and starts the engine. One that throws
+	 * leads nothing: the lock goes to the next tab, `onLeadFailed` hears why, and the lock is asked for again after
+	 * `retryMs` (2 s), then twice as long each time, up to a minute (#575, M3).
+	 */
 	lead: () => Promise<void>;
+	onLeadFailed?: (error: unknown) => void;
+	retryMs?: number;
 	/** A conversation the leader says changed, with the messages its queue deleted. */
 	onChanged?: (conversationId: string, deleted: string[]) => void;
 	/** A tab that says it leads, another or this one. */
@@ -52,13 +58,18 @@ export interface BrowserTabsOptions {
 	tab?: string;
 }
 
+/** A lead that threw asks for the lock again after 2 s, then twice as long each time, up to a minute apart. */
+const RETRY_MS = 2_000;
+const RETRY_MOST_MS = 60_000;
+
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const closed = () => new CoreError("internal", "this tab left the core's tabs");
+const leaderless = () => new CoreError("not_ready", "no tab leads the user's tabs now");
 const unknown = () => new CoreError("internal", "the tab that led went before it answered: it may have been made");
 
 export class BrowserTabs {
 	readonly tab: string;
-	/** Settles once this tab leads: after its `lead` resolved, or with what it threw. */
+	/** Settles once this tab leads, after a `lead` that resolved; rejects if the tab closes first. */
 	readonly leading: Promise<void>;
 	#leader = false;
 	#closed = false;
@@ -67,6 +78,13 @@ export class BrowserTabs {
 	#channel: ChannelLike;
 	#stop = new AbortController();
 	#release: () => void = () => {};
+	/** The wait before this tab asks for the lock again, after a lead that threw. */
+	#again: ReturnType<typeof setTimeout> | null = null;
+	/**
+	 * This tab's lead threw, and no tab said it leads since: the lock went to whichever tab waited for it, which says so
+	 * as it leads, or to none. Meanwhile this tab's requests get not_ready, as nobody would answer them.
+	 */
+	#leaderless = false;
 	/** This tab's requests without an answer, by their ID: `taken`, one a leader said it runs. */
 	#waiting = new Map<
 		string,
@@ -85,30 +103,40 @@ export class BrowserTabs {
 		this.#channel = options.channel ?? new BroadcastChannel(lockName(options.userId));
 		this.#channel.addEventListener("message", (event) => this.#heard(event.data));
 		const locks = options.locks ?? navigator.locks;
+		const first = options.retryMs ?? RETRY_MS;
 		this.leading = new Promise((resolve, reject) => {
-			locks
-				.request(lockName(options.userId), { signal: this.#stop.signal }, async () => {
-					// Held until this tab closes: then the browser, or close(), lets the next one in.
-					const held = new Promise<void>((release) => (this.#release = release));
-					if (this.#closed) return reject(closed());
-					try {
-						await options.lead();
-					} catch (error) {
-						reject(error);
-					}
-					if (this.#closed) return reject(closed());
-					this.#leader = true;
-					this.#post({ event: "leader", tab: this.tab });
-					options.onLeader?.(this.tab);
-					for (const [id, waiting] of this.#waiting) {
-						if (this.#madeMaybe(waiting)) this.#take(id)?.reject(unknown());
-						else this.#settle(id, () => this.#serve(waiting.method, waiting.params));
-					}
-					resolve();
-					await held;
-				})
-				// A request close() aborted never held the lock: the tab closed. Any other refusal, as it is.
-				.catch((error: unknown) => reject(this.#closed ? closed() : error));
+			const take = (tries: number) =>
+				locks
+					.request(lockName(options.userId), { signal: this.#stop.signal }, async () => {
+						if (this.#closed) return reject(closed());
+						try {
+							await options.lead();
+						} catch (error) {
+							// It leads nothing: returning lets the lock go to the next tab, and this one asks again later.
+							options.onLeadFailed?.(error);
+							this.#leaderless = true;
+							for (const id of [...this.#waiting.keys()]) this.#take(id)?.reject(leaderless());
+							const wait = Math.min(RETRY_MOST_MS, first * 2 ** tries);
+							this.#again = setTimeout(() => void take(tries + 1), wait);
+							return;
+						}
+						// Held until this tab closes: then the browser, or close(), lets the next one in.
+						const held = new Promise<void>((release) => (this.#release = release));
+						if (this.#closed) return reject(closed());
+						this.#leader = true;
+						this.#leaderless = false;
+						this.#post({ event: "leader", tab: this.tab });
+						options.onLeader?.(this.tab);
+						for (const [id, waiting] of this.#waiting) {
+							if (this.#madeMaybe(waiting)) this.#take(id)?.reject(unknown());
+							else this.#settle(id, () => this.#serve(waiting.method, waiting.params));
+						}
+						resolve();
+						await held;
+					})
+					// A request close() aborted never held the lock: the tab closed. Any other refusal, as it is.
+					.catch((error: unknown) => reject(this.#closed ? closed() : error));
+			void take(0);
 		});
 		// Nobody has to wait for it: a tab that closes before it leads says so to whoever does.
 		this.leading.catch(() => {});
@@ -123,6 +151,7 @@ export class BrowserTabs {
 	call<T = unknown>(method: string, params?: unknown): Promise<T> {
 		if (this.#closed) return Promise.reject(closed());
 		if (this.#leader) return this.#serve(method, params);
+		if (this.#leaderless) return Promise.reject(leaderless());
 		const id = `${this.tab}:${this.#next++}`;
 		return new Promise<T>((resolve, reject) => {
 			// Posted before it's kept: one the channel can't clone is refused, and nothing waits for it.
@@ -150,6 +179,7 @@ export class BrowserTabs {
 		if (this.#closed) return;
 		this.#closed = true;
 		this.#leader = false;
+		if (this.#again) clearTimeout(this.#again);
 		this.#stop.abort();
 		this.#release();
 		this.#channel.close();
@@ -206,6 +236,7 @@ export class BrowserTabs {
 	#heard(data: unknown) {
 		if (this.#closed || !isObject(data)) return;
 		if (data.event === "leader" && typeof data.tab === "string") {
+			this.#leaderless = false;
 			// A new leader: what this tab still asks goes to it, but what makes something anew that the tab before took,
 			// which it may have made. One that can't be cloned any more is refused, alone.
 			if (!this.#leader) {

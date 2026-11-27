@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { get } from "svelte/store";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { sessionApi } from "$lib/api/api";
 import { e2eApi } from "$lib/api/e2e";
@@ -20,6 +21,7 @@ Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("./engine.svelte");
 const { logout } = await import("$lib/api/auth");
 const { toastStore } = await import("$lib/stores/toast.svelte");
+const { conversations: drawnConversations, friendsReady } = await import("$lib/stores.svelte");
 
 // The page's engine (lib/e2e/engine.svelte.ts): one for the page on the desktop's one host, and on the web the engine of
 // the tab that leads, which the user's other tabs show and ask (Ruling 16), on task 8's tabs with a test's locks and
@@ -66,6 +68,12 @@ async function withWindow(go: () => Promise<unknown>): Promise<string> {
 	return location.href;
 }
 
+/** The page draws the user's conversations, as READY's list leaves them in its store (#574: what founds a group). */
+async function drawnOnPage(): Promise<void> {
+	const api = e2eApi(sessionApi({ token: localStorage.getItem("duvet_session_token")!, sessionToken: null }));
+	drawnConversations.set(await api.conversations());
+}
+
 /** The page's engine on the desktop, on `host`, through the first device's flow: ready. */
 async function readyOnDesktop(user: string, host: BunCoreHost) {
 	await page.startEngine(user, platform({ desktop: true, desktopHost: async () => host }));
@@ -86,7 +94,123 @@ afterEach(() => page.stopEngine());
 // A shared history's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
 useXHR();
 
+// N-C1: the conversation as the page draws it, which the engine holds a group to. Before READY's lists, the page's own
+// first listing; a fresh one writes into its store, one it didn't draw added; one that leaves it out leaves its copy.
+test("the page's drawing: its first listing, a fresh one into its store, and its copy where a listing has none", async () => {
+	const fake = new FakeApi();
+	useFake(fake);
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	drawnConversations.set([]);
+	expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([dm]);
+	const group = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+	expect(await page.shownConversation(group, false)).toBeNull();
+	expect((await page.shownConversation(group, true))?.id).toBe(group);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
+	// Left out of a listing, the conversation stays as the page drew it.
+	fake.conversationsAs = (view) => (view.id === dm ? null : view);
+	expect(await page.shownConversation(dm, true)).toEqual(get(drawnConversations).find((conv) => conv.id === dm)!);
+	expect(get(drawnConversations).map((conv) => conv.id)).toEqual([group, dm]);
+});
+
+// The review's untested cases. The page's first listing failing fails the look that asked for it, so what waits stays
+// for the next start, READY or Retry, and the next look lists again. READY's lists in with its conversations' failed
+// (friendsReady set, the store empty): the page draws nothing, and a fresh look's listing adds what it asks for.
+test("the page's drawing when its first listing fails, and when READY's list of conversations failed", async () => {
+	const fake = new FakeApi();
+	const conversations = "/api/users/@me/conversations";
+	let listings = 0;
+	useFake(fake, (request) => {
+		if (request.method === "GET" && new URL(request.url).pathname === conversations) listings++;
+	});
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	drawnConversations.set([]);
+	fake.refuse({ method: "GET", path: conversations }, 500);
+	await rejection(page.shownConversation(dm, false));
+	expect(get(drawnConversations)).toEqual([]);
+	expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+	expect(listings).toBe(2);
+	// A new session's READY: its lists came, its conversations' didn't.
+	await page.stopEngine();
+	drawnConversations.set([]);
+	friendsReady.set(true);
+	try {
+		expect(await page.shownConversation(dm, false)).toBeNull();
+		expect(listings).toBe(2);
+		expect((await page.shownConversation(dm, true))?.id).toBe(dm);
+		expect(get(drawnConversations).map((conv) => conv.id)).toEqual([dm]);
+		expect((await page.shownConversation(dm, false))?.id).toBe(dm);
+		expect(listings).toBe(3);
+	} finally {
+		friendsReady.set(false);
+	}
+});
+
+// N-I2: what a tab that doesn't lead sends, edits or deletes carries the people that tab draws, which the leader holds
+// the delivery to beside its own drawing; none where it draws no such conversation.
+test("on the web, a tab that doesn't lead carries the people it draws with what it sends, edits or deletes", async () => {
+	const fake = new FakeApi();
+	useFake(fake);
+	const ana = signedIn(fake);
+	const bo = fake.addUser();
+	const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const [locks, hub] = [new FakeLocks(), new FakeHub()];
+	const carried: unknown[] = [];
+	const leading = new BrowserTabs({
+		...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+		methods: {
+			state: () => ({ name: "ready" }),
+			sendMessage: async ({ drawn }: { drawn?: unknown }) => (carried.push(drawn), null),
+			editMessage: async ({ drawn }: { drawn?: unknown }) => void carried.push(drawn),
+			deleteMessage: async ({ drawn }: { drawn?: unknown }) => void carried.push(drawn),
+		},
+		lead: async () => {},
+	});
+	await leading.leading;
+	await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) } }));
+	await until(() => page.encryption.state.name === "ready");
+	await drawnOnPage();
+	const listed = get(drawnConversations).find((conv) => conv.id === dm)!;
+	const people = { type: 1, owner_id: listed.owner_id, members: [{ user_id: ana }, { user_id: bo }] };
+	await page.sendEncrypted({ conversation_id: dm, nonce: crypto.randomUUID(), text: "hi" });
+	await page.editEncrypted(dm, crypto.randomUUID(), "edited");
+	await page.deleteEncrypted(dm, crypto.randomUUID());
+	await page.sendEncrypted({ conversation_id: crypto.randomUUID(), nonce: crypto.randomUUID(), text: "hi" });
+	expect(carried).toEqual([people, people, people, null]);
+	await page.stopEngine();
+	leading.close();
+});
+
 describe.skipIf(!coreLibrary)("the page's engine", () => {
+	// #575 (M6): what the page's engine last showed goes with it as it stops: the state its sheets draw (a first device's
+	// recovery key among them), what each conversation said, the cutover's instant and the server key's notice. Every
+	// sign-out loads another page today; the day one doesn't, the next user's page shows none of it.
+	test(
+		"what the engine last showed goes as it stops",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			fake.cutoverAt = "2026-11-20T00:00:00Z";
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			const conversation = fake.addConversation({ type: "group", members: [bo, ana], owner: bo });
+			await readyOnDesktop(ana, testHost());
+			await page.openConversation(conversation);
+			await until(() => page.encryption.conversations[conversation]?.name === "wait_owner");
+			expect(page.encryption.cutoverAt).toBe(fake.cutoverAt);
+			await page.stopEngine();
+			expect(page.encryption.state).toEqual({ name: "starting" });
+			expect(page.encryption.conversations).toEqual({});
+			expect(page.encryption.cutoverAt).toBeNull();
+			expect(page.encryption.serverKeyChanged).toBe(false);
+		},
+		SLOW,
+	);
+
 	test(
 		"on the desktop, one engine on one host for the page, its core closed as the user signs out",
 		async () => {
@@ -230,6 +354,7 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 				ana,
 				platform({ desktop: true, desktopHost: async () => (await loading, host) }),
 			);
+			await drawnOnPage();
 			await page.openConversation(conversation);
 			loaded();
 			await starting;
@@ -386,6 +511,7 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
 			const b = await firstDevice(fake, bo);
 			await readyOnDesktop(ana, testHost());
+			await drawnOnPage();
 			await page.openConversation(conversation);
 			await until(async () => (await groupOf(b, conversation)) !== null);
 			fake.refuse({ method: "PUT", path: /\/history-shares\/[0-9a-f-]{36}\/parts\/\d+$/ }, 413, {
@@ -629,4 +755,58 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		},
 		SLOW,
 	);
+
+	// Last, as its web engine's device makes the page's storage last, which the page does once.
+	// T-M2: on the web the page that leads isn't the page the person reads after it closes: what it sends keeps its
+	// drawing with what waits, as another tab's does, which the next leader's delivery is held to (R-M1). The desktop
+	// app has one page, whose own drawing then holds it: it keeps none.
+	describe("what the page's engine sends keeps who wrote it", () => {
+		/** Ana's DM with Bo, whose first device is set up, drawn on the page; a message there whose request found no answer. */
+		async function waiting(fake: FakeApi, ana: string) {
+			const bo = fake.addUser();
+			await firstDevice(fake, bo);
+			const dm = fake.addConversation({ type: "dm", members: [ana, bo] });
+			await drawnOnPage();
+			fake.refuse({ method: "POST", path: `/api/users/@me/conversations/${dm}/messages` }, 500);
+			const nonce = crypto.randomUUID();
+			await rejection(page.sendEncrypted({ conversation_id: dm, nonce, text: "waits" }));
+			const kept: Record<string, Record<string, unknown>> = JSON.parse(
+				localStorage.getItem(`duvet.e2e.${ana}.pending_sends`) ?? "{}",
+			);
+			return { bo, kept: kept[nonce] };
+		}
+
+		test(
+			"on the web, the page that leads keeps its drawing with what it sends",
+			async () => {
+				const fake = new FakeApi();
+				useFake(fake);
+				const ana = signedIn(fake);
+				const [locks, hub] = [new FakeLocks(), new FakeHub()];
+				const web = platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: async () => testHost() });
+				await page.startEngine(ana, web);
+				await until(() => page.encryption.state.name === "first_device");
+				await page.makeIdentity();
+				await page.keySaved();
+				const { bo, kept } = await waiting(fake, ana);
+				expect(kept).toMatchObject({ drawn: { type: 1, owner_id: ana, members: [{ user_id: ana }, { user_id: bo }] } });
+				expect(kept).not.toHaveProperty("here");
+			},
+			SLOW,
+		);
+
+		test(
+			"on the desktop, the page keeps none: what it draws then holds it",
+			async () => {
+				const fake = new FakeApi();
+				useFake(fake);
+				const ana = signedIn(fake);
+				await readyOnDesktop(ana, testHost());
+				const { kept } = await waiting(fake, ana);
+				expect(kept).toMatchObject({ here: true });
+				expect(kept).not.toHaveProperty("drawn");
+			},
+			SLOW,
+		);
+	});
 });

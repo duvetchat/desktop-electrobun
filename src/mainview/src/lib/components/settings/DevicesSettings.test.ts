@@ -1,6 +1,7 @@
 // oxlint-disable-next-line import/no-unassigned-import -- it has Bun load .svelte files compiled for the server
 import "../server-render";
 import { describe, expect, test } from "bun:test";
+import { formatDate } from "$lib/i18n/format";
 import { render } from "svelte/server";
 import type { Device } from "$lib/api/e2e";
 import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
@@ -17,6 +18,7 @@ const {
 	default: DevicesSettings,
 	askToChangeKeys,
 	askToDeleteThisDevice,
+	dropped,
 	removalNotes,
 	removalProblem,
 } = await import("./DevicesSettings.svelte");
@@ -41,6 +43,8 @@ const PHONE = device("0193a4b2-0000-7000-8000-0000000000a2", "Pixel 8 Pro", {
 const BROWSER = device("0193a4b2-0000-7000-8000-0000000000a3", "Firefox on Linux", { listed: false });
 /** A device another one took off, whose registration went with its name. */
 const GONE = "0193b7c1-0000-7000-8000-0000000000a4";
+/** What a device the API no longer lists is said with: the person's way out. */
+const CANCEL = "If you didn't remove it or change your password, cancel.";
 
 const props = (more: Record<string, unknown> = {}) => ({
 	devices: [THIS, PHONE, BROWSER],
@@ -167,11 +171,73 @@ describe("Settings' devices", () => {
 
 	// M7 and M3: the dialog names the device as Bun's box does, by its ID, and what an earlier removal takes along.
 	test("name a device in its removal by its ID's start, and what an earlier removal takes along", () => {
-		const alone = removalNotes(PHONE, [], [THIS, PHONE, BROWSER]).join(" ");
+		const alone = removalNotes(PHONE, { along: [], away: [] }, [THIS, PHONE, BROWSER]).join(" ");
 		expect(alone).toContain(PHONE.id.slice(0, 8));
 		expect(alone).not.toContain(BROWSER.name);
-		const along = removalNotes(PHONE, [BROWSER.id], [THIS, PHONE, BROWSER]).join(" ");
+		const along = removalNotes(PHONE, { along: [BROWSER.id], away: [] }, [THIS, PHONE, BROWSER]).join(" ");
 		expect(along).toContain(BROWSER.name);
+	});
+
+	// #575 (I2): on the web the dialog is the only question. A device the server no longer lists, which the list this
+	// removal signs takes off too, is named there, and is what goes with the person's yes.
+	test("name the devices the server no longer lists, which the list takes off too", () => {
+		const notes = removalNotes(PHONE, { along: [], away: [GONE, PHONE.id] }, [THIS, PHONE, BROWSER]);
+		const away = `Duvet no longer lists the device whose ID starts with ${GONE.slice(0, 8)}. ${CANCEL}`;
+		expect(notes).toContain(away);
+		expect(dropped({ along: [BROWSER.id], away: [GONE, PHONE.id] }, PHONE.id)).toEqual([BROWSER.id, GONE]);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE] }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(away);
+	});
+
+	// #575 (N-M7): a device the API no longer lists is named by what's known of it (its name, its client and when it was
+	// added), by its ID only when nothing else is; and the words don't tell the server's story in the app's voice: if the
+	// person removed nothing and changed no password, they cancel.
+	test("name a device the API no longer lists by what's known of it, and say to cancel", () => {
+		const known = { [GONE]: { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" } };
+		const date = formatDate(Date.parse("2026-11-03T10:00:00Z"), { dateStyle: "medium" });
+		const named = `Duvet no longer lists Galaxy Tab (android/1.0.0, added ${date}). ${CANCEL}`;
+		expect(removalNotes(PHONE, { along: [], away: [GONE], known }, [THIS, PHONE])).toContain(named);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE], known }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(named);
+	});
+
+	// R-M3: what names a device the API no longer lists is the API's last word on it. One it named otherwise since this
+	// device first saw it is named both ways, its first first.
+	test("name a device the API named anew by what it was first and what it was listed as later", () => {
+		const first = { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" };
+		const known = {
+			[GONE]: { name: "Old test phone", client: "web/1.0.0", created_at: "2026-11-20T10:00:00Z", first },
+		};
+		const date = (at: string) => formatDate(Date.parse(at), { dateStyle: "medium" });
+		const was = `Galaxy Tab (android/1.0.0, added ${date(first.created_at)})`;
+		const later = `Old test phone (web/1.0.0, added ${date("2026-11-20T10:00:00Z")})`;
+		const named = `Duvet no longer lists ${was} (listed later as ${later}). ${CANCEL}`;
+		expect(removalNotes(PHONE, { along: [], away: [GONE], known }, [THIS, PHONE])).toContain(named);
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [GONE], known }, async () => {});
+		const message = confirmStore.pending?.message ?? "";
+		confirmStore.cancel();
+		expect(message).toContain(named);
+	});
+
+	// R-M3, both apps' wording: «This also removes …» names each device as the no-longer-listed sentence does, by what's
+	// known of it, its first words too where the API named it otherwise since, and by the start of its ID where nothing is.
+	test("name what an earlier removal takes along as the no-longer-listed sentence names a device", () => {
+		const first = { name: "Galaxy Tab", client: "android/1.0.0", created_at: "2026-11-03T10:00:00Z" };
+		const known = {
+			[GONE]: { name: "Old test phone", client: "web/1.0.0", created_at: "2026-11-20T10:00:00Z", first },
+		};
+		const date = (at: string) => formatDate(Date.parse(at), { dateStyle: "medium" });
+		const both = `Galaxy Tab (android/1.0.0, added ${date(first.created_at)}) (listed later as Old test phone (web/1.0.0, added ${date("2026-11-20T10:00:00Z")}))`;
+		const notes = removalNotes(PHONE, { along: [GONE], away: [], known }, [THIS, PHONE]);
+		expect(notes).toContain(`This also removes ${both}, whose earlier removal didn't finish.`);
+		const bare = removalNotes(PHONE, { along: [GONE], away: [] }, [THIS, PHONE]);
+		expect(bare).toContain(
+			`This also removes the device whose ID starts with ${GONE.slice(0, 8)}, whose earlier removal didn't finish.`,
+		);
 	});
 
 	// The core's R1: after a change of keys that went on without devices, one of them may hold the keys still.
@@ -182,10 +248,10 @@ describe("Settings' devices", () => {
 	});
 
 	test("ask before changing the keys, naming what an earlier removal takes along", () => {
-		void askToChangeKeys([THIS, PHONE, BROWSER], [], async () => {});
+		void askToChangeKeys([THIS, PHONE, BROWSER], { along: [], away: [] }, async () => {});
 		expect(confirmStore.pending?.message).toBe(en.e2e_change_keys_confirm);
 		confirmStore.cancel();
-		void askToChangeKeys([THIS, PHONE, BROWSER], [PHONE.id], async () => {});
+		void askToChangeKeys([THIS, PHONE, BROWSER], { along: [PHONE.id], away: [] }, async () => {});
 		const message = confirmStore.pending?.message ?? "";
 		confirmStore.cancel();
 		expect(message).toContain(en.e2e_change_keys_confirm);
@@ -247,7 +313,7 @@ describe("Settings' devices", () => {
 			field: "certificates",
 		});
 		expect(removalProblem(unfinished)).toBe(en.e2e_device_unfinished);
-		void askToChangeKeys([THIS, PHONE], [], () => Promise.reject(unfinished));
+		void askToChangeKeys([THIS, PHONE], { along: [], away: [] }, () => Promise.reject(unfinished));
 		await confirmStore.execute();
 		const said = confirmStore.error;
 		confirmStore.cancel();

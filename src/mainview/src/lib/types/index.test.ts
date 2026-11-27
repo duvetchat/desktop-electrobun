@@ -36,8 +36,9 @@ describe("a message from the API has one reaction per emoji", () => {
 			type: MessageType.Text,
 			created_at: at,
 			updated_at: at,
+			seq: 1,
 			reactions,
 		};
-		expect(directMessageToMessage(raw, []).reactions).toEqual(one);
+		expect(directMessageToMessage(raw, [])?.reactions).toEqual(one);
 	});
 });

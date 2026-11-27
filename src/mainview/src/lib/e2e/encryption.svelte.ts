@@ -15,6 +15,8 @@ export const encryption = $state<{
 	offers: Record<string, SharedOffer[]>;
 	/** The cutover's instant, as the API gives it: a conversation from before it says when its messages went. */
 	cutoverAt: string | null;
+	/** The API serves another server key than the one this device first saw (Ruling 32, #575 M5). */
+	serverKeyChanged: boolean;
 	/** The person's contacts as the engine holds them (contacts.ts): their changed keys, and whom they verified. */
 	contacts: ContactsShown;
 	/** What a ready device's encrypted backup shows (backup.ts): until the engine says, nothing is known to be up. */
@@ -24,6 +26,7 @@ export const encryption = $state<{
 	conversations: {},
 	offers: {},
 	cutoverAt: null,
+	serverKeyChanged: false,
 	contacts: { changes: {}, verified: {} },
 	backup: { state: "uploading" },
 });

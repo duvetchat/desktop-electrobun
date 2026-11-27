@@ -3,7 +3,7 @@ import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { drawnAs } from "$lib/e2e/conventions";
-import { shownOf, type MessageContent, type ShownMessage } from "$lib/e2e/engine/content";
+import { drawnRow, shownOf, type MessageContent, type ShownMessage } from "$lib/e2e/engine/content";
 import { shownFile, type SealedFile } from "$lib/e2e/engine/files";
 import type { UserActivity } from "$lib/stores.svelte";
 
@@ -1537,7 +1537,7 @@ export function heldText(
 	seq?: number,
 ): Pick<Message, "content" | "waiting" | "loading" | "shared_by" | "updated_at"> {
 	const shown = shownOf(content, message.id, message.author_id);
-	const typed = shown ? undefined : content.typed(message.id);
+	const typed = shown ? undefined : content.typed(message.id, message.author_id);
 	let loading = false;
 	if (!shown && typed === undefined) {
 		const held = content.held(message.id);
@@ -1565,20 +1565,23 @@ export function quotedText(content: MessageContent, ref: ReferencedMessage): str
 /**
  * A conversation's message as the chat shows it: its author as the message names them, or else as the conversation's
  * members do, or by the start of their ID. A text or voice message, and every quote, draw what this device holds
- * (heldText, quotedText); one without its number (the person's own being sent) only the text they typed. The API's
- * previews aren't drawn: its own text never reaches it.
+ * (heldText, quotedText); one without its number (the person's own being sent) only the text they typed, and its own
+ * files' bars. The API's previews aren't drawn: its own text never reaches it. None for a row that's neither numbered
+ * nor a notice but the person's own (#575): no message a member sent, wherever it would show (a list, a pin, a thread,
+ * a result, a card).
  */
 export function directMessageToMessage(
 	msg: DirectMessage,
 	members: Conversation["members"],
 	content: MessageContent = NOTHING_HELD,
-): Message {
+): Message | null {
+	if (!drawnRow(msg, (id, author) => content.typed(id, author))) return null;
 	const member = members.find((m) => m.user_id === msg.author_id);
 	const type = msg.type ?? 0;
 	const written = type === MessageType.Text || type === MessageType.Voice;
 	let text: Partial<Message> = {};
 	if (written && msg.seq !== undefined) text = heldText(content, msg, msg.seq);
-	else if (written) text = { content: content.typed(msg.id) ?? null, updated_at: msg.created_at };
+	else if (written) text = { content: content.typed(msg.id, msg.author_id) ?? null, updated_at: msg.created_at };
 	const ref = msg.referenced_message ?? null;
 	// An encrypted message's files, and whether it's a voice note, are what this device holds of it: the API keeps sealed
 	// bytes it can't open. A row being sent keeps its own, for its upload's bars.
@@ -1609,7 +1612,7 @@ export function directMessageToMessage(
 		unsent_note: msg.unsent_note,
 		ref_message_id: ref?.message_id ?? null,
 		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
-		attachments: msg.seq === undefined ? (msg.attachments ?? null) : files,
+		attachments: msg.seq !== undefined ? files : written ? ownFiles(msg) : null,
 		reactions: mergedByKey(msg.reactions),
 		embeds: null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
@@ -1644,6 +1647,13 @@ function heldFiles(row: ShownMessage, msg: DirectMessage): Attachment[] {
 		];
 	});
 }
+
+/**
+ * The files of the person's own message being sent, as its row lays them out for its upload's bars: never a sealed
+ * one, which only the core's row of a numbered message gives (heldFiles, #575).
+ */
+const ownFiles = (msg: DirectMessage): Attachment[] | null =>
+	msg.attachments?.map(({ sealed: _sealed, ...file }) => file) ?? null;
 
 /** What a voice note's convention reads of a drawn file (drawnAs): its sender's word on it. */
 const saidOf = (file: Attachment) => ({

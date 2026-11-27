@@ -4,16 +4,17 @@
 import { afterAll, afterEach, mock, spyOn } from "bun:test";
 import { rmSync } from "node:fs";
 import { sessionApi } from "$lib/api/api";
-import type { DirectMessage } from "$lib/api/conversations";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { e2eApi, type E2eApi } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import type { EnvelopeFile } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import type { CoreHost } from "../host";
-import { E2EEngine, type BackupShown, type Clock, type EngineState } from "../engine/engine";
+import { E2EEngine, type BackupShown, type Clock, type EngineParts, type EngineState } from "../engine/engine";
 import { shownFile, type ShownFile } from "../engine/files";
 import type { IdentityMade } from "../engine/identity";
+import { keepMade } from "../engine/legacy";
 import type { EngineStore } from "../engine/store";
 import type { FakeApi, GatewayEvent } from "./fake-api";
 import { BunCoreHost } from "./host-bun";
@@ -118,6 +119,17 @@ export interface TestDevice {
 }
 
 /**
+ * The conversation as a test's page draws it: as the fake lists it to `user` now, a test's lies included, as READY's
+ * list and the conversations' events keep the app's, read without a request of its own, which a test counting the
+ * engine's requests would see.
+ */
+const pageOf =
+	(fake: FakeApi, user: string): EngineParts["shown"] =>
+	async (id) =>
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's listing is the API's, as GET …/conversations sends it
+		(fake.listedTo(user) as Conversation[]).find((conv) => conv.id === id) ?? null;
+
+/**
  * A device of the user on the fake: an engine with its core (`host`, a new one unless given), a session of its own (a
  * sign-in's, unless `token` names one), its record and its clock. It connects to the gateway with no device, then again
  * with the one the engine registers, as the app's one reopen does (Ruling 30).
@@ -131,6 +143,8 @@ export function testDevice(
 		token?: string;
 		/** Which events reach the engine: all of them unless this says no. */
 		hears?: (event: GatewayEvent) => boolean;
+		/** The conversation as its page draws it (EngineParts' shown): as the fake lists it to the user now, unless given. */
+		shown?: EngineParts["shown"];
 	} = {},
 ): TestDevice {
 	const host = given.host ?? testHost();
@@ -168,6 +182,7 @@ export function testDevice(
 			registered.push(device);
 			if (device !== registered.at(-2)) connect(device);
 		},
+		shown: given.shown ?? pageOf(fake, user),
 	});
 	const states: EngineState[] = [];
 	engine.onState((state) => states.push(state));
@@ -264,6 +279,25 @@ export interface HeldGroup {
 /** The conversation's group as the device's core holds it, or null without one. */
 export const groupOf = (device: TestDevice, conversation: string): Promise<HeldGroup | null> =>
 	device.host.handle<HeldGroup>({ cmd: "group", conversation_id: conversation }).catch(() => null);
+
+/**
+ * The conversation was made on this device, as the person's createConversation makes one (#574): its record is its
+ * people as the API lists them now, which the group this device founds holds. A test's conversation the fake made
+ * stands for one its owner's device made.
+ */
+export async function madeHere(device: TestDevice, conversation: string): Promise<void> {
+	const conv = (await device.api.conversations()).find(({ id }) => id === conversation);
+	if (!conv) throw new Error(`${device.user} isn't in ${conversation}`);
+	const members = conv.members.map((member) => member.user_id);
+	keepMade(device.store, conv.id, conv.type === 2 ? { owner: conv.owner_id, members } : { members });
+}
+
+/** The person's yes to the conversation's question of its members, as the view sends it: to the people it names. */
+export async function sayYes(device: TestDevice, conversation: string): Promise<void> {
+	const asked = device.engine.conversationState(conversation);
+	if (asked?.name !== "members_changed") throw new Error(`${device.user} isn't asked about ${conversation}'s members`);
+	await device.engine.acceptMembers(conversation, asked.people);
+}
 
 /** Waits until every device holds the conversation's group at one generation and epoch, with one authenticator. */
 export async function sameGroup(devices: TestDevice[], conversation: string, ms = 60_000): Promise<HeldGroup> {

@@ -164,18 +164,16 @@ async function apiFinds(conversation: Conversation, search: MessageSearch, curso
 	});
 	if (ids.length && !device) throw new Error(t("e2e_not_ready"));
 	const rows = device && ids.length ? (await device.read(conversation.id, ids).catch(notReady)).rows : [];
-	const found = res.messages.map(
-		(m): FoundMessage => ({
-			message: directMessageToMessage(m, conversation.members, holding(rows)),
-			roomId: null,
-			conversationId: conversation.id,
-		}),
-	);
+	// A row the conversation doesn't draw (#575) is no result; the pages still go by what the API gave.
+	const found = res.messages.flatMap((m): FoundMessage[] => {
+		const message = directMessageToMessage(m, conversation.members, holding(rows));
+		return message ? [{ message, roomId: null, conversationId: conversation.id }] : [];
+	});
 	const last = res.messages.at(-1);
 	return {
 		found,
 		total: res.total_results,
-		next: last && found.length === CONVERSATION_RESULTS ? { cursor: last.id } : null,
+		next: last && res.messages.length === CONVERSATION_RESULTS ? { cursor: last.id } : null,
 	};
 }
 
@@ -197,7 +195,7 @@ function shownRow(row: ShownMessage, conversations: Conversation[], reads: Devic
 		...{ created_at: at, updated_at: at, seq: row.seq ?? 0, sent_at: row.sent_at, sticker_attachment_id: sticker },
 	};
 	const message = directMessageToMessage(listed, conversation.members, holding([row]));
-	return { message, roomId: null, conversationId: conversation.id };
+	return message && { message, roomId: null, conversationId: conversation.id };
 }
 
 /** What a result draws of the device: these rows, and nothing still to come, so one it doesn't hold waits. */

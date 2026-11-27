@@ -17,12 +17,14 @@ import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import {
 	addedToTell,
 	confirmKeys,
-	devicesAlong,
+	alsoDropped,
 	goneDevices,
 	inactiveToTell,
+	knowDevices,
 	makeKeys,
 	publishKeys,
 	removeDevice,
+	type Drops,
 	type KeysMade,
 } from "./devices";
 import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
@@ -42,7 +44,8 @@ import {
 } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
-import { checkRoom } from "./members";
+import { keepMade, type LegacyRecord } from "./legacy";
+import { checkRoom, type Drawn } from "./members";
 import { checkRecoveryKey, putFirstList, recoverIdentity, type FirstList } from "./recover";
 import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
@@ -118,6 +121,13 @@ export interface EngineParts {
 	deviceName: string;
 	/** The session is bound to this device, which every identify names from now on (Ruling 30). */
 	registered(deviceId: string): void;
+	/**
+	 * The conversation as the page draws it (its own listing, which READY and the conversations' events keep), read again
+	 * from a new listing when `fresh`, where one that leaves it out leaves the page's copy as it was; null where it draws
+	 * none (#574). A group this device founds without a record holds the people it shows, and a group's own members are
+	 * held to it as it goes on: nothing goes to one it doesn't draw (N-C1). The engine's own listing never stands for it.
+	 */
+	shown: (conversationId: string, fresh: boolean) => Promise<Conversation | null>;
 	/**
 	 * The engine's contacts (contacts.ts), set by the engine itself: what the core answers of each other user observed,
 	 * whichever flow observes them (identity.ts' observeUsers), and whose changed key holds what goes to them.
@@ -196,6 +206,11 @@ export class E2EEngine {
 	state: EngineState = { name: "starting" };
 	/** The cutover's instant, as GET /api/e2e gave it: a conversation from before it says when its messages went. */
 	cutoverAt: string | null = null;
+	/**
+	 * The API serves another external sender than the one this device pinned (Ruling 32): the pinned one stays, and the
+	 * views say so while it's served (#575, M5), as a group under the new one won't open here.
+	 */
+	serverKeyChanged = false;
 	readonly #parts: EngineParts;
 	readonly #listeners = new Set<(state: EngineState) => void>();
 	/** The flow under way: each one waits for the one before. */
@@ -453,9 +468,14 @@ export class E2EEngine {
 	/**
 	 * The person's removal of another device of theirs (Settings → Devices): by its registration when it's off the list,
 	 * by a list without it when it's on it, or, for one that was lost (`changeKeys`), with new keys whose recovery key the
-	 * views show next. On the desktop Bun asks in its own box first, and its no changes nothing.
+	 * views show next. What it leaves out beside it goes only if the person was shown it (`named`: what alsoRemoved
+	 * gave, #575), else `devices_changed` and nothing is signed. On the desktop Bun asks in its own box first, naming
+	 * the same devices, and its no changes nothing.
 	 */
-	removeDevice(deviceId: string, { changeKeys = false }: { changeKeys?: boolean } = {}): Promise<void> {
+	removeDevice(
+		deviceId: string,
+		{ changeKeys = false, named = [] }: { changeKeys?: boolean; named?: readonly string[] } = {},
+	): Promise<void> {
 		return this.#act(async () => {
 			// A list now would be the new identity's, which the API doesn't have yet.
 			if (this.state.name === "ready" && this.state.rotation)
@@ -464,9 +484,9 @@ export class E2EEngine {
 			const device = (await this.#parts.api.devices()).find(({ id }) => id === deviceId);
 			if (!device) return;
 			if (device.current) throw new Error("this device goes with its data, never by its own list");
-			if (changeKeys && device.listed) return this.#makeKeys([deviceId]);
+			if (changeKeys && device.listed) return this.#makeKeys([deviceId], [], named);
 			try {
-				await removeDevice(this.#parts, device);
+				await removeDevice(this.#parts, device, named);
 			} catch (error) {
 				if (!(error instanceof CoreError && error.code === "refused")) throw error;
 			}
@@ -474,13 +494,14 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The person's Change security keys (rotate_keys), taking off the devices `remove` names, or Finish of a change made
-	 * before the app closed, which is that one again: its recovery key, which the views show next, goes up once saved.
+	 * The person's Change security keys (rotate_keys), taking off the devices `remove` names, and those it leaves out that
+	 * the person was shown (`named`, #575), or Finish of a change made before the app closed, which is that one again:
+	 * its recovery key, which the views show next, goes up once saved.
 	 */
-	changeKeys(remove: string[] = []): Promise<void> {
+	changeKeys(remove: string[] = [], named: readonly string[] = []): Promise<void> {
 		return this.#act(() => {
 			this.#holdForApproval();
-			return this.#makeKeys(remove);
+			return this.#makeKeys(remove, [], named);
 		});
 	}
 
@@ -519,11 +540,12 @@ export class E2EEngine {
 	}
 
 	/**
-	 * The devices of the user's that a list of this device's the API never took leaves out (M3): the next list or change
-	 * of keys takes them along, which the page names before it asks.
+	 * What the next list or change of keys would leave out beside the devices asked for, which the page names before it
+	 * asks, and only those named go (#575): the devices a list of this device's the API never took leaves out (M3), and
+	 * those the API no longer registers.
 	 */
-	alsoRemoved(): Promise<string[]> {
-		return this.#act(() => devicesAlong(this.#parts));
+	alsoRemoved(): Promise<Drops> {
+		return this.#act(() => alsoDropped(this.#parts));
 	}
 
 	/**
@@ -618,10 +640,14 @@ export class E2EEngine {
 	/**
 	 * The person's new DM or group (PLAN-E2E-CLIENTES.md, Task 22): the API makes the conversation, then this device its
 	 * group at once, as any member of a DM and a group's owner may; one past 20 members, its owner among them, is refused
-	 * before anything is asked. Before this device is ready, its group is made once it is. The API's conversation.
+	 * before anything is asked. Its group holds this user and the person's picks, of the kind they asked for (#574): the
+	 * conversation's record, kept as the API answers, which the founding is held to, whatever the API lists after. Before
+	 * this device is ready, its group is made once it is. The API's conversation.
 	 */
 	async createConversation(made: NewConversationRequest): Promise<Conversation> {
-		if (made.type === 2) checkRoom(new Set([this.#parts.user, ...made.user_ids]).size);
+		const { user, store } = this.#parts;
+		const people = [...new Set([user, ...(made.type === 2 ? made.user_ids : [made.user_id])])];
+		if (made.type === 2) checkRoom(people.length);
 		let conv: Conversation;
 		try {
 			conv = await this.#parts.api.createConversation(made);
@@ -631,6 +657,7 @@ export class E2EEngine {
 			}
 			throw error;
 		}
+		keepMade(store, conv.id, made.type === 2 ? { owner: user, members: people } : { members: people });
 		await this.openConversation(conv.id).catch((error: unknown) => {
 			console.error("[e2e] The new conversation's group waits for its next open:", error);
 		});
@@ -673,14 +700,19 @@ export class E2EEngine {
 	/**
 	 * An edit of the user's message: shown here at once, then sent after the message's changes before it, and its answer's
 	 * entry applied. Without an answer it's kept, and goes again later and at the next start; refused for good, it's told.
+	 * Settled once it's made and kept here, or refused (its group holds someone the conversation doesn't show): its
+	 * request's answer isn't waited for (T-M1).
 	 */
-	editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
-		return this.#act(() => this.#sends.change(conversationId, messageId, text));
+	editMessage(conversationId: string, messageId: string, text: string, drawn?: Drawn | null): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, text, drawn));
 	}
 
-	/** A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. */
-	deleteMessage(conversationId: string, messageId: string): Promise<void> {
-		return this.#act(() => this.#sends.change(conversationId, messageId, null));
+	/**
+	 * A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. From another
+	 * tab (`drawn`), as an edit, held to the people that tab draws too (N-I2); settled as an edit is.
+	 */
+	deleteMessage(conversationId: string, messageId: string, drawn?: Drawn | null): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, null, drawn));
 	}
 
 	/**
@@ -809,9 +841,12 @@ export class E2EEngine {
 		return out ?? [];
 	}
 
-	/** The person's yes to a conversation's members of today, which its record from before the cutover didn't have. */
-	acceptMembers(conversationId: string): Promise<void> {
-		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId)));
+	/**
+	 * The person's yes to a conversation's members of today, which its record didn't have: to the people its question
+	 * named (`members_changed`'s), which this device goes in with (N-M10).
+	 */
+	acceptMembers(conversationId: string, people: LegacyRecord): Promise<void> {
+		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId, people)));
 	}
 
 	/**
@@ -1048,11 +1083,15 @@ export class E2EEngine {
 	 * change, not the Finish of one that waits, takes up the offer of one after a gone once it's made, as the change that
 	 * waits then carries it (task 27's review, M1).
 	 */
-	async #makeKeys(remove: readonly string[], gone: readonly string[] = []): Promise<void> {
+	async #makeKeys(
+		remove: readonly string[],
+		gone: readonly string[] = [],
+		named: readonly string[] = [],
+	): Promise<void> {
 		if (this.#keys) return;
 		const fresh = !(this.state.name === "ready" && this.state.rotation);
 		try {
-			this.#keys = await makeKeys(this.#parts, remove, gone);
+			this.#keys = await makeKeys(this.#parts, remove, gone, named);
 		} catch (error) {
 			if (!(error instanceof CoreError)) throw error;
 			if (error.code === "refused") return;
@@ -1347,6 +1386,8 @@ export class E2EEngine {
 				if (own(event.data.device_id)) this.#set({ name: "removed" });
 				break;
 			case "DEVICE_ADD":
+				// What it is, kept for a list that may drop it once the API no longer lists it (#575, N-M7).
+				knowDevices(this.#parts.store, [event.data]);
 				// Its registration, then its listing: told once, and never of this installation's own device.
 				if (event.data.id !== this.#self && addedToTell(this.#parts.store, event.data)) {
 					this.#tell({ kind: "added", device: event.data });
@@ -1412,7 +1453,9 @@ export class E2EEngine {
 	/** The user's devices not seen in 45 days, each told of once, on a device that can take them off (ready). */
 	async #tellInactive(): Promise<void> {
 		if (this.state.name !== "ready") return;
-		for (const device of inactiveToTell(this.#parts.store, await this.#parts.api.devices())) {
+		const devices = await this.#parts.api.devices();
+		knowDevices(this.#parts.store, devices);
+		for (const device of inactiveToTell(this.#parts.store, devices)) {
 			this.#tell({ kind: "inactive", device });
 		}
 	}
@@ -1550,6 +1593,7 @@ export class E2EEngine {
 			const { external_sender, cutover_at } = await parts.api.config();
 			this.cutoverAt = cutover_at;
 			this.#pinned = pinnedSender(parts.store, external_sender, this.#pinned);
+			this.serverKeyChanged = this.#pinned !== external_sender;
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);

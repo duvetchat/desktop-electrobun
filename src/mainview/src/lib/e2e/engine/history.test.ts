@@ -8,6 +8,7 @@ import {
 	approvedDevice,
 	firstDevice,
 	groupOf,
+	madeHere,
 	rejection,
 	restarted,
 	sameGroup,
@@ -111,6 +112,7 @@ async function deeJoins(
 	const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 	const a = await firstDevice(fake, ana, anaHost ? { host: anaHost } : {});
 	const b = await firstDevice(fake, bo);
+	await madeHere(a, conversation);
 	await a.engine.openConversation(conversation);
 	await sameGroup([a, b], conversation);
 	// Ten days ago, as the API stamped it: Ana's device holds it as sent then.
@@ -598,6 +600,7 @@ describe.skipIf(!coreLibrary)("the packages a device receives", () => {
 			const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
 			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			await sameGroup([a, b], conversation);
 			await b.engine.openConversation(conversation);
@@ -1098,6 +1101,7 @@ describe.skipIf(!coreLibrary)("the packages a device receives", () => {
 				fake.befriend(ana, dee);
 				const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
 				const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+				await madeHere(a, conversation);
 				await a.engine.openConversation(conversation);
 				await sameGroup([a, b], conversation);
 				await send(b, conversation, witness);

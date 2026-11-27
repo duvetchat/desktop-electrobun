@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import en from "../../../messages/en.json";
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
 
@@ -86,11 +87,23 @@ test("a conversation shown again shows the list a view of this gateway session l
 	);
 });
 
+// #575 (N-M4): every page the view takes in drops the API's rows neither numbered nor notices as it comes, as the live
+// event does: an older page, a jump's, a newer page and the newest.
+test("every page the view takes in goes through pageRows", () => {
+	const view = source("ConversationView.svelte");
+	expect(view.match(/pageRows\(fetched\)\.filter\(\(m\) => !existingIds\.has\(m\.id\)\)/g)).toHaveLength(2);
+	expect(view).toContain("for (const m of pageRows([...rawAbove, anchor, ...rawBelow])) {");
+	expect(view).toContain("withPresent(all[convId] ?? [], pageRows(fetched))");
+	// Five fetches, a jump's two among them, into four merges, each through it.
+	expect(view.match(/getDirectMessages(After)?\(convId/g)).toHaveLength(5);
+	expect(view.match(/pageRows\(/g)).toHaveLength(4);
+});
+
 test("only pages a view fetched make its list worth keeping: the newest page, a jump's, the present's", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain("if (!before) listFetched = true;");
 	expect(view).toMatch(/\[convId\]: combined \}\)\);\s*listFetched = true;/);
-	expect(view).toMatch(/withPresent\(all\[convId\] \?\? \[\], fetched\) \}\)\);\s*listFetched = true;/);
+	expect(view).toMatch(/withPresent\(all\[convId\] \?\? \[\], pageRows\(fetched\)\) \}\)\);\s*listFetched = true;/);
 });
 
 test("the new group dialog goes by what's picked: one friend's DM, or a group", () => {
@@ -192,6 +205,13 @@ test("a send with files offers its Cancel from the start, while its thumbnails a
 	expect(view.indexOf("outgoingFiles(saved.files)")).toBeGreaterThan(view.indexOf("real = await sendFollowed("));
 });
 
+// T-M3: a send held behind a message that waits for the tab it was written in says so, and what to do about it.
+test("a send held behind another tab's waiting message says so", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain('if (err instanceof CoreError && err.code === "other_tab") return t("e2e_other_tab");');
+	expect(en.e2e_other_tab).toBe("An earlier message here waits for its tab to send it. Retry or dismiss it first.");
+});
+
 test("a send refused as not ready, or past the cap, says so in the table's words (#508)", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain('if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");');
@@ -226,7 +246,7 @@ test("a changed key's notice shows in each conversation with that person, and a 
 	expect(view).toMatch(/async function dmVoiceNote\(blob: Blob\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
 	// A no keeps the edit box and its text (review, Minor 8): Chat's saveEdit closes it only on a yes.
 	expect(view).toMatch(
-		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean> \{\s*if \(!\(await askBeforeSend\(\)\)\) return false;/,
+		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean \| string> \{\s*if \(!\(await askBeforeSend\(\)\)\) return false;/,
 	);
 	expect(view).toContain(
 		'if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);',
@@ -240,4 +260,19 @@ test("a DM with a verified contact wears its mark", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toMatch(/\{#if dmPartner && encryption\.contacts\.verified\[dmPartner\]\}\s*<VerifiedMark\b/);
 	expect(view).toMatch(/openConversation\(convId\)/);
+});
+
+// T-M1: an edit the engine refuses (its group holds someone the conversation doesn't show, or it can't be made now) is
+// said at its message, and its box keeps what was typed, as nothing was made of it. The view waits for the engine to
+// take or refuse it, never for the API's answer, which the engine waits for on its own.
+test("a refused edit is said at its message, its box keeping what was typed", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(
+		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean \| string> \{[^]*?try \{\s*await editEncrypted\(conversation\.id, messageId, content\);\s*return true;\s*\} catch \(error\) \{[^]*?return editRefusal\(error\);/,
+	);
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");',
+	);
+	expect(view).toMatch(/function editRefusal\(err: unknown\): string \{[^]*?return t\("e2e_edit_failed"\);\s*\}/);
+	expect(en.e2e_edit_failed).toBe("Couldn't save your edit");
 });

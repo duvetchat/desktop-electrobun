@@ -19,15 +19,16 @@ import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
 import { observeUsers, withIdentities } from "./identity";
-import { dropRecord, legacyRecord } from "./legacy";
+import { forgetRecord, isRecord, keepChosen, legacyRecord, peopleOf, recordMade, type LegacyRecord } from "./legacy";
 import {
 	addition,
 	checkAddition,
+	heldBeyond,
 	leftOut,
-	membersKey,
 	removal,
 	sameMembers,
 	sameUsers,
+	type Drawn,
 	type HeldMembers,
 } from "./members";
 import { REFUSED_GENERATIONS, type EngineStore } from "./store";
@@ -35,14 +36,17 @@ import { REFUSED_GENERATIONS, type EngineStore } from "./store";
 /**
  * What a conversation says over its message box of its group (PLAN-E2E-CLIENTES.md, «Avisos»): blocked, with who may
  * restart it (this user, its owner, or nobody, for a group under an external sender other than the pinned one); waiting
- * for its owner to make it; waiting for another member to let this device back in; members other than its record's,
- * or than those its group holds; or, while it goes on, the members who can't receive what's sent yet (`no_device`).
+ * for its owner to make it; waiting for another member to let this device back in; members other than its record's
+ * (or than any it can account for, as it would found the group: #574), or than those its group holds; a group whose
+ * core holds a user, a kind or an owner the conversation doesn't, with the users it holds (`other_members`, #574); or,
+ * while it goes on, the members who can't receive what's sent yet (`no_device`).
  */
 export type ConversationState =
 	| { name: "blocked"; restart: "mine" | "owner" | "none"; owner: string | null }
 	| { name: "wait_owner"; owner: string }
 	| { name: "wait_rejoin" }
-	| { name: "members_changed" }
+	| { name: "members_changed"; people: LegacyRecord }
+	| { name: "other_members"; users: string[] }
 	| { name: "no_device"; users: string[] };
 
 /** What apply answers. */
@@ -119,6 +123,16 @@ const statusOf = (error: unknown) => (error instanceof FetchError ? error.respon
 const unanswered = () => new CoreError("unanswered", "no answer came yet: the change goes again on its own");
 const hasData = (entry: MlsEventEntry): entry is MlsEntry => typeof entry.data === "string";
 const same = (a: ConversationState | null, b: ConversationState | null) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Two records of a conversation's people, the same: its kind and a group's owner, its users whatever their order. */
+const samePeople = (a: LegacyRecord, b: LegacyRecord) => a.owner === b.owner && sameUsers(a.members, b.members);
+
+/** An entry as the core gets it: without the `expected` it came with, which only this device's own record sets. */
+function withoutExpected(entry: MlsEntry): MlsEntry {
+	if (!("expected" in entry)) return entry;
+	const { expected: _expected, ...own } = entry;
+	return own;
+}
 
 /** The refused generations the record keeps, by conversation: what doesn't read as one is none. */
 function keptRefusals(store: EngineStore): Map<string, number> {
@@ -221,6 +235,8 @@ export class Conversations {
 	#sender = "";
 	/** The API's conversations as last listed, their groups as the events and the queue have told of them since. */
 	readonly #known = new Map<string, Conversation>();
+	/** The conversations whose queue is read whole again before their group is said to differ (#reread). */
+	readonly #rereading = new Set<string>();
 	/** Entries heard by events, by conversation and number, until the conversation's turn. */
 	readonly #heard = new Map<string, Map<number, MlsEventEntry>>();
 	readonly #states = new Map<string, ConversationState>();
@@ -254,10 +270,11 @@ export class Conversations {
 	 */
 	readonly #refused: Map<string, number>;
 	/**
-	 * The members the person said yes to (membersKey), and the generation they said it for, by conversation: a join of
-	 * that generation with them asks no more. Let go once the core holds it (task 22's review, M5).
+	 * The people the person said yes to, as the question named them, and the generation they said it for, by
+	 * conversation: a join of that generation with them asks no more. Let go once the core holds it (task 22's review,
+	 * M5).
 	 */
-	readonly #accepted = new Map<string, { generation: number; members: string }>();
+	readonly #accepted = new Map<string, { generation: number; people: LegacyRecord }>();
 	/**
 	 * Each conversation's members without a device, as this device last told its core (deviceless.ts), and the core's
 	 * members they were worked out from, with those of them that had a device in the group: when those change, they're
@@ -452,18 +469,21 @@ export class Conversations {
 	}
 
 	/**
-	 * The person's yes to the members of today, as the API lists them, in the generation refused: the record goes, and
-	 * this device joins with none to hold it to, the members it said yes to remembered with that generation, so a join
-	 * made again into it with them asks no more.
+	 * The person's yes to the people its question named, in the generation refused (N-M10): exactly they are the record
+	 * from now on, which the founding, and the welcome or join this device goes in by, are held to, and they're
+	 * remembered with that generation, so a join made again into it with them asks no more. A yes to another question
+	 * than the one now asked is none: a listing that changed asks again, naming its people.
 	 */
-	async accept(conversationId: string): Promise<void> {
+	async accept(conversationId: string, people: LegacyRecord): Promise<void> {
 		const generation = this.#refused.get(conversationId);
 		if (generation === undefined) return;
+		const asked = this.#states.get(conversationId);
+		if (asked?.name !== "members_changed" || !samePeople(asked.people, people)) return;
 		const conv = await this.#fresh(conversationId);
 		if (!conv) return this.#drop(conversationId);
-		dropRecord(this.#parts.store, conversationId);
+		keepChosen(this.#parts.store, conversationId, people);
 		this.#unrefuse(conversationId);
-		this.#accepted.set(conversationId, { generation, members: membersKey(conv) });
+		this.#accepted.set(conversationId, { generation, people });
 		this.#set(conversationId, null);
 		// No group yet (this device's was refused for its members): it's made now, with the members of today.
 		if (!conv.mls) return this.open(conversationId);
@@ -677,18 +697,26 @@ export class Conversations {
 	}
 
 	/**
-	 * Makes the group of a conversation the API lists without one, with every member's key packages. A creation of this
-	 * device's that the core still holds never reached the API (its request cut, then the app closed): the core is told
-	 * no answer came, which drops a creation whole, before anything is claimed, and the group is made again. Were the old
-	 * request to land after all, this creation loses its 409, and the device joins by external commit.
+	 * Makes the group of a conversation the API lists without one, with every member's key packages, but only with the
+	 * people this device can account for (#founding): any others, and nothing is claimed or made, and the person says
+	 * whether to go on with those listed (`accept`). A creation of this device's that the core still holds never reached
+	 * the API (its request cut, then the app closed): the core is told no answer came, which drops a creation whole,
+	 * before anything is claimed, and the group is made again. Were the old request to land after all, this creation
+	 * loses its 409, and the device joins by external commit.
 	 */
 	async #make(conv: Conversation) {
+		const founding = await this.#founding(conv);
+		// Not drawn yet: nothing is made until it is.
+		if (!founding) return;
+		if (founding === "differs" || !isRecord(conv, founding)) {
+			return this.#membersChanged(conv, conv.mls?.generation ?? 0);
+		}
 		if (await this.#group(conv.id)) {
 			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
 		}
 		let commit: Commit;
 		try {
-			commit = await makeGroup(this.#parts, conv, this.#sender, legacyRecord(this.#parts.store, conv));
+			commit = await makeGroup(this.#parts, conv, this.#sender, founding);
 		} catch (error) {
 			// Members other than the record's: the person says whether to go on.
 			if (error instanceof CoreError && error.rule === "member_list_mismatch") {
@@ -697,6 +725,25 @@ export class Conversations {
 			throw error;
 		}
 		await this.#commit(conv, "make", commit);
+	}
+
+	/**
+	 * Whom this device founds the conversation's group with (#574): those it can account for, never the API's word alone
+	 * on who they are or the kind, which gives their order only. The person's own record (their picks, of the kind they
+	 * asked for, as they made it here); else the conversation as its page draws it, which the person sees, read again
+	 * when it differs from the API's, and whose people a record made from a listing (a conversation from before the
+	 * cutover, as first listed) must be too, or it `differs` (N-M1). Null while it isn't drawn.
+	 */
+	async #founding(conv: Conversation): Promise<LegacyRecord | "differs" | null> {
+		const { store } = this.#parts;
+		const record = legacyRecord(store, conv);
+		if (record && recordMade(store, conv.id)) return record;
+		let drawn = await this.#parts.shown(conv.id, false);
+		if (drawn && !isRecord(conv, peopleOf(drawn))) drawn = await this.#parts.shown(conv.id, true);
+		if (!drawn) return null;
+		// One made from a listing (from before the cutover) holds the people the page draws too, never more (N-M1).
+		if (record && !isRecord(drawn, record)) return "differs";
+		return peopleOf(drawn);
 	}
 
 	/**
@@ -763,14 +810,16 @@ export class Conversations {
 	}
 
 	/**
-	 * One apply, the users it asks for observed first, the welcomes of a conversation from before the cutover held to its
-	 * record (their `expected`, which the API never gives); what its results say is noted.
+	 * One apply, the users it asks for observed first, the welcomes of a conversation with a record held to it (their
+	 * `expected`, which only this device sets: one an entry came with is the API's, and goes, #575 M1); what its
+	 * results say is noted.
 	 */
 	async #apply(conv: Conversation, entries: MlsEntry[]): Promise<Applied> {
 		const record = legacyRecord(this.#parts.store, conv);
-		const given = record
-			? entries.map((entry) => (entry.kind === "welcome" ? { ...entry, expected: record } : entry))
-			: entries;
+		const given = entries.map((entry) => {
+			const own = withoutExpected(entry);
+			return record && own.kind === "welcome" ? { ...own, expected: record } : own;
+		});
 		const applied = await withIdentities(this.#parts, () =>
 			this.#parts.host.handle<Applied>({
 				...{ cmd: "apply", conversation_id: conv.id, entries: given, external_sender: this.#sender },
@@ -878,9 +927,15 @@ export class Conversations {
 		if (held && held.generation >= (conv.mls?.generation ?? 0)) {
 			for (const kept of [this.#otherSender, this.#removed]) kept.delete(conv.id);
 			this.#joinsLost.delete(conv.id);
+			// In its group: one the person made here changes by the group's own rules from here on (#574).
+			forgetRecord(this.#parts.store, conv.id);
 			if (!held.blocked) {
 				await this.#devicesAgain(conv.id, held);
-				this.#set(conv.id, this.#goingOn(conv.id));
+				const others = await this.#othersIn(conv.id, held, at.due);
+				// The page may draw an addition or a removal before its commit reached this device: the queue is read
+				// whole, and only then is a difference said (N-M9).
+				if (others && !read && !this.#rereading.has(conv.id)) return this.#reread(conv);
+				this.#set(conv.id, others ?? this.#goingOn(conv.id));
 				if (at.due) this.#dueLater(conv.id);
 				return;
 			}
@@ -921,6 +976,82 @@ export class Conversations {
 		return at !== undefined && (conv.mls?.last_seq ?? 0) <= at;
 	}
 
+	/**
+	 * Whom the group holds that the conversation doesn't show (#574): its core's users, when it holds a user, a kind or
+	 * an owner the conversation as the person sees it doesn't, drawn again from a new listing first, as an addition or a
+	 * new owner may be newer than the list the page read. One the page draws not at all differs (N-C1): a listing that
+	 * leaves it out shows the person nobody, and never stands for what they see. A member who left and waits for their
+	 * removal (`due`) isn't said: what goes there next commits that removal first (encrypt's pending_proposals), and is
+	 * held to the conversation once it's in.
+	 */
+	async #othersIn(id: string, held: Held, due: boolean, carried?: Drawn | null): Promise<ConversationState | null> {
+		if (due) return null;
+		const users = { name: "other_members" as const, users: held.members.map((member) => member.user_id) };
+		// Another tab's, where the person wrote (N-I2): the group holds nobody beyond it either.
+		if (carried !== undefined && (!carried || heldBeyond(held, carried, this.#parts.user))) return users;
+		const drawn = await this.#parts.shown(id, false);
+		if (drawn && !heldBeyond(held, drawn, this.#parts.user)) return null;
+		const again = await this.#parts.shown(id, true);
+		if (again && !heldBeyond(held, again, this.#parts.user)) return null;
+		return users;
+	}
+
+	/**
+	 * Before anything more goes to the conversation (#574): whether its core's group holds a user, a kind or an owner the
+	 * conversation as its page draws it doesn't, or the page doesn't draw it (N-C1), which the conversation then says
+	 * (`other_members`). The core's group and the page's drawing alone, never the engine's listing, which may leave the
+	 * conversation out. Never waived for a removal that waits: one that's due is committed here, as a member's device
+	 * would, after the read (Android's rule), and what's sent is made only once it's committed (the core's
+	 * ready_to_send). False without a group. A look before bytes are made, never after them (R-C1): its read and its
+	 * commit can move the group, after which `differs` is the one comparison.
+	 */
+	async holdsOthers(conversationId: string, carried?: Drawn | null): Promise<boolean> {
+		let held = await this.#group(conversationId);
+		if (!held) return false;
+		let others = await this.#othersIn(conversationId, held, false, carried);
+		// What differs may be a commit the queue has that this device hasn't read (N-M9), or a removal that's due: read
+		// whole, the due commit made, then held again.
+		if (others) {
+			await this.sync(conversationId, true);
+			await this.commitDue(conversationId);
+			held = await this.#group(conversationId);
+			others = held && (await this.#othersIn(conversationId, held, false, carried));
+		}
+		return this.#say(conversationId, others);
+	}
+
+	/**
+	 * After bytes are made (R-C1): holdsOthers' comparison, of the group as the core holds it, which the bytes are of,
+	 * with no read of the queue, which could move it. Whom it holds that the conversation doesn't show is said.
+	 */
+	async differs(conversationId: string, carried?: Drawn | null): Promise<boolean> {
+		const held = await this.#group(conversationId);
+		return this.#say(conversationId, held && (await this.#othersIn(conversationId, held, false, carried)));
+	}
+
+	/** The generation and epoch of the conversation's group as the core holds it: null without one. */
+	async epochOf(conversationId: string): Promise<{ generation: number; epoch: number } | null> {
+		const held = await this.#group(conversationId);
+		return held && { generation: held.generation, epoch: held.epoch };
+	}
+
+	/** Whom the group holds that the conversation doesn't show, said, or no longer: whether there's anyone. */
+	#say(id: string, others: ConversationState | null): boolean {
+		if (others) this.#set(id, others);
+		else if (this.#states.get(id)?.name === "other_members") this.#set(id, this.#goingOn(id));
+		return others !== null;
+	}
+
+	/** A conversation's queue read whole once more before its group is said to differ (N-M9), once at a time. */
+	async #reread(conv: Conversation) {
+		this.#rereading.add(conv.id);
+		try {
+			await this.#sync(conv, true);
+		} finally {
+			this.#rereading.delete(conv.id);
+		}
+	}
+
 	/** What a conversation whose group goes on says: who in it has no device yet, or nothing. */
 	#goingOn(id: string): ConversationState | null {
 		const users = this.#deviceless.get(id)?.users ?? [];
@@ -947,7 +1078,7 @@ export class Conversations {
 	/** Its members aren't those this device would go in with, in that generation: the person says whether to go on (`accept`). */
 	#membersChanged(conv: Conversation, generation: number) {
 		this.#refuse(conv.id, generation);
-		this.#set(conv.id, { name: "members_changed" });
+		this.#set(conv.id, { name: "members_changed", people: peopleOf(conv) });
 	}
 
 	/** A generation this device joins only on its person's yes, kept in the record too (the latest, of two refused). */
@@ -982,14 +1113,14 @@ export class Conversations {
 	 * client rule), unless that yes was to these members. The members are the API's as it lists them now: the
 	 * conversation as this device last read it may be from before a change (task 23's review, item 11).
 	 */
-	async #newerWithOthers(conv: Conversation, generation: number): Promise<boolean> {
+	async #newerWithOthers(conv: Conversation, generation: number): Promise<Conversation | null> {
 		const held = await this.#group(conv.id);
-		if (!held || held.generation >= generation) return false;
+		if (!held || held.generation >= generation) return null;
 		const listed = await this.#fresh(conv.id);
-		if (!listed) return false;
+		if (!listed) return null;
 		const yes = this.#accepted.get(conv.id);
-		if (yes?.generation === generation && yes.members === membersKey(listed)) return false;
-		return !sameMembers(held, listed);
+		if (yes?.generation === generation && isRecord(listed, yes.people)) return null;
+		return sameMembers(held, listed) ? null : listed;
 	}
 
 	/** A conversation whose members the user may change, as the API lists it now: one they aren't in is refused. */
@@ -1051,7 +1182,7 @@ export class Conversations {
 	async #join(conv: Conversation) {
 		const { id } = conv;
 		if (this.#otherSender.has(id)) return this.#set(id, this.#blocked(conv));
-		if (this.#refused.has(id)) return this.#set(id, { name: "members_changed" });
+		if (this.#refused.has(id)) return this.#set(id, { name: "members_changed", people: peopleOf(conv) });
 		if (this.#inFlight.has(id)) return;
 		// Its count starts over for the next event, still marked as lost.
 		if ((this.#joinsLost.get(id) ?? 0) >= JOINS_LOST_MOST) return void this.#joinsLost.set(id, 0);
@@ -1066,7 +1197,8 @@ export class Conversations {
 			await this.#gone(id, error);
 			return;
 		}
-		if (await this.#newerWithOthers(conv, info.generation)) return this.#membersChanged(conv, info.generation);
+		const newer = await this.#newerWithOthers(conv, info.generation);
+		if (newer) return this.#membersChanged(newer, info.generation);
 		const join = () => joinGroup(this.#parts, conv, info, this.#sender, legacyRecord(this.#parts.store, conv));
 		let commit: Commit;
 		try {

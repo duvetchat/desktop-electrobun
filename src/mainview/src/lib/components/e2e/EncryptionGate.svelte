@@ -1,6 +1,24 @@
 <script module lang="ts">
+	import { askToChangeKeys } from "$lib/components/settings/DevicesSettings.svelte";
+	import type { Drops } from "$lib/e2e/engine/devices";
 	import { t } from "$lib/i18n";
 	import { formatList, formatNumber } from "$lib/i18n/format";
+
+	/**
+	 * The gate's change of keys (#575, N-M6): Settings' own question, naming what the new list drops beside what's asked,
+	 * whose yes takes off exactly that. Drops that can't be read are none, and the list then refuses, in words.
+	 */
+	export async function askForNewKeys(
+		alsoRemoved: () => Promise<Drops>,
+		changeKeys: (named: string[]) => Promise<void>,
+	): Promise<void> {
+		const drops = await alsoRemoved().catch((error: unknown): Drops => {
+			console.error("[e2e] What the next list leaves out wasn't read:", error);
+			return { along: [], away: [] };
+		});
+		return askToChangeKeys(null, drops, changeKeys);
+	}
+
 	/**
 	 * What a change of keys that can't finish says, by why (duvetchat/e2e#49): another device's change kept a device it
 	 * takes off; devices the API no longer has hold it, by their IDs' start (their names went with them), which it goes
@@ -39,12 +57,14 @@
 	let {
 		encryption,
 		backup = { state: "uploading" },
+		serverKeyChanged = false,
 		web,
 		onMakeIdentity,
 		onKeySaved,
 		onLater,
 		onStartOver,
 		onChangeKeys,
+		onAlsoRemoved,
 		onFinishWithout,
 		setupActions,
 		approvalActions,
@@ -52,6 +72,8 @@
 		encryption: EngineState;
 		/** What the encrypted backup shows, of which the gate says a new device's restore alone. */
 		backup?: BackupShown;
+		/** The API serves another server key than the one this device first saw (Ruling 32, #575 M5). */
+		serverKeyChanged?: boolean;
 		/** The web app, whose unsupported state is its browser's; the desktop app's is its platform's. */
 		web: boolean;
 		onMakeIdentity: () => Promise<void>;
@@ -63,7 +85,9 @@
 		 * Change security keys: a change made before the app closed, its key shown again to be saved, or, offered after
 		 * one that went on without devices, a new one.
 		 */
-		onChangeKeys: () => Promise<void>;
+		onChangeKeys: (named?: string[]) => Promise<void>;
+		/** What a new list would leave out beside what's asked, which the question names (#575, N-M6). */
+		onAlsoRemoved: () => Promise<Drops>;
 		/** A change of keys that can't finish, gone on with without the devices another device took off (e2e#49). */
 		onFinishWithout: () => Promise<void>;
 		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
@@ -86,13 +110,28 @@
 
 	let hiddenFor = $state<string | null>(null);
 	// What the × hides: the state's bar, or a restore's, whose dismissal leaves a later bar of the ready state shown.
-	const barKey = $derived(encryption.name === "ready" && backup.state === "restoring" ? "restoring" : encryption.name);
+	// The server key's notice, on a ready device whose bar says nothing else (#575, M5): its × hides it alone.
+	const serverKeyShown = $derived(
+		encryption.name === "ready" &&
+			!encryption.rotation &&
+			!encryption.keysAgain &&
+			backup.state !== "restoring" &&
+			serverKeyChanged,
+	);
+	const barKey = $derived(
+		encryption.name === "ready" && backup.state === "restoring"
+			? "restoring"
+			: serverKeyShown
+				? "server_key"
+				: encryption.name,
+	);
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
-	// Starting over deletes the database: the person says yes to that first. So do new keys, which their contacts see.
+	// Starting over deletes the database: the person says yes to that first. So do new keys, which their contacts see, as
+	// Settings asks it, naming what the new list drops (#575, N-M6).
 	const confirmed = (label: string) => () => confirmAction(t("e2e_start_over_confirm"), label, onStartOver);
-	const newKeys = () => confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys);
+	const newKeys = () => askForNewKeys(onAlsoRemoved, (named) => onChangeKeys(named));
 
 	// The recovery key the person saves before anything goes up: a first device's, a change of keys', or starting over's.
 	const shownKey = $derived(
@@ -139,7 +178,7 @@
 				if (!rotation) {
 					// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
 					if (encryption.keysAgain) return { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys };
-					if (backup.state !== "restoring") return null;
+					if (backup.state !== "restoring") return serverKeyShown ? { text: t("e2e_server_key_changed") } : null;
 					return {
 						text: t("e2e_backup_restoring", { done: formatNumber(backup.done), total: formatNumber(backup.total) }),
 					};

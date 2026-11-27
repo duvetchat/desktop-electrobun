@@ -4,11 +4,12 @@
 
 /** This installation's device's public keys, which each sign-in registers again (bootstrap.ts). */
 export const DEVICE_KEYS = "device_keys";
-/** The inbox's approval frames waiting for their flow (Task 26), the transfers kept for later, and the messages whose
- * type a later task takes (a history or catch-up key: Tasks 22 and 30), as inbox.ts keeps them. */
+/** The inbox's approval frames waiting for their flow (Task 26), and the messages whose type a later task takes (a
+ * history or catch-up key: Tasks 22 and 30), as inbox.ts keeps them. */
 export const KEPT_APPROVALS = "approvals";
-export const KEPT_TRANSFERS = "transfers";
 export const KEPT_LATER = "later";
+/** Transfers an older version kept for an approval's code, which nothing reads (#575, M4): a new device clears them. */
+export const KEPT_TRANSFERS = "transfers";
 /** What goes in the clear with each message still being sent, by its nonce (send.ts): never its text, which the core keeps. */
 export const PENDING_SENDS = "pending_sends";
 /** The person's edits and deletions not answered yet, by conversation and message (send.ts): never their text. */
@@ -74,6 +75,11 @@ export const DEVICE_RECORD = [
 	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE, BACKUP_SET_ASIDE],
 ];
+/**
+ * What this installation last saw of each of its user's devices, by ID (devices.ts' knowDevices): its name, its client
+ * and when it was added, which a list that drops one the API no longer lists names it by (#575, N-M7). Nothing secret.
+ */
+export const KNOWN_DEVICES = "known_devices";
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";
 export const TOLD_ADDED = "told_added";

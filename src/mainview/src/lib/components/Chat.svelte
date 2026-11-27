@@ -167,7 +167,7 @@
 		/** A conversation's word before its send: false, and nothing goes (a verified contact's changed key, Task 28). */
 		beforeSend?: () => Promise<boolean>;
 		/** An edit's save: false, a conversation's no to it, keeps its box open with what was typed. */
-		onSaveEdit?: (msgId: string, content: string) => void | boolean | Promise<void | boolean>;
+		onSaveEdit?: (msgId: string, content: string) => void | boolean | string | Promise<void | boolean | string>;
 		onDeleteMsg?: (msgId: string) => Promise<void>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
@@ -579,7 +579,7 @@
 		editingMessageId = null;
 	}
 
-	async function saveEdit(messageId: string, content: string) {
+	async function saveEdit(messageId: string, content: string): Promise<string | void> {
 		const original = messages.find((m) => m.id === messageId)?.content;
 		const trimmed = content.trim();
 		if (trimmed && trimmed !== original) {
@@ -589,6 +589,8 @@
 				});
 				// The person's no (a conversation's question before it goes): the box stays, with what they typed.
 				if (saved === false) return;
+				// Refused, made nowhere: the box stays with what they typed, and says why (T-M1).
+				if (typeof saved === "string") return saved;
 			} else updateMessage(messageId, trimmed, channelId).catch(console.error);
 		}
 		cancelEdit();

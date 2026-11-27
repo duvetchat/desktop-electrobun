@@ -8,6 +8,7 @@ import {
 	approvedDevice,
 	firstDevice,
 	groupOf,
+	madeHere,
 	restarted,
 	sameGroup,
 	testHost,
@@ -244,6 +245,7 @@ describe.skipIf(!coreLibrary)("a device's commits", () => {
 			const { fake, ana, bo, a, b, conversation, due, posted } = await dm();
 			// A second conversation of theirs, whose renewal isn't due.
 			const other = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			await madeHere(a, other);
 			await a.engine.openConversation(other);
 			await sameGroup([a, b], other);
 			due.push(conversation);
@@ -332,6 +334,7 @@ describe.skipIf(!coreLibrary)("a device's commits", () => {
 						: null,
 			});
 			const other = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			await madeHere(a, other);
 			await a.engine.openConversation(other);
 			await sameGroup([a, b], other);
 			// Both are due, and the first one's renewal fails.

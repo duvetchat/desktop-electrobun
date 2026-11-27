@@ -7,6 +7,7 @@ import {
 	commitByHand,
 	firstDevice,
 	groupOf,
+	madeHere,
 	lockedOnce,
 	restarted,
 	sameGroup,
@@ -138,6 +139,7 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 			const { fake, ana, bo, a, b, conversation } = await dmWithGroup();
 			// A second conversation of theirs, whose group Bo's device keeps through it all.
 			const other = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			await madeHere(a, other);
 			await a.engine.openConversation(other);
 			const kept = await sameGroup([a, b], other);
 			const { device_id } = await b.host.handle<{ device_id: string }>({ cmd: "status" });

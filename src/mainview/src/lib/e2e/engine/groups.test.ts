@@ -9,6 +9,7 @@ import {
 	answeringHost,
 	firstDevice,
 	groupOf,
+	madeHere,
 	restarted,
 	sameGroup,
 	testDevice,
@@ -39,6 +40,7 @@ async function groupOfThree(cyHost?: CoreHost) {
 	const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
 	const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
 	const c = await firstDevice(fake, cy, { host: cyHost });
+	await madeHere(a, conversation);
 	await a.engine.openConversation(conversation);
 	const made = await sameGroup([a, b, c], conversation);
 	return { fake, requests, ana, bo, cy, a, b, c, conversation, made };
@@ -110,7 +112,8 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 			expect(requests).not.toContain(`POST ${commits(conversation)}`);
 			expect(await groupOf(b, conversation)).toBeNull();
 
-			// Ana opens it: she makes it, and the others come in by its welcome.
+			// Ana opens it on the device she made it on: she makes its group, and the others come in by its welcome.
+			await madeHere(a, conversation);
 			await a.engine.openConversation(conversation);
 			const held = await sameGroup([a, b, c], conversation);
 			expect(held.devices.map((device) => device.user_id).sort()).toEqual([ana, bo, cy].sort());

@@ -17,6 +17,7 @@ import { E2EEngine, systemClock } from "../engine/engine";
 import { openSealed, sealedSize, shownFile, type ShownFile } from "../engine/files";
 import type { EngineEvent, EngineEvents } from "../events";
 import { memoryStore } from "./engines";
+import { listedTo } from "./listed";
 import { BunCoreHost } from "./host-bun";
 import { useXHR } from "./xhr";
 
@@ -118,6 +119,7 @@ async function deviceOf(who: Account) {
 			...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
 			store,
 			deviceName: deviceName(),
+			shown: listedTo(routes),
 			registered: (id) => {
 				registered.push(id);
 				socket.connect(id);

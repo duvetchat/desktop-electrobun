@@ -7,7 +7,7 @@ import { formatDate } from "$lib/i18n/format";
 import { bytesBase64 } from "$lib/staged-images";
 import { directMessageToMessage } from "$lib/types";
 import * as content from "../conversation-content.svelte";
-import { drawnRows, type Held, type MessageContent, type ShownMessage } from "./content";
+import { drawnRows, pageRows, type Held, type MessageContent, type ShownMessage } from "./content";
 import { notice, NOTICES } from "../notices";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -178,14 +178,14 @@ describe("a conversation's rows", () => {
 		const held = (id: string): ShownMessage | null =>
 			id === shared.id ? { ...shownRow(id), status: "ok", text: "shared" } : null;
 		// The one the device doesn't hold goes; the one it holds (shared with it), the call notice and the row since stay.
-		expect(drawnRows([early, shared, notice2, later], joined, held)).toEqual({
+		expect(drawnRows([early, shared, notice2, later], joined, holding(held))).toEqual({
 			rows: [shared, notice2, later],
 			beforeJoining: true,
 		});
 		// None from before: no notice.
-		expect(drawnRows([later], joined, held)).toEqual({ rows: [later], beforeJoining: false });
+		expect(drawnRows([later], joined, holding(held))).toEqual({ rows: [later], beforeJoining: false });
 		// Without the membership, nothing goes.
-		expect(drawnRows([early, later], undefined, held)).toEqual({ rows: [early, later], beforeJoining: false });
+		expect(drawnRows([early, later], undefined, holding(held))).toEqual({ rows: [early, later], beforeJoining: false });
 
 		// The notice shows once, above the chat.
 		const shown = drawn({ legacy: false, cutoverAt: null, beforeJoining: true });
@@ -236,9 +236,61 @@ describe("what a conversation draws", () => {
 		// A text row without its number draws nothing.
 		expect(
 			directMessageToMessage(row(ID, { seq: undefined, content: "plain" }), members, holding(held({}))),
-		).toMatchObject({
-			content: null,
-		});
+		).toBeNull();
+	});
+
+	// #575 (I1): an honest API serves a conversation only numbered messages and its notices. Any other row is no message
+	// a member sent: drawn nowhere, whatever it carries, and a sealed file is the core's alone.
+	test("a row neither numbered nor a notice draws nothing, from a page or from an event", () => {
+		const sealed = {
+			...{ id: ID, key: "a2V5", sha256: "c2hh", size: 3, name: "photo.png", said: "image/png" },
+			...{ url: "/attachments/a?sig=s", thumbnailUrl: null },
+		};
+		const file = {
+			...{ id: ID, message_id: ID, filename: "photo.png", content_type: "image/png", size_bytes: 3 },
+			...{ created_at: "2026-11-25T00:00:00Z", url: "/attachments/a?sig=s", sealed },
+		};
+		const served = row(ID, { seq: undefined, type: 1, attachments: [file] });
+		expect(drawnRows([served], undefined, holding(held({}))).rows).toEqual([]);
+		// Pins, threads, results and link cards draw a row through the mapper: none of it either.
+		expect(directMessageToMessage(served, members, holding(held({})))).toBeNull();
+		// The person's own being sent, whose typed text this client keeps, shows with its files' bars, never sealed ones.
+		const own = directMessageToMessage(served, members, holding(held({}), { [ID]: "" }));
+		expect(own?.attachments?.map((attachment) => attachment.sealed)).toEqual([undefined]);
+		// The server's notices show as they are, with no file of the API's.
+		const callNotice = row(ID, { seq: undefined, type: 3, attachments: [file] });
+		expect(drawnRows([callNotice], undefined, holding(held({}))).rows).toEqual([callNotice]);
+		expect(directMessageToMessage(callNotice, members, holding(held({})))?.attachments).toBeNull();
+	});
+
+	// #575 (N-M4): the API's rows never stand for one being sent. A page's row neither numbered nor a notice goes as the
+	// page comes in, as the live event's does, whatever ID it carries: the typed text vouches only for the row this client
+	// built, never for one of the API's that names it.
+	test("a page's row neither numbered nor a notice goes as the page comes in, whatever ID it carries", () => {
+		const NOTICE = "0193a4b2-0000-7000-8000-000000000071";
+		const page = [
+			row(ID, { seq: undefined, type: 1 }),
+			row(QUOTED, { seq: 2 }),
+			row(NOTICE, { seq: undefined, type: 3 }),
+		];
+		expect(pageRows(page).map(({ id }) => id)).toEqual([QUOTED, NOTICE]);
+	});
+
+	// #575 (N-M5): the person's typed text shows only under their own ID: a row naming another author, by the pending
+	// row's ID or as the send's own answer, draws none of it.
+	test("typed text shows only under the person's own ID", () => {
+		const conversation = "0193a4b2-0000-7000-8000-0000000000c5";
+		const [me, other] = ["0193a4b2-0000-7000-8000-0000000000a1", "0193a4b2-0000-7000-8000-0000000000b2"];
+		try {
+			content.keepTyped(conversation, ID, "what I typed");
+			const reader = content.contentOf(conversation, me);
+			expect(reader.typed(ID, me)).toBe("what I typed");
+			expect(reader.typed(ID, other)).toBeUndefined();
+			expect(directMessageToMessage(row(ID, { author_id: other }), members, reader)?.content).toBeNull();
+			expect(directMessageToMessage(row(ID, { author_id: me }), members, reader)?.content).toBe("what I typed");
+		} finally {
+			content.dropTyped(conversation, ID);
+		}
 	});
 
 	test("a row the engine hasn't applied yet is loading, neither empty nor waiting", () => {
@@ -286,9 +338,10 @@ describe("what a conversation draws", () => {
 		const types = [2, 3, 4, 7] as DirectMessage["type"][];
 		for (const type of types) {
 			const served = row(ID, { type, content: "words put in a mouth" });
-			expect(directMessageToMessage(served, members, holding(held({}))).content).toBeNull();
+			expect(directMessageToMessage(served, members, holding(held({})))?.content).toBeNull();
+			// Without its number, a notice draws none of it, and a row of a type no notice has draws nothing at all.
 			const noNumber = row(ID, { type, seq: undefined, content: "words" });
-			expect(directMessageToMessage(noNumber, members, holding(held({}))).content).toBeNull();
+			expect(directMessageToMessage(noNumber, members, holding(held({})))?.content ?? null).toBeNull();
 		}
 	});
 
@@ -315,7 +368,7 @@ describe("what a conversation draws", () => {
 		content.refresh("C", [], 9);
 		answer({ rows: [], through: 5 });
 		await settled();
-		expect(content.contentOf("C").through()).toBe(9);
+		expect(content.contentOf("C", "a").through()).toBe(9);
 		content.useReader(null);
 	});
 
@@ -327,24 +380,24 @@ describe("what a conversation draws", () => {
 			through: 9,
 		}));
 		const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
-		const d = content.contentOf("D");
+		const d = content.contentOf("D", "a");
 		content.keepTyped("D", "nonce", "typed");
-		expect(d.typed("nonce")).toBe("typed");
-		expect(content.contentOf("E").typed("nonce")).toBeUndefined();
+		expect(d.typed("nonce", "a")).toBe("typed");
+		expect(content.contentOf("E", "a").typed("nonce", "a")).toBeUndefined();
 		content.moveTyped("D", "nonce", "id");
-		expect(d.typed("nonce")).toBeUndefined();
-		expect(d.typed("id")).toBe("typed");
+		expect(d.typed("nonce", "a")).toBeUndefined();
+		expect(d.typed("id", "a")).toBe("typed");
 		content.want("D", ["id"]);
 		await settled();
 		expect(d.held("id")?.text).toBe("held id");
-		expect(d.typed("id")).toBeUndefined();
+		expect(d.typed("id", "a")).toBeUndefined();
 		// Its row there already, the text doesn't move on; dropped, it goes.
 		content.keepTyped("D", "again", "typed again");
 		content.moveTyped("D", "again", "id");
-		expect(d.typed("id")).toBeUndefined();
+		expect(d.typed("id", "a")).toBeUndefined();
 		content.keepTyped("D", "dismissed", "gone");
 		content.dropTyped("D", "dismissed");
-		expect(d.typed("dismissed")).toBeUndefined();
+		expect(d.typed("dismissed", "a")).toBeUndefined();
 		content.useReader(null);
 	});
 });

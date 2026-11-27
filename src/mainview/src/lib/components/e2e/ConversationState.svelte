@@ -1,17 +1,18 @@
 <script lang="ts">
 	import Button from "$lib/components/ui/Button.svelte";
 	import type { ConversationState } from "$lib/e2e/engine/engine";
+	import type { LegacyRecord } from "$lib/e2e/engine/legacy";
 	import { t } from "$lib/i18n";
 	import { formatList } from "$lib/i18n/format";
 
 	// What a conversation says over its message box of its encrypted group (PLAN-E2E-CLIENTES.md, «Avisos»): nothing while
 	// the group goes on. Blocked, its restart for whoever may make it and the wait for the others; waiting for its owner to
 	// open it, or for another member to let this device back in; members other than those this device first saw, with
-	// who they are now and the person's yes; and, while the group goes on, the members who can't receive what's sent yet.
+	// who they are now and the person's yes; a group that holds people the conversation doesn't show, naming whom it
+	// holds; and, while the group goes on, the members who can't receive what's sent yet.
 	let {
 		conversationState,
 		ownerName,
-		memberNames = [],
 		memberName = (userId: string) => userId,
 		onRestart,
 		onAccept,
@@ -19,12 +20,11 @@
 		conversationState: ConversationState | null;
 		/** The conversation's owner, by the name the app shows them. */
 		ownerName: string;
-		/** The conversation's members as the API has them now, by the names the app shows them. */
-		memberNames?: string[];
 		/** A member's name as the app shows it, by their user ID. */
 		memberName?: (userId: string) => string;
 		onRestart: () => Promise<void>;
-		onAccept: () => Promise<void>;
+		/** The person's yes to the people the question named. */
+		onAccept: (people: LegacyRecord) => Promise<void>;
 	} = $props();
 
 	let busy = $state(false);
@@ -42,10 +42,22 @@
 				return { text: t("e2e_wait_owner", { owner: ownerName }) };
 			case "wait_rejoin":
 				return { text: t("e2e_wait_rejoin") };
+			// Whom this device would go in with, which the yes accepts and no other (N-M10).
 			case "members_changed": {
-				const detail = memberNames.length ? t("e2e_members_now", { names: formatList(memberNames) }) : undefined;
-				return { text: t("e2e_members_changed"), detail, label: t("e2e_members_accept"), run: onAccept };
+				const detail = t("e2e_members_now", { names: formatList(said.people.members.map(memberName)) });
+				return {
+					text: t("e2e_members_changed"),
+					detail,
+					label: t("e2e_members_accept"),
+					run: () => onAccept(said.people),
+				};
 			}
+			// Whom its group holds, the people the conversation doesn't show among them (#574): nothing more goes there.
+			case "other_members":
+				return {
+					text: t("e2e_members_changed"),
+					detail: t("e2e_members_now", { names: formatList(said.users.map(memberName)) }),
+				};
 			case "no_device":
 				return { text: t("e2e_no_device", { name: formatList(said.users.map(memberName)) }) };
 			default:

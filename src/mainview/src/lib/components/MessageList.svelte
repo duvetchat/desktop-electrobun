@@ -185,7 +185,7 @@
 		/** The message being edited in its own row: its text becomes a box, and its hover bar goes. */
 		editingMessageId?: string | null;
 		/** Saves the edit of a message, in its own row. */
-		onSaveEdit?: (messageId: string, content: string) => void | Promise<void>;
+		onSaveEdit?: (messageId: string, content: string) => void | string | Promise<void | string>;
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		/** The custom emojis of every Space the user is in, by Space, as the reaction pickers show them. */
@@ -344,7 +344,7 @@
 		if (spaceId) return threadNow(threadMessages, messages);
 		const quoted = threadMessages.flatMap((m) => m.referenced_message?.message_id ?? []);
 		want(channelId, [...threadMessages.map((m) => m.id), ...quoted]);
-		const held = contentOf(channelId);
+		const held = contentOf(channelId, $currentUser?.id);
 		return threadNow(
 			threadMessages.map((m) => withHeld(m, held)),
 			messages,
