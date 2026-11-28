@@ -3,7 +3,8 @@ import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Socket } from "bun";
-import type { ActivityPayload } from "./activities";
+import { atMostEvery, type ActivityPayload } from "./activities";
+import { IpcActivities } from "./activity-images";
 import {
 	assetImage,
 	DISCORD_API,
@@ -14,7 +15,9 @@ import {
 	FrameReader,
 	freeToListen,
 	MAX_FRAME_BYTES,
+	MAX_WAITING_BYTES,
 	Op,
+	Outbox,
 	RETRY_APP_MS,
 	type DiscordApp,
 	type DiscordPipeOptions,
@@ -82,6 +85,7 @@ class Shown {
 class Game {
 	readonly frames: Frame[] = [];
 	closed = false;
+	received = 0;
 	private read = 0;
 	private readonly reader = new FrameReader();
 	private socket!: Socket;
@@ -92,6 +96,7 @@ class Game {
 			unix: path,
 			socket: {
 				data: (_socket, chunk) => {
+					game.received += chunk.length;
 					game.frames.push(...(game.reader.push(chunk) ?? []));
 				},
 				close: () => {
@@ -121,9 +126,20 @@ class Game {
 	}
 }
 
-/** Discord on one of its pipes: it keeps the bytes it gets, and answers each frame as itself. Stopped, it ends its
- * connections, as Discord quitting does: on Windows, Bun's stop(true) leaves them open. */
-function fakeDiscord(path: string) {
+const discordReady = encodeFrame(Op.Frame, { cmd: "DISPATCH", evt: "READY", data: { user: { username: "real" } } });
+
+/** What Discord answers a frame with: READY to the handshake, and its own word to each command. */
+function asDiscord({ op, message }: Frame): Uint8Array | null {
+	const nonce = typeof message === "object" && message && "nonce" in message ? message.nonce : null;
+	if (op === Op.Handshake) return discordReady;
+	if (op === Op.Frame) return encodeFrame(Op.Frame, { cmd: "SET_ACTIVITY", data: "from Discord", evt: null, nonce });
+	return null;
+}
+
+/** Discord on one of its pipes: it keeps the bytes it gets, and answers each frame as reply says (as Discord, unless
+ * told otherwise). Stopped, it ends its connections, as Discord quitting does: on Windows, Bun's stop(true) leaves
+ * them open. */
+function fakeDiscord(path: string, reply: (frame: Frame) => Uint8Array | null = asDiscord) {
 	const got: Uint8Array[] = [];
 	const connections = new Set<Socket<FrameReader>>();
 	const server = Bun.listen<FrameReader>({
@@ -138,15 +154,9 @@ function fakeDiscord(path: string) {
 			},
 			data: (socket, chunk) => {
 				got.push(chunk.slice());
-				for (const { op, message } of socket.data.push(chunk) ?? []) {
-					const nonce = typeof message === "object" && message && "nonce" in message ? message.nonce : null;
-					if (op === Op.Handshake) {
-						socket.write(
-							encodeFrame(Op.Frame, { cmd: "DISPATCH", evt: "READY", data: { user: { username: "real" } } }),
-						);
-					} else if (op === Op.Frame) {
-						socket.write(encodeFrame(Op.Frame, { cmd: "SET_ACTIVITY", data: "from Discord", evt: null, nonce }));
-					}
+				for (const frame of socket.data.push(chunk) ?? []) {
+					const answer = reply(frame);
+					if (answer) socket.write(answer);
 				}
 			},
 		},
@@ -375,6 +385,30 @@ describe("DiscordPipe without Discord", () => {
 		games[0].end();
 		await until("the first one's cleared", () => shown.all.length === 1);
 		expect(shown.all[0]?.state).toBe("Game 1");
+		// A game that ended its connection itself takes nothing to its next one.
+		const next = await Game.connect(paths.duvet);
+		next.send(Op.Handshake, handshake);
+		await next.next();
+		await Bun.sleep(30);
+		expect(shown.all.map((activity) => activity.state)).toEqual(["Game 1"]);
+	});
+
+	test("shows a game's activity once a lookup that failed names its application, as the game doesn't send it again", async () => {
+		const paths = testPaths();
+		const shown = new Shown();
+		let named = false;
+		const apps = { lookup: async () => (named ? { name: "osu!", assets: new Map<string, string>() } : null) };
+		await holdPipe(paths, shown, { apps, appRetryMs: 30 }).start();
+		const game = await Game.connect(paths.duvet);
+		game.send(Op.Handshake, handshake);
+		await game.next();
+		game.send(Op.Frame, { cmd: "SET_ACTIVITY", args: { activity: { state: "Idle" } }, nonce: "1" });
+		await game.next();
+		await Bun.sleep(20);
+		expect(shown.all).toEqual([]);
+		named = true;
+		await until("the activity, once named", () => shown.all.length === 1);
+		expect(shown.all).toEqual([{ name: "osu!", state: "Idle" }]);
 	});
 
 	test("shows only a connection's last activity, whatever its lookup's pace", async () => {
@@ -400,6 +434,61 @@ describe("DiscordPipe without Discord", () => {
 		await until("the activity", () => shown.all.length === 1);
 		await Bun.sleep(20);
 		expect(shown.all).toEqual([{ name: "osu!", state: "second" }]);
+	});
+});
+
+describe("a game's activity on its way out", () => {
+	test("goes out at most once an interval, however often the game sets it, and its last one goes", async () => {
+		const paths = testPaths();
+		const sent: ActivityPayload[][] = [];
+		const noImages = { known: () => undefined, inline: async () => undefined };
+		// As index.ts has them: the IPC apps' activities, which go out through atMostEvery.
+		const send = atMostEvery(50, () => sent.push(activities.activities()));
+		const activities = new IpcActivities(noImages, () => send());
+		await holdPipe(paths, new Shown(), { activities }).start();
+		const game = await Game.connect(paths.duvet);
+		game.send(Op.Handshake, handshake);
+		await game.next();
+		const start = performance.now();
+		for (let i = 1; i <= 30; i++) {
+			game.send(Op.Frame, { cmd: "SET_ACTIVITY", args: { activity: { state: `Score ${i}` } }, nonce: `${i}` });
+			await Bun.sleep(10);
+		}
+		await until("the last activity", () => sent.at(-1)?.[0]?.state === "Score 30");
+		const elapsed = performance.now() - start;
+		expect(sent.length).toBeLessThanOrEqual(Math.ceil(elapsed / 50) + 1);
+		expect(sent.at(-1)).toEqual([{ name: "osu!", state: "Score 30" }]);
+	});
+});
+
+describe("Outbox", () => {
+	test("sends what a socket couldn't take once it drains, in order, and gives up past 1 MiB waiting", () => {
+		const written: number[] = [];
+		let room = 3;
+		const socket = {
+			write: (data: Uint8Array) => {
+				const took = Math.min(room, data.length);
+				written.push(...data.subarray(0, took));
+				room -= took;
+				return took;
+			},
+		};
+		let full = 0;
+		const out = new Outbox(socket, () => full++);
+		out.send(new Uint8Array([1, 2, 3, 4, 5]));
+		out.send(new Uint8Array([6, 7]));
+		expect(written).toEqual([1, 2, 3]);
+		room = 3;
+		out.flush();
+		expect(written).toEqual([1, 2, 3, 4, 5, 6]);
+		room = 10;
+		out.flush();
+		expect(written).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		room = 0;
+		out.send(new Uint8Array(MAX_WAITING_BYTES));
+		expect(full).toBe(0);
+		out.send(new Uint8Array(1));
+		expect(full).toBe(1);
 	});
 });
 
@@ -452,9 +541,10 @@ describe("DiscordPipe with Discord running", () => {
 	test("relays a connection to the lowest of Discord's pipes there are, byte for byte, and copies its activity", async () => {
 		const paths = testPaths();
 		const shown = new Shown();
+		const said: string[] = [];
 		// Discord on the second of its pipes: nothing is at the first.
 		const discord = fakeDiscord(paths.discord[1]);
-		await holdPipe(paths, shown).start();
+		await holdPipe(paths, shown, { log: (line) => said.push(line) }).start();
 		const game = await Game.connect(paths.duvet);
 		const sent = [
 			encodeFrame(Op.Handshake, handshake),
@@ -470,9 +560,67 @@ describe("DiscordPipe with Discord running", () => {
 		await until("the activity", () => shown.all.length === 1);
 		expect(shown.all).toEqual([osuShown]);
 		expect(discord.got()).toEqual(joined(...sent));
+		// Discord quits: Duvet answers the game from then on, which keeps its connection and its activity.
 		discord.stop();
-		await until("the game's connection ended with Discord's", () => game.closed);
-		await until("the activity cleared", () => shown.all.length === 0);
+		await until("Duvet answering the game", () => said.some((line) => line.includes("answered here")));
+		expect(game.closed).toBe(false);
+		expect(shown.all).toEqual([osuShown]);
+		game.send(Op.Ping, "still there?");
+		expect(await game.next()).toEqual({ op: Op.Pong, message: "still there?" });
+		game.send(Op.Frame, { cmd: "SET_ACTIVITY", args: { activity: { ...osuIdle, state: "Playing" } }, nonce: "2" });
+		expect(await game.next()).toMatchObject({ message: { cmd: "SET_ACTIVITY", evt: null, nonce: "2" } });
+		await until("the game's next activity", () => shown.all[0]?.state === "Playing");
+	});
+
+	test("keeps a game's activity through Discord's restart, though the game doesn't send it again", async () => {
+		const paths = testPaths();
+		const shown = new Shown();
+		const said: string[] = [];
+		const first = fakeDiscord(paths.discord[0]);
+		await holdPipe(paths, shown, { discordCheckMs: 20, log: (line) => said.push(line) }).start();
+		const game = await Game.connect(paths.duvet);
+		game.send(Op.Handshake, handshake);
+		await game.next();
+		game.send(Op.Frame, { cmd: "SET_ACTIVITY", args: { activity: osuIdle }, nonce: "1" });
+		await game.next();
+		await until("the activity", () => shown.all.length === 1);
+		first.stop();
+		await until("Duvet answering the game", () => said.some((line) => line.includes("answered here")));
+		// Discord back, on another of its pipes: the game's connection is ended, to reconnect through it.
+		fakeDiscord(paths.discord[1]);
+		await until("the connection ended", () => game.closed);
+		const again = await Game.connect(paths.duvet);
+		again.send(Op.Handshake, handshake);
+		expect(await again.next()).toMatchObject({ message: { data: { user: { username: "real" } } } });
+		// As osu! does, it sends no activity until it changes: Duvet shows the one it had.
+		await until("the activity carried over", () => shown.all.length === 1);
+		expect(shown.all).toEqual([osuShown]);
+	});
+
+	test("ends a relayed connection whose Discord quits before answering its handshake", async () => {
+		const paths = testPaths();
+		const discord = fakeDiscord(paths.discord[0], () => null);
+		await holdPipe(paths, new Shown()).start();
+		const game = await Game.connect(paths.duvet);
+		game.send(Op.Handshake, handshake);
+		await until("Discord got the handshake", () => discord.got().length > 0);
+		discord.stop();
+		await until("the connection ended", () => game.closed);
+	});
+
+	test("ends a relayed connection whose Discord quits in the middle of a frame", async () => {
+		const paths = testPaths();
+		const discord = fakeDiscord(paths.discord[0], (frame) =>
+			frame.op === Op.Handshake ? discordReady : discordReady.subarray(0, 5),
+		);
+		await holdPipe(paths, new Shown()).start();
+		const game = await Game.connect(paths.duvet);
+		game.send(Op.Handshake, handshake);
+		await game.next();
+		game.send(Op.Frame, { cmd: "SET_ACTIVITY", args: { activity: osuIdle }, nonce: "1" });
+		await until("half of Discord's answer relayed", () => game.received === discordReady.length + 5);
+		discord.stop();
+		await until("the connection ended", () => game.closed);
 	});
 
 	test("ends the connections it answered once Discord comes up, so they reconnect through it", async () => {
@@ -490,6 +638,9 @@ describe("DiscordPipe with Discord running", () => {
 		const again = await Game.connect(paths.duvet);
 		again.send(Op.Handshake, handshake);
 		expect(await again.next()).toMatchObject({ message: { data: { user: { username: "real" } } } });
+		// Duvet shows the activity its last connection had, which the game doesn't send again.
+		await until("the activity carried over", () => shown.all.length === 1);
+		expect(shown.all).toEqual([osuShown]);
 	});
 });
 
@@ -510,12 +661,78 @@ describe("DiscordPipe's switch", () => {
 		await until("the game's connection ended", () => game.closed);
 		if (socketFile) expect(existsSync(paths.duvet)).toBe(false);
 		expect(await freeToListen(paths.duvet, socketFile)).toBe(true);
-		// Turned on again at once: taken once its connections are gone.
+		// Turned on again at once: taken once its connections are gone, with nothing of theirs.
 		expect(await pipe.start()).toBe(true);
 		const back = await Game.connect(paths.duvet);
 		back.send(Op.Handshake, handshake);
 		expect(await back.next()).toMatchObject({ message: { evt: "READY" } });
+		await Bun.sleep(30);
+		expect(shown.all).toEqual([]);
 	});
+
+	test("tries a taken pipe again on one timer, however often it's started meanwhile", async () => {
+		const paths = testPaths();
+		let checks = 0;
+		const other = Bun.listen({
+			unix: paths.duvet,
+			socket: {
+				open: () => {
+					checks++;
+				},
+				data() {},
+			},
+		});
+		cleanups.push(() => other.stop(true));
+		const pipe = holdPipe(paths, new Shown(), { retryMs: 100 });
+		// Started again before each try, as each page load does.
+		for (let i = 0; i < 4; i++) {
+			expect(await pipe.start()).toBe(false);
+			await Bun.sleep(25);
+		}
+		const before = checks;
+		const start = performance.now();
+		await Bun.sleep(600);
+		const elapsed = performance.now() - start;
+		// One check every 100 ms at most: the four starts make one chain of tries, not four.
+		expect(checks - before).toBeLessThanOrEqual(Math.ceil(elapsed / 100) + 1);
+	});
+
+	test.skipIf(socketFile)(
+		"takes a Windows pipe whose listener stopped with a connection still open for one that's held",
+		async () => {
+			// What Duvet's own pipe is as it's let go of, and Discord's as it quits: Bun 1.3.9 dies listening there.
+			const path = testPaths().duvet;
+			const accepted = new Set<Socket>();
+			const server = Bun.listen({
+				unix: path,
+				socket: {
+					open: (socket) => {
+						accepted.add(socket);
+					},
+					close: (socket) => {
+						accepted.delete(socket);
+					},
+					data() {},
+				},
+			});
+			let clientClosed = false;
+			await Bun.connect({
+				unix: path,
+				socket: {
+					data() {},
+					close: () => {
+						clientClosed = true;
+					},
+				},
+			});
+			await until("the connection accepted", () => accepted.size === 1);
+			server.stop();
+			expect(await freeToListen(path, false)).toBe(false);
+			for (const socket of accepted) socket.terminate();
+			await until("the connection closed", () => accepted.size === 0 && clientClosed);
+			expect(await freeToListen(path, false)).toBe(true);
+		},
+	);
 
 	test("leaves a pipe something else holds, and takes it once it's free", async () => {
 		const paths = testPaths();

@@ -38,6 +38,11 @@ export class FrameReader {
 	private size = 0;
 	private readonly decoder = new TextDecoder();
 
+	/** Whether part of a frame waits for the rest. */
+	get pending(): boolean {
+		return this.size > 0;
+	}
+
 	push(chunk: Uint8Array): Frame[] | null {
 		// Grown by doubling, so a frame that comes a byte at a time is copied a few times, not once per byte.
 		if (this.size + chunk.length > this.buffer.length) {
@@ -104,9 +109,10 @@ export class DiscordApps {
 		this.kept.delete(clientId);
 		if (!entry || (entry.failedAt !== undefined && this.now() - entry.failedAt >= RETRY_APP_MS)) {
 			const asked: { app: Promise<DiscordApp | null>; failedAt?: number } = { app: this.ask(clientId) };
+			const failed = () => (asked.failedAt = this.now());
 			void asked.app.then((app) => {
-				if (!app?.assets) asked.failedAt = this.now();
-			});
+				if (!app?.assets) failed();
+			}, failed);
 			entry = asked;
 		}
 		// The most recently used goes last, so it's the last to go.
@@ -197,6 +203,8 @@ export interface DiscordPipeOptions {
 	 * own once it lets go. */
 	socketFile?: boolean;
 	retryMs?: number;
+	/** How long an activity whose application wasn't named, or whose images weren't listed, waits to be looked up again. */
+	appRetryMs?: number;
 	discordCheckMs?: number;
 	handshakeMs?: number;
 	log?: (line: string) => void;
@@ -208,6 +216,12 @@ export const RETRY_PIPE_MS = 30_000;
 export const DISCORD_CHECK_MS = 5_000;
 /** How long a connection may go without its handshake. */
 export const HANDSHAKE_MS = 10_000;
+// How long an activity whose lookup failed waits to be looked up again: just past the lookup's own wait, before which it
+// answers from what it kept.
+const APP_RETRY_MS = RETRY_APP_MS + 1_000;
+// How long the activity of a connection Duvet ended (Discord came up, or Discord's side ended) waits for the game's
+// next connection, which a game that sends its activity only when it changes, as osu! does, doesn't send again.
+const CARRY_MS = 60_000;
 // How long a connection to one of Discord's pipes may take to open.
 const CONNECT_MS = 1_000;
 /** The most bytes that may wait to go out on a socket that doesn't read them: past it, the connection is closed. */
@@ -243,9 +257,12 @@ export class DiscordPipe {
 	readonly apps: Pick<DiscordApps, "lookup">;
 	readonly activities: ActivitySink;
 	readonly handshakeMs: number;
+	readonly appRetryMs: number;
 	readonly log: (line: string) => void;
 	private readonly links = new Set<GameLink>();
 	private readonly answered = new Set<GameLink>();
+	// The activities of the connections Duvet ended, by application, for each game's next connection (carry).
+	private readonly carried = new Map<string, { activity: Record<string, unknown>; until: number }>();
 	// The connections Bun has open on the pipe, until each one's close: one still open keeps the pipe's name.
 	private readonly sockets = new Set<Socket<GameLink>>();
 	private released: Promise<void> = Promise.resolve();
@@ -263,6 +280,7 @@ export class DiscordPipe {
 		this.apps = options.apps ?? new DiscordApps();
 		this.activities = options.activities;
 		this.handshakeMs = options.handshakeMs ?? HANDSHAKE_MS;
+		this.appRetryMs = options.appRetryMs ?? APP_RETRY_MS;
 		this.log = options.log ?? ((line) => console.log(`[Discord IPC] ${line}`));
 	}
 
@@ -282,6 +300,7 @@ export class DiscordPipe {
 		clearTimeout(this.retry);
 		clearInterval(this.watch);
 		this.watch = undefined;
+		this.carried.clear();
 		for (const link of [...this.links]) link.close();
 		if (!this.server) return;
 		// In the Bun the app ships (1.3.9), stop(true) leaves a connected pipe open, and listening again while one is
@@ -310,6 +329,8 @@ export class DiscordPipe {
 			const every = (this.options.retryMs ?? RETRY_PIPE_MS) / 1000;
 			this.log(`${path} is taken (Discord, or another Duvet): trying again every ${every} s`);
 		}
+		// One try waiting at a time, however often the page turns the switch on meanwhile.
+		clearTimeout(this.retry);
 		this.retry = setTimeout(() => void this.attempt(), this.options.retryMs ?? RETRY_PIPE_MS);
 		return false;
 	}
@@ -326,7 +347,10 @@ export class DiscordPipe {
 						const link = new GameLink(socket, this, this.nextId++);
 						socket.data = link;
 						this.links.add(link);
-						void this.findDiscord(link).then((discord) => link.decide(discord));
+						this.findDiscord(link).then(
+							(discord) => link.decide(discord),
+							() => link.decide(null),
+						);
 					},
 					data: (socket, chunk) => socket.data.fromGame(chunk),
 					drain: (socket) => socket.data.drainGame(),
@@ -384,6 +408,20 @@ export class DiscordPipe {
 		this.answered.delete(link);
 	}
 
+	/** The last activity of a connection Duvet ended, for the game's next connection with clientId, CARRY_MS at most. */
+	carry(clientId: string, activity: Record<string, unknown>) {
+		const now = performance.now();
+		for (const [id, kept] of this.carried) if (kept.until <= now) this.carried.delete(id);
+		this.carried.set(clientId, { activity, until: now + CARRY_MS });
+	}
+
+	/** The activity carried for clientId's new connection, once: null when there's none, or it's too old. */
+	takeCarried(clientId: string): Record<string, unknown> | null {
+		const kept = this.carried.get(clientId);
+		this.carried.delete(clientId);
+		return kept && kept.until > performance.now() ? kept.activity : null;
+	}
+
 	private async lookForDiscord() {
 		if (this.looking) return;
 		if (!this.answered.size) {
@@ -397,7 +435,8 @@ export class DiscordPipe {
 			discord?.end();
 			if (!discord || !this.server) return;
 			this.log(`Discord is up: ending ${this.answered.size} connection(s) answered here, to reconnect through it`);
-			for (const link of [...this.answered]) link.close();
+			// Their activities wait for their games' next connections, through Discord.
+			for (const link of [...this.answered]) link.close(undefined, true);
 		} finally {
 			this.looking = false;
 		}
@@ -414,8 +453,15 @@ class GameLink {
 	private readonly frames = new FrameReader();
 	private clientId: string | null = null;
 	private activityChanges = 0;
+	// The game's last activity as it sent it, to look up again or carry to its next connection.
+	private lastActivity: Record<string, unknown> | null = null;
+	private appRetry: ReturnType<typeof setTimeout> | undefined;
 	private discord: Socket | null = null;
 	private toDiscord: Outbox | null = null;
+	// What Discord sent the game: read to know whether Duvet can answer it once Discord's side ends.
+	private readonly discordFrames = new FrameReader();
+	private discordSpoke = false;
+	private discordUnclear = false;
 	private readonly toGame: Outbox;
 	private readonly handshakeTimer: ReturnType<typeof setTimeout>;
 
@@ -465,7 +511,16 @@ class GameLink {
 	}
 
 	fromDiscord(socket: Socket, chunk: Uint8Array) {
-		if (socket === this.discord && !this.closed) this.toGame.send(chunk);
+		if (socket !== this.discord || this.closed) return;
+		this.toGame.send(chunk);
+		if (this.discordUnclear) return;
+		const frames = this.discordFrames.push(chunk);
+		// One too long to follow, or Discord's own close of the connection: the game isn't Duvet's to answer then.
+		if (!frames) this.discordUnclear = true;
+		for (const frame of frames ?? []) {
+			this.discordSpoke = true;
+			if (frame.op === Op.Close) this.discordUnclear = true;
+		}
 	}
 
 	drainGame() {
@@ -476,15 +531,29 @@ class GameLink {
 		if (socket === this.discord) this.toDiscord?.flush();
 	}
 
+	/** Discord ended its side: it quit, or is restarting. Duvet answers the game from then on, which keeps its connection
+	 * and its activity, once the game has had Discord's READY and Discord's bytes stopped between two frames. Otherwise
+	 * the game's connection ends, and its activity waits for its next one. */
 	discordClosed(socket: Socket) {
-		if (socket === this.discord) this.close("Discord ended it");
+		if (socket !== this.discord || this.closed) return;
+		if (!this.clientId || !this.discordSpoke || this.discordUnclear || this.discordFrames.pending) {
+			return this.close("Discord ended it", true);
+		}
+		this.discord = null;
+		this.toDiscord = null;
+		this.mode = "answered";
+		this.pipe.answeredHere(this);
+		this.pipe.log(`#${this.id} (${this.clientId}): Discord ended its side, so it's answered here from now on`);
 	}
 
-	close(why?: string) {
+	/** Ends the connection, and its activity: carried to the game's next connection when Duvet is the one ending it. */
+	close(why?: string, carry = false) {
 		if (this.closed) return;
 		this.closed = true;
 		clearTimeout(this.handshakeTimer);
+		clearTimeout(this.appRetry);
 		this.pipe.forget(this);
+		if (carry && this.clientId && this.lastActivity) this.pipe.carry(this.clientId, this.lastActivity);
 		if (this.activityChanges) this.pipe.activities.clear(this);
 		if (why) this.pipe.log(`#${this.id} (${this.clientId ?? "before its handshake"}) closed: ${why}`);
 		this.game.end();
@@ -507,6 +576,9 @@ class GameLink {
 			// Its name and images, ahead of its first activity.
 			void this.pipe.apps.lookup(this.clientId);
 			if (this.mode === "answered") this.send(Op.Frame, READY);
+			// The activity its last connection had, when Duvet ended that one: the game may not send it again.
+			const carried = this.pipe.takeCarried(this.clientId);
+			if (carried) this.copyActivity(this.clientId, { activity: carried });
 			return;
 		}
 		if (op === Op.Frame && this.clientId && body.cmd === "SET_ACTIVITY") this.copyActivity(this.clientId, body.args);
@@ -531,13 +603,20 @@ class GameLink {
 
 	private copyActivity(clientId: string, args: unknown) {
 		const change = ++this.activityChanges;
+		clearTimeout(this.appRetry);
 		const activity = isObject(args) ? args.activity : undefined;
+		this.lastActivity = isObject(activity) ? activity : null;
 		if (!isObject(activity)) return this.pipe.activities.clear(this);
 		this.pipe.apps.lookup(clientId).then(
 			(app) => {
 				// A newer one came meanwhile, or the connection ended.
 				if (this.closed || change !== this.activityChanges) return;
 				this.pipe.activities.set(this, duvetActivity(activity, clientId, app));
+				// Looked up again later when its application wasn't named or its images weren't listed: the game may
+				// never send it again.
+				if (!app?.assets) {
+					this.appRetry = setTimeout(() => this.copyActivity(clientId, { activity }), this.pipe.appRetryMs);
+				}
 			},
 			(err: unknown) => this.pipe.log(`#${this.id} (${clientId}): its application wasn't looked up: ${err}`),
 		);
@@ -549,12 +628,12 @@ class GameLink {
 }
 
 /** What goes out on a socket, in order: Bun's sockets take what they can and leave the rest to their caller. */
-class Outbox {
+export class Outbox {
 	private waiting: Uint8Array[] = [];
 	private bytes = 0;
 
 	constructor(
-		private readonly socket: Socket<GameLink> | Socket,
+		private readonly socket: { write(data: Uint8Array): number },
 		private readonly tooMuch: () => void,
 	) {}
 
@@ -595,15 +674,19 @@ class Outbox {
  * connections open, with no one listening (its owner letting go of it): in the Bun the app ships (1.3.9), listening
  * there, as on a pipe that answers, kills the process past any try (#188).
  */
-export async function freeToListen(path: string, socketFile: boolean): Promise<boolean> {
-	try {
-		const socket = await Bun.connect({ unix: path, socket: { data() {} } });
-		socket.end();
-		return false;
-	} catch (err) {
-		const code = err instanceof Error && "code" in err ? err.code : undefined;
-		return code === "ENOENT" || (socketFile && code === "ECONNREFUSED");
-	}
+export function freeToListen(path: string, socketFile: boolean): Promise<boolean> {
+	const answer = Bun.connect({ unix: path, socket: { data() {} } }).then(
+		(socket) => {
+			socket.end();
+			return false;
+		},
+		(err: unknown) => {
+			const code = err instanceof Error && "code" in err ? err.code : undefined;
+			return code === "ENOENT" || (socketFile && code === "ECONNREFUSED");
+		},
+	);
+	// Such a pipe also keeps the connection waiting for one of its instances, 30 s at most: it's taken all the same.
+	return Promise.race([answer, Bun.sleep(CONNECT_MS).then(() => false)]);
 }
 
 // A connection to path, or null when it fails or doesn't open within ms. One that opens after that is ended.

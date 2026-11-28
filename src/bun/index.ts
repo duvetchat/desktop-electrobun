@@ -2,7 +2,7 @@ import Electrobun, { ApplicationMenu, BrowserView, BrowserWindow, Screen, Update
 import { internalRpcHandlers } from "../../node_modules/electrobun/dist/api/bun/proc/native";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
+import { ACTIVITY_UPDATE_MS, atMostEvery, fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, fetchImageBytes, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { COPY_FETCH_MS, MAX_COPIED_BYTES, pictureToCopy } from "./copy-image";
 import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
@@ -216,6 +216,17 @@ const pictureForCopy = (imageUrl: string): Promise<string | null> =>
 // and the webview could ask meanwhile.
 const clientActivities = new IpcActivities(activityImages, () => broadcastAggregatedActivities());
 
+// The user's activities, to the webview and on to the gateway: once a second at most, what's current then, so the last
+// change always goes (atMostEvery). One bound for the IPC apps', the games' (discord-ipc.ts) and Spotify's: a game may
+// set its activity many times a second, and the gateway drops a connection's messages past 10 a second, voice's and
+// calls' with them.
+const broadcastAggregatedActivities = atMostEvery(ACTIVITY_UPDATE_MS, () => {
+	// The gateway keeps MAX_ACTIVITIES: Spotify's has its place, and the IPC apps' fill the rest.
+	const spotify = spotifyActivity ? [spotifyActivity] : [];
+	const all = [...clientActivities.activities().slice(0, MAX_ACTIVITIES - spotify.length), ...spotify];
+	rpc.send.activityUpdate(all.length > 0 ? all : null);
+});
+
 // What Spotify plays here, while the webview's setting lets the reader run; it goes out with the IPC apps'.
 let spotifyActivity: SpotifyActivity | null = null;
 let stopSpotify: (() => void) | null = null;
@@ -243,6 +254,9 @@ const discordPipe = new DiscordPipe({
 	activities: clientActivities,
 	socketFile: process.platform !== "win32",
 });
+// Let go of as the app quits, so no socket file is left on macOS and Linux: some apps (pypresence) pick the first
+// discord-ipc-N there is without connecting to it.
+Electrobun.events.on("before-quit", () => discordPipe.stop());
 
 // The app's own updates, on the stable channel (#456, updates.ts): found, downloaded and verified against the manifest the
 // release workflow signs, then offered on the title bar; applied only when the user asks.
@@ -687,13 +701,6 @@ if (process.platform !== "win32" && !ipcHeldElsewhere) {
 		const { unlinkSync } = await import("fs");
 		unlinkSync(IPC_PIPE);
 	} catch {}
-}
-
-function broadcastAggregatedActivities() {
-	// The gateway keeps MAX_ACTIVITIES: Spotify's has its place, and the IPC apps' fill the rest.
-	const spotify = spotifyActivity ? [spotifyActivity] : [];
-	const all = [...clientActivities.activities().slice(0, MAX_ACTIVITIES - spotify.length), ...spotify];
-	rpc.send.activityUpdate(all.length > 0 ? all : null);
 }
 
 if (ipcHeldElsewhere) {
