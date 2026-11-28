@@ -164,6 +164,16 @@ const FILES: Record<Exclude<Locale, "en">, () => Promise<unknown>> = {
 	"pt-BR": () => import("../../messages/pt-BR.json"),
 	it: () => import("../../messages/it.json"),
 	fi: () => import("../../messages/fi.json"),
+	"en-GB": () => import("../../messages/en-GB.json"),
+	"es-ES": () => import("../../messages/es-ES.json"),
+	ru: () => import("../../messages/ru.json"),
+	uk: () => import("../../messages/uk.json"),
+	"zh-CN": () => import("../../messages/zh-CN.json"),
+	"zh-TW": () => import("../../messages/zh-TW.json"),
+	ja: () => import("../../messages/ja.json"),
+	ko: () => import("../../messages/ko.json"),
+	th: () => import("../../messages/th.json"),
+	vi: () => import("../../messages/vi.json"),
 };
 
 async function load(locale: UiLocale): Promise<void> {

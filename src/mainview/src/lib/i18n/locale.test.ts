@@ -33,12 +33,30 @@ describe("the system's languages", () => {
 		expect(matchLocale(["es-MX", "en"], LOCALES)).toBe("es");
 		expect(matchLocale(["pt-PT"], LOCALES)).toBe("pt-BR");
 		expect(matchLocale(["pt-BR"], LOCALES)).toBe("pt-BR");
-		expect(matchLocale(["ja-JP", "fr-CA", "de"], LOCALES)).toBe("fr");
+		expect(matchLocale(["sw-KE", "fr-CA", "de"], LOCALES)).toBe("fr");
 		expect(matchLocale(["DE-at"], LOCALES)).toBe("de");
+		expect(matchLocale(["ja-JP"], LOCALES)).toBe("ja");
+	});
+
+	test("come to the regional file they're nearer, else the language's own", () => {
+		expect(matchLocale(["es-ES"], LOCALES)).toBe("es-ES");
+		expect(matchLocale(["es-419"], LOCALES)).toBe("es");
+		expect(matchLocale(["es"], LOCALES)).toBe("es");
+		expect(matchLocale(["en-GB"], LOCALES)).toBe("en-GB");
+		expect(matchLocale(["en-AU"], LOCALES)).toBe("en-GB");
+		expect(matchLocale(["en-US"], LOCALES)).toBe("en");
+		expect(matchLocale(["en-CA"], LOCALES)).toBe("en");
+		expect(matchLocale(["zh-Hans-CN"], LOCALES)).toBe("zh-CN");
+		expect(matchLocale(["zh-SG"], LOCALES)).toBe("zh-CN");
+		expect(matchLocale(["zh"], LOCALES)).toBe("zh-CN");
+		expect(matchLocale(["zh-Hant-TW"], LOCALES)).toBe("zh-TW");
+		expect(matchLocale(["zh-HK"], LOCALES)).toBe("zh-TW");
+		expect(matchLocale(["zh-Hant"], LOCALES)).toBe("zh-TW");
 	});
 
 	test("come to English when none matches, or when the system says none", () => {
-		expect(matchLocale(["ja-JP", "ko"], LOCALES)).toBe("en");
+		expect(matchLocale(["sw-KE", "nl"], LOCALES)).toBe("en");
+		expect(matchLocale(["not a tag"], LOCALES)).toBe("en");
 		expect(matchLocale([], LOCALES)).toBe("en");
 	});
 
@@ -65,6 +83,12 @@ describe("dates and numbers", () => {
 		expect(formatLocale("es", ["en-US"])).toBe("es");
 		expect(formatLocale("pt-BR", [])).toBe("pt-BR");
 		expect(formatLocale(PSEUDO, ["fr-FR"])).toBe("en");
+	});
+
+	test("are in the app's script when the system writes its language in another", () => {
+		expect(formatLocale("zh-TW", ["zh-Hans-CN"])).toBe("zh-TW");
+		expect(formatLocale("zh-TW", ["zh-Hant-HK"])).toBe("zh-Hant-HK");
+		expect(formatLocale("en-GB", ["en-US"])).toBe("en-US");
 	});
 });
 

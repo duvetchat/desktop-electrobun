@@ -166,6 +166,18 @@ describe("the language files", () => {
 			"pt-BR": /\b(servidor(es)?|cana(l|is))\b/i,
 			it: /\b(server|canal[ei])\b/i,
 			fi: /\b(palvelin(ta|ten|in|ista|issa|ille|illa|ilta)?|palvelim(en|et|ia|ien|iin|issa|ista|ille|illa|ilta)?|kanav(a|an|aa|at|ien|ia|issa|ista|aan|alle|alla|alta))\b/i,
+			"en-GB": /\b(servers?|channels?)\b/i,
+			"es-ES": /\b(servidor(es)?|canal(es)?)\b/i,
+			// \b only knows ASCII letters: these mark a word's start as not right after another letter.
+			ru: /(?<!\p{L})(сервер|канал)/iu,
+			uk: /(?<!\p{L})(сервер|канал)/iu,
+			// No spaces between words: the word alone.
+			"zh-CN": /服务器|频道/,
+			"zh-TW": /伺服器|服務器|頻道/,
+			ja: /サーバ|チャンネル|チャネル/,
+			ko: /서버|채널/,
+			th: /เซิร์ฟเวอร์|แชนแนล|แชนเนล/,
+			vi: /(?<!\p{L})(máy chủ|kênh)(?!\p{L})/iu,
 		};
 		for (const locale of LOCALES) {
 			const found = Object.entries(fileOf(locale)).filter(

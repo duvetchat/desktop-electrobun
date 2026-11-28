@@ -96,6 +96,8 @@ describe("a language's InfoPlist.strings", () => {
 	test("is in the language's folder, named as Xcode names it", () => {
 		expect(lprojOf("en")).toBe("en.lproj");
 		expect(lprojOf("pt-BR")).toBe("pt-BR.lproj");
+		expect(lprojOf("zh-CN")).toBe("zh-Hans.lproj");
+		expect(lprojOf("zh-TW")).toBe("zh-Hant.lproj");
 	});
 });
 
@@ -189,6 +191,7 @@ describe("a Linux desktop entry", () => {
 
 	test("names a language as the spec does, and without a Comment of its own, is refused", () => {
 		expect(desktopLocaleOf("pt-BR")).toBe("pt_BR");
+		expect(desktopLocaleOf("zh-TW")).toBe("zh_TW");
 		expect(desktopLocaleOf("de")).toBe("de");
 		expect(() => withDesktopComments("[Desktop Entry]\nName=Duvet\n", ["en"])).toThrow(
 			"the desktop entry has no Comment",

@@ -28,8 +28,13 @@ export const USAGE_MESSAGES = {
 	NSCameraUsageDescription: "os_camera_usage",
 } as const satisfies Record<string, BunMessageKey>;
 
-/** A language's folder in Resources: its tag, as Xcode names them (pt-BR.lproj). */
-export const lprojOf = (locale: Locale) => `${locale}.lproj`;
+/** A language as macOS names a bundle's languages: its tag, but Chinese by its script, as Xcode names them (zh-CN is
+ * zh-Hans), which a system in Chinese of any region comes to. */
+export const bundleLanguageOf = (locale: Locale) =>
+	locale === "zh-CN" ? "zh-Hans" : locale === "zh-TW" ? "zh-Hant" : locale;
+
+/** A language's folder in Resources (pt-BR.lproj, zh-Hans.lproj). */
+export const lprojOf = (locale: Locale) => `${bundleLanguageOf(locale)}.lproj`;
 
 /** Each usage description in a language. */
 export function usageTexts(locale: Locale): Record<string, string> {
@@ -59,7 +64,7 @@ export function withLocalizations(plist: string, locales: readonly Locale[]): st
 		"    <string>en</string>",
 		"    <key>CFBundleLocalizations</key>",
 		"    <array>",
-		...locales.map((locale) => `        <string>${locale}</string>`),
+		...locales.map((locale) => `        <string>${bundleLanguageOf(locale)}</string>`),
 		"    </array>",
 	];
 	return `${without.slice(0, end).trimEnd()}\n${keys.join("\n")}\n${without.slice(end)}`;
