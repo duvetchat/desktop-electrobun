@@ -25,6 +25,7 @@
 		Globe as GlobeIcon,
 		Lock as LockIcon,
 		Palette as PaletteIcon,
+		Languages as LanguageIcon,
 		Activity as ActivityIcon,
 		ArrowRightLeft as MoveIcon,
 		Mail as MailIcon,
@@ -62,9 +63,16 @@
 		BIO_MAX_LENGTH,
 	} from "$lib/api/user";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
+	import {
+		accountForUser,
+		activateAccount,
+		forgetAccount as forgetSavedAccount,
+		rememberAccount,
+		type StoredAccount,
+	} from "$lib/accounts";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail } from "$lib/api/auth";
+	import { logInForAccount, sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail } from "$lib/api/auth";
 	import { audioStore, type SoundEvent } from "$lib/stores/audio.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { loadCustomTheme, resetTheme, getThemeUrl, renderMarkdown } from "$lib/markdown";
@@ -96,6 +104,7 @@
 		myBuckets,
 		voiceFaces,
 		shareSpotify,
+		shareGameActivity,
 		noiseSuppression,
 		selectedMicId,
 		selectedCameraId,
@@ -138,6 +147,7 @@
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
+	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
@@ -247,6 +257,7 @@
 			title: t("settings_group_app_media"),
 			items: [
 				{ id: "appearance", label: t("settings_section_appearance"), icon: PaletteIcon, tile: "#2f4cff" },
+				{ id: "language", label: t("settings_language_title"), icon: LanguageIcon, tile: "#0e8fd6" },
 				{ id: "audio", label: t("settings_section_audio"), icon: VolumeIcon, tile: "#f97316" },
 				{ id: "voice-video", label: t("settings_section_voice_video"), icon: MicIcon, tile: "#e01890" },
 			],
@@ -271,6 +282,78 @@
 			],
 		},
 	]);
+
+	// ── The accounts signed in on this device ──────────────────────────────────
+	let accounts = $state<StoredAccount[]>([]);
+	let showAddAccount = $state(false);
+	let addAccountEmail = $state("");
+	let addAccountPassword = $state("");
+	let addAccountError = $state("");
+	let addingAccount = $state(false);
+
+	function rememberCurrentAccount() {
+		const user = $currentUser;
+		if (!user) return;
+		const account = accountForUser(user);
+		if (account) accounts = rememberAccount(account);
+	}
+
+	$effect(() => {
+		const user = $currentUser;
+		if (!user) return;
+		const account = accountForUser(user);
+		if (account) accounts = rememberAccount(account);
+	});
+
+	function switchToAccount(account: StoredAccount) {
+		if (account.id === $currentUser?.id) return;
+		// The account in use may have renewed its tokens since the list was read: keep what's current before leaving it.
+		rememberCurrentAccount();
+		activateAccount(account);
+		void host.switchAccount();
+	}
+
+	async function removeSavedAccount(account: StoredAccount) {
+		await confirmAction(
+			t("settings_accounts_remove_confirm", { name: account.name }),
+			t("settings_accounts_remove"),
+			async () => {
+				accounts = forgetSavedAccount(account.id);
+			},
+		);
+	}
+
+	async function addAccount() {
+		if (addingAccount || !addAccountEmail.trim() || !addAccountPassword) return;
+		addingAccount = true;
+		addAccountError = "";
+		try {
+			const result = await logInForAccount({ email: addAccountEmail.trim(), password: addAccountPassword });
+			const user = result.user;
+			accounts = rememberAccount({
+				id: user.id,
+				name: user.alias ?? user.username,
+				username: user.username,
+				avatar: user.avatar,
+				accessToken: result.token,
+				refreshToken: result.sessionToken,
+			});
+			addAccountEmail = "";
+			addAccountPassword = "";
+			showAddAccount = false;
+			toast(t("settings_accounts_added"), "success");
+		} catch (err) {
+			addAccountError = err instanceof Error ? err.message : String(err);
+		} finally {
+			addingAccount = false;
+		}
+	}
+
+	function signOut() {
+		const id = $currentUser?.id;
+		if (id) accounts = forgetSavedAccount(id);
+		void host.logout();
+	}
 
 	// Attachments state
 	const attachmentHost = getHostURL();
@@ -1531,7 +1614,7 @@
 	{/snippet}
 
 	{#snippet foot()}
-		<button type="button" class={navItemClass(false, true)} onclick={() => host.logout()}>
+		<button type="button" class={navItemClass(false, true)} onclick={signOut}>
 			<span class={NAV_ICON_SLOT}><LogOutIcon size={16} /></span>
 			{t("settings_sign_out")}
 		</button>
@@ -1590,6 +1673,94 @@
 	{/snippet}
 
 	{#if activeSection === "account"}
+		<SettingsGroup title={t("settings_accounts_title")} note={t("settings_accounts_note")}>
+			{#each accounts as account (account.id)}
+				{@const current = account.id === $currentUser?.id}
+				<div class="flex min-h-[60px] items-center gap-3 px-4 py-3">
+					<UserAvatar src={getAvatarURL(account.id, account.avatar)} name={account.name} size={34} />
+					<div class="min-w-0 flex-1">
+						<p class="text-duvet-ink truncate text-[14.5px] font-medium">{account.name}</p>
+						<p class="text-duvet-ink2 truncate text-[13px]">@{account.username}</p>
+					</div>
+					{#if current}
+						<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text">{t("settings_accounts_current")}</span>
+					{:else}
+						<Button variant="secondary" size="sm" onclick={() => switchToAccount(account)}>
+							{t("settings_accounts_switch")}
+						</Button>
+						<IconButton
+							label={t("settings_accounts_remove_label", { name: account.name })}
+							title={t("settings_accounts_remove")}
+							danger
+							onclick={() => removeSavedAccount(account)}
+						>
+							<TrashIcon size={16} />
+						</IconButton>
+					{/if}
+				</div>
+			{/each}
+			<div class="flex items-center justify-end px-4 py-3">
+				<Button variant="secondary" size="sm" onclick={() => (showAddAccount = !showAddAccount)}>
+					<PlusIcon size={14} />
+					{t("settings_accounts_add")}
+				</Button>
+			</div>
+		</SettingsGroup>
+
+		{#if showAddAccount}
+			<SettingsGroup title={t("settings_accounts_add_title")} note={t("settings_accounts_add_note")} plain>
+				<form
+					class="flex flex-col gap-3"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void addAccount();
+					}}
+				>
+					<div>
+						<label for="account-email" class={LABEL}>{t("auth_email_label")}</label>
+						<input
+							id="account-email"
+							type="email"
+							autocomplete="email"
+							bind:value={addAccountEmail}
+							class={FIELD}
+							placeholder={t("auth_email_placeholder")}
+							disabled={addingAccount}
+						/>
+					</div>
+					<div>
+						<label for="account-password" class={LABEL}>{t("auth_password_label")}</label>
+						<input
+							id="account-password"
+							type="password"
+							autocomplete="current-password"
+							bind:value={addAccountPassword}
+							class={FIELD}
+							placeholder={t("auth_sign_in_password_placeholder")}
+							disabled={addingAccount}
+						/>
+					</div>
+					{#if addAccountError}
+						<p class={calloutClass("danger")} role="alert">{addAccountError}</p>
+					{/if}
+					<div class="flex justify-end gap-2">
+						<Button
+							variant="quiet"
+							onclick={() => {
+								showAddAccount = false;
+								addAccountError = "";
+							}}
+						>
+							{t("settings_cancel")}
+						</Button>
+						<Button type="submit" disabled={addingAccount || !addAccountEmail.trim() || !addAccountPassword}>
+							{addingAccount ? t("auth_sign_in_busy") : t("auth_sign_in")}
+						</Button>
+					</div>
+				</form>
+			</SettingsGroup>
+		{/if}
+
 		<!-- Profile preview card -->
 		<MemberProfileCard
 			member={previewMember}
@@ -1735,18 +1906,6 @@
 			onRefreshCameras={loadCameras}
 		/>
 	{:else if activeSection === "appearance"}
-		<SettingsGroup title={t("settings_language_title")}>
-			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
-				<LanguageSelect
-					id="app-language"
-					value={localePref()}
-					offered={OFFERED}
-					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
-					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
-				/>
-			</SettingsRow>
-		</SettingsGroup>
-
 		<SettingsGroup title={t("settings_theme_title")} plain class="p-0!" note={t("settings_theme_note")}>
 			<ChoiceCards
 				label={t("settings_theme_title")}
@@ -1840,6 +1999,18 @@
 				<Toggle label={t("settings_voice_faces")} checked={$voiceFaces} onCheckedChange={(on) => voiceFaces.set(on)} />
 			</SettingsRow>
 		</SettingsGroup>
+	{:else if activeSection === "language"}
+		<SettingsGroup>
+			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
+				<LanguageSelect
+					id="app-language"
+					value={localePref()}
+					offered={OFFERED}
+					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
+					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
+				/>
+			</SettingsRow>
+		</SettingsGroup>
 	{:else if activeSection === "activity"}
 		<SettingsGroup>
 			<SettingsRow label={t("settings_activity_spotify")} line={t("settings_activity_spotify_line")}>
@@ -1847,6 +2018,13 @@
 					label={t("settings_activity_spotify")}
 					checked={$shareSpotify}
 					onCheckedChange={(on) => shareSpotify.set(on)}
+				/>
+			</SettingsRow>
+			<SettingsRow label={t("settings_activity_games")} line={t("settings_activity_games_line")}>
+				<Toggle
+					label={t("settings_activity_games")}
+					checked={$shareGameActivity}
+					onCheckedChange={(on) => shareGameActivity.set(on)}
 				/>
 			</SettingsRow>
 		</SettingsGroup>

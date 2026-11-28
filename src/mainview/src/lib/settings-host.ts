@@ -2,6 +2,7 @@
 // of the app's own page, and in the desktop app, where each fills a window of its own that has none of the app's
 // stores: there the host sends these on to the main window (lib/stores/settings-guest-link.svelte.ts).
 import { logout } from "$lib/api/auth";
+import { route } from "$lib/common/common";
 import { t } from "$lib/i18n";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
 import { MESSAGE_LAYOUT_KEY, parseMessageLayout as parseLayout, type MessageLayout } from "$lib/message-layout";
@@ -30,6 +31,8 @@ export interface SavedSpace {
 export interface SettingsHost {
 	/** Signs the user out of the app. */
 	logout(): void | Promise<void>;
+	/** Reloads the app into the account whose tokens are now saved. */
+	switchAccount(): void | Promise<void>;
 	/** The user's profile was saved: it shows everywhere at once. */
 	profileSaved(saved: SavedProfile): void;
 	/** A Space's overview was saved: its new name, icon and the rest show at once. */
@@ -91,6 +94,10 @@ function writeMessageLayout(layout: MessageLayout) {
 /** The host of a page that has the app's stores: the web's sheets, and the main window. */
 export const pageSettingsHost: SettingsHost = {
 	logout,
+	// The tokens of the account picked are in storage: a new page reads them and starts from there.
+	switchAccount: () => {
+		window.location.href = route("/app.html");
+	},
 	profileSaved: applyOwnProfile,
 	spaceSaved: (spaceId, saved) => gatewaySpaces.update((spaces) => withSavedSpace(spaces, spaceId, saved)),
 	spaceDeleted: (spaceId, name) => {

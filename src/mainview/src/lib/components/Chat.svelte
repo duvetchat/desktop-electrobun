@@ -967,7 +967,10 @@
 						class="grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none {spoiler
 							? 'bg-duvet-accent-tint text-duvet-accent-text'
 							: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
-						onclick={() => toggleSpoiler(key, i)}
+						onclick={() => {
+							toggleSpoiler(key, i);
+							focus();
+						}}
 						aria-pressed={spoiler}
 						aria-label={t("chat_file_spoiler_label", { name })}
 						title={spoiler ? t("chat_file_spoiler_remove") : t("chat_file_spoiler_mark")}
@@ -980,7 +983,10 @@
 					</button>
 					<button
 						class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none"
-						onclick={() => removePendingFile(key, i)}
+						onclick={() => {
+							removePendingFile(key, i);
+							focus();
+						}}
 						aria-label={t("chat_file_remove", { name })}
 					>
 						<CloseIcon class="size-3.5" />

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ipcHeld, ipcPath, LineReader, MAX_LINE_LENGTH } from "./ipc";
+import { discordIpcPath, ipcHeld, ipcPath, LineReader, MAX_LINE_LENGTH } from "./ipc";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
@@ -50,6 +50,15 @@ describe("ipcPath", () => {
 			"/var/folders/ab/T/duvet-ipc.sock",
 		);
 		expect(ipcPath("linux", {})).toBe("/tmp/duvet-ipc.sock");
+	});
+});
+
+describe("discordIpcPath", () => {
+	test("is where Discord's SDK looks: the named pipe on Windows, else the socket beside Duvet's", () => {
+		expect(discordIpcPath(0, "win32", {})).toBe("\\\\.\\pipe\\discord-ipc-0");
+		expect(discordIpcPath(3, "linux", { XDG_RUNTIME_DIR: "/run/user/1000" })).toBe("/run/user/1000/discord-ipc-3");
+		expect(discordIpcPath(0, "darwin", { TMPDIR: "/var/folders/ab/T/" })).toBe("/var/folders/ab/T/discord-ipc-0");
+		expect(discordIpcPath(9, "linux", {})).toBe("/tmp/discord-ipc-9");
 	});
 });
 

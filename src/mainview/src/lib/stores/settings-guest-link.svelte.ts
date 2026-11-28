@@ -129,6 +129,10 @@ export function startSettingsGuest(): SettingsGuest {
 			await ask("logout").catch(() => undefined);
 			close();
 		},
+		switchAccount: async () => {
+			await ask("switchAccount").catch(() => undefined);
+			close();
+		},
 		profileSaved: (saved) => {
 			// Here at once, for the screen; everywhere else in the main window.
 			applyOwnProfile(saved);
