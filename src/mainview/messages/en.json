@@ -1395,6 +1395,8 @@
 	"settings_accounts_remove_label": "Remove {name} from this device",
 	"settings_accounts_switch": "Switch",
 	"settings_accounts_title": "Accounts",
+	"settings_activity_games": "Share the games I play",
+	"settings_activity_games_line": "Games and apps that show your activity on Discord show it to the people in your Spaces too: what you're playing, its details and for how long. Discord still gets it, but if Discord opened before Duvet, only Discord does until it closes. Saved on this device.",
 	"settings_activity_spotify": "Share what I listen to on Spotify",
 	"settings_activity_spotify_line": "While Spotify plays on this computer, the people in your Spaces see the song, its artist and how far along it is. Saved on this device.",
 	"settings_app_create_failed": "Couldn't create application",

@@ -1395,6 +1395,8 @@
 	"settings_accounts_remove_label": "Remover {name} deste dispositivo",
 	"settings_accounts_switch": "Alternar",
 	"settings_accounts_title": "Contas",
+	"settings_activity_games": "Compartilhar o que jogo",
+	"settings_activity_games_line": "Jogos e apps que mostram sua atividade no Discord também a mostram para as pessoas nos seus Espaços: o que você está jogando, os detalhes e há quanto tempo. O Discord continua recebendo, mas se o Discord foi aberto antes do Duvet, só o Discord a recebe até ser fechado. Salvo neste dispositivo.",
 	"settings_activity_spotify": "Compartilhar o que ouço no Spotify",
 	"settings_activity_spotify_line": "Enquanto o Spotify toca neste computador, as pessoas nos seus Espaços veem a música, o artista e o andamento da música. Salvo neste dispositivo.",
 	"settings_app_create_failed": "Não foi possível criar o aplicativo",

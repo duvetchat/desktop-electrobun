@@ -1395,6 +1395,8 @@
 	"settings_accounts_remove_label": "{name} von diesem Gerät entfernen",
 	"settings_accounts_switch": "Wechseln",
 	"settings_accounts_title": "Konten",
+	"settings_activity_games": "Teile, was ich spiele",
+	"settings_activity_games_line": "Spiele und Apps, die deine Aktivität auf Discord zeigen, zeigen sie auch den Personen in deinen Spaces: was du spielst, die Details und seit wann. Discord bekommt sie weiterhin, aber wenn Discord vor Duvet geöffnet wurde, bekommt nur Discord sie, bis es geschlossen wird. Auf diesem Gerät gespeichert.",
 	"settings_activity_spotify": "Teile, was ich höre, auf Spotify",
 	"settings_activity_spotify_line": "Während Spotify auf diesem Computer abgespielt wird, sehen die Personen in deinen Spaces das Lied, seinen Interpreten und wie weit es fortgeschritten ist. Auf diesem Gerät gespeichert.",
 	"settings_app_create_failed": "Anwendung konnte nicht erstellt werden",
