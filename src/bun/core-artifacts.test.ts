@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { CARRIED, checkSums } from "../../scripts/core-artifacts";
+import { CORE_NOTICES } from "../mainview/third-party-notices";
 
 // The core's artifacts the desktop carries (PLAN-E2E-CLIENTES.md, its section on the core's artifacts): what its
 // release had, byte for byte, as native/core/SOURCE.json records them. scripts/core-artifacts.ts writes both.
@@ -24,6 +25,14 @@ describe("the core's artifacts", () => {
 		expect(CARRIED["macos-arm64-libduvet_e2e_ffi.dylib"]).toBe(path);
 		const source = await Bun.file(join(root, "native/core/SOURCE.json")).json();
 		expect(source.files[path]).toBe(await sha256(path));
+	});
+
+	// #628: the notices of what the core is built from (SQLCipher, OpenSSL, OpenMLS, hpke-rs and the rest), which its
+	// release carries in plain text, come as its other files come, and the Licenses page's build reads them there. A pin
+	// to a release without them fails here, and the page says they're missing.
+	test("its notices are among its files, where the Licenses page's build reads them", async () => {
+		expect(CARRIED["THIRD-PARTY-NOTICES.txt"]).toBe(CORE_NOTICES);
+		expect(await Bun.file(join(root, CORE_NOTICES)).exists()).toBe(true);
 	});
 
 	test("a downloaded file is taken only with the hash SHA256SUMS gives it", () => {

@@ -18,6 +18,9 @@ export const CARRIED: Record<string, string> = {
 	"macos-arm64-libduvet_e2e_ffi.dylib": "native/core/macos-arm64/libduvet_e2e_ffi.dylib",
 	"duvet_e2e_wasm.js": "src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm.js",
 	"duvet_e2e_wasm_bg.wasm": "src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm_bg.wasm",
+	// The notices of what the core is built from, which the Licenses page shows (#628): the page's build reads them
+	// here (src/mainview/third-party-notices.ts, CORE_NOTICES), for the web's pages and the packaged app's alike.
+	"THIRD-PARTY-NOTICES.txt": "native/core/THIRD-PARTY-NOTICES.txt",
 };
 
 /** A file's SHA-256 in hex, once SHA256SUMS (sha256sum's output) gives its name that hash; else it throws. */
