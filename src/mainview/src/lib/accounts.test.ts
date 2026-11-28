@@ -7,7 +7,7 @@ import {
 	readAccounts,
 	rememberAccount,
 } from "./accounts";
-import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
+import { followAccount, identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 
 const ana = {
 	id: "a1",
@@ -82,5 +82,24 @@ describe("the account in use", () => {
 		expect(identifyDevice()).toBe("device-a");
 		activateAccount(ben);
 		expect(identifyDevice()).toBe("device-b");
+	});
+
+	// #620's review, M5: Settings saves the account in use whenever the user changes (a USER_UPDATE about them). Once
+	// another page switched to another account, storage's tokens are that account's, and saving them under this page's
+	// account would have a later switch to it land on the other. Last in the file: the page it follows stays.
+	test("is none once another page switched to another account", () => {
+		localStorage.setItem("duvet_session_token", "access-a");
+		localStorage.setItem("duvet_refresh_token", "refresh-a");
+		keepUser(ana.id);
+		let reloads = 0;
+		followAccount(
+			() => {},
+			() => reloads++,
+		);
+		const user = { id: ana.id, username: "ana", alias: "Ana", avatar: "avatar-1" };
+		expect(accountForUser(user)).toEqual(ana);
+		activateAccount(ben);
+		expect(accountForUser(user)).toBeNull();
+		expect(reloads).toBe(1);
 	});
 });
