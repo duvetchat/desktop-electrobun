@@ -124,6 +124,8 @@ describe("the language files", () => {
 			settings_storage_used: ["percent"], // formatNumber, as a percent
 			storage_transfer_bytes: ["total"], // formatFileSize
 			storage_transfer_bytes_started_by: ["total"],
+			e2e_backup_restoring: ["done", "total"], // formatNumber (EncryptionGate, DevicesSettings)
+			e2e_file_progress: ["percent"], // formatNumber (SealedFile)
 		};
 		const plain = Object.entries(en).flatMap(([key, message]) =>
 			[...shapeOf(message).plain]
