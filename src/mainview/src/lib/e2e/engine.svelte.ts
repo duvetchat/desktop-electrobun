@@ -8,7 +8,7 @@
 import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
-import { logout, onSignOut } from "$lib/api/auth";
+import { logout, onSignOut, signOutLimits } from "$lib/api/auth";
 import {
 	getConversations,
 	type Conversation,
@@ -22,7 +22,7 @@ import { useDeviceSearch } from "$lib/search";
 import { conversations, dmMessages, friendsReady } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
-import { deviceName, forgetDevice } from "./client";
+import { deviceName, forgetDevice, leavePage } from "./client";
 import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
 import { decryptedFiles, useNamer } from "./decrypted-files.svelte";
 import { CoreError } from "./errors";
@@ -257,7 +257,10 @@ export const MADE_ONCE: readonly string[] = ["createConversation", "shareHistory
 
 /** Starts the page's engine for the session's user, once until it stops: its core closes as the user signs out. */
 export async function startEngine(userId: string, platform: EnginePlatform = pagePlatform()): Promise<void> {
-	if (started) return;
+	if (started) {
+		if (userId !== pageUser) await leaveForAnotherUser();
+		return;
+	}
 	started = true;
 	pageUser = userId;
 	onSignOut(stopEngine);
@@ -412,6 +415,19 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 		});
 	}
 	void follow();
+}
+
+/**
+ * A READY of another user than the engine's (#612): the page's session is another account's now (another page's switch
+ * of accounts, through the storage the app's pages share), which this engine, its core and database its own account's,
+ * mustn't run on. It stops, as a sign-out stops it, and the page loads again as that account, no engine starting before.
+ */
+async function leaveForAnotherUser(): Promise<void> {
+	await Promise.race([stopEngine(), new Promise((resolve) => setTimeout(resolve, signOutLimits.closeMs))]).catch(
+		(error: unknown) => console.error("[e2e] The engine didn't stop:", error),
+	);
+	started = true;
+	leavePage();
 }
 
 /** A tab that doesn't lead shows the leader's state: asked as a leader starts, and as the tab shows again. */

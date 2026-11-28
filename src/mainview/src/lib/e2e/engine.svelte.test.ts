@@ -267,6 +267,39 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		SLOW,
 	);
 
+	// #612: the page's session became another account's (another tab's switch, taken through the storage the tabs
+	// share), and its READY says so: this engine, whose core and database are the account it started for, stops, and
+	// the page loads again as the other account, which no engine starts for before.
+	test(
+		"a READY of another user while the engine runs stops it, and the page loads again",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			let [hosts, closes, reloads] = [0, 0, 0];
+			const host = counted(testHost(), () => closes++);
+			const desktop = platform({ desktop: true, desktopHost: async () => (hosts++, host) });
+			await page.startEngine(ana, desktop);
+			expect(page.encryption.state.name).toBe("first_device");
+			const location = { href: "", reload: () => reloads++ };
+			Object.defineProperty(globalThis, "window", { value: { location }, configurable: true });
+			try {
+				await page.startEngine(bo, desktop);
+				expect([closes, reloads]).toEqual([1, 1]);
+				expect(page.encryption.state).toEqual({ name: "starting" });
+				// Until it loads again, no READY starts one: neither Bo's nor Ana's.
+				await page.startEngine(bo, desktop);
+				await page.startEngine(ana, desktop);
+				expect([hosts, closes]).toEqual([1, 1]);
+				expect(page.encryption.state).toEqual({ name: "starting" });
+			} finally {
+				Reflect.deleteProperty(globalThis, "window");
+			}
+		},
+		SLOW,
+	);
+
 	test(
 		"on the web, the tab that leads runs the engine, and makes the storage last once its device is set up",
 		async () => {
