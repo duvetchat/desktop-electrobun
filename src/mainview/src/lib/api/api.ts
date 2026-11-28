@@ -508,6 +508,9 @@ async function requestRefresh(): Promise<string> {
 			(err) => err instanceof RefreshFailedError,
 			() => new Promise((r) => setTimeout(r, LOST_RENEWAL_RETRY_MS)),
 		);
+		// Another page switched accounts while it was out: storage holds that account's session now, which this one's
+		// answer mustn't overwrite (#620's review, M3), and the page loads again as it.
+		if (!ownSession()) return neverAnswered();
 		const newToken: string = resData.token;
 		accessToken.set(newToken);
 		localStorage.setItem("duvet_session_token", newToken);
@@ -517,6 +520,7 @@ async function requestRefresh(): Promise<string> {
 		markSessionRefreshed();
 		return newToken;
 	} catch (refreshError) {
+		if (!ownSession()) return neverAnswered();
 		if (refreshError instanceof RefreshFailedError && (refreshError.status === 401 || refreshError.status === 403)) {
 			accessToken.set(null);
 			localStorage.removeItem("duvet_session_token");
