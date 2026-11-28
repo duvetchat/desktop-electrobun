@@ -42,15 +42,28 @@ export default {
 		},
 		mac: {
 			icon: "icon.iconset",
-			// macOS asks before the app uses the microphone or the camera, with these lines: Electrobun writes an
-			// entitlement's text into Info.plist as its usage description (audio-input as NSMicrophoneUsageDescription,
-			// camera as NSCameraUsageDescription), and an app without them can't open either. Screen sharing needs no
-			// entry: macOS asks for Screen Recording itself. With codesign on, Electrobun would also sign these texts as
-			// the entitlements' values, where the hardened runtime wants true: check the mic and the camera then.
-			// English's os_ messages (#464); each other language's goes in its InfoPlist.strings (scripts.postBuild).
+			// A stable or canary build signs every binary with the Developer ID given (ELECTROBUN_DEVELOPER_ID, the release
+			// workflow's macos job) and the hardened runtime, then Apple notarizes it, its self-extracting bundle and its
+			// .dmg when its account is given too, each stapled (#619). Without them it signs nothing, as a dev build never
+			// does, and its bundled Bun is signed ad hoc instead, so the keys it keeps in the Keychain are its own
+			// (scripts/localize-bundle.ts, #618).
+			codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+			notarize: Boolean(
+				process.env.ELECTROBUN_DEVELOPER_ID &&
+				process.env.ELECTROBUN_APPLEID &&
+				process.env.ELECTROBUN_APPLEIDPASS &&
+				process.env.ELECTROBUN_TEAMID,
+			),
+			// The microphone and the camera, which macOS asks for before the app uses them. A signed build runs under the
+			// hardened runtime, which reads each as a Boolean, and Electrobun signs an entitlement's value as it's given
+			// (#619): true, so it isn't refused without a question. Electrobun writes a usage description into Info.plist
+			// for each (audio-input as NSMicrophoneUsageDescription, camera as NSCameraUsageDescription), without which
+			// the app can't open either, in words of its own: scripts.postBuild puts English's os_ messages there, and
+			// each other language's in its InfoPlist.strings (#464). Screen sharing needs no entry: macOS asks for
+			// Screen Recording itself.
 			entitlements: {
-				"com.apple.security.device.audio-input": en.os_microphone_usage,
-				"com.apple.security.device.camera": en.os_camera_usage,
+				"com.apple.security.device.audio-input": true,
+				"com.apple.security.device.camera": true,
 			},
 		},
 		win: {
