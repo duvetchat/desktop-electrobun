@@ -83,6 +83,7 @@ test("it starts once, shares the user's values at once, and answers on the setti
 		"buckets",
 		"voiceFaces",
 		"shareSpotify",
+		"shareGameActivity",
 		"micId",
 		"cameraId",
 		"noiseSuppression",

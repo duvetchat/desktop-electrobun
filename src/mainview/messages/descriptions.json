@@ -1216,6 +1216,7 @@
 	"settings_accounts_remove_label": "The bin's name for a screen reader: {name} is the account's display name.",
 	"settings_accounts_switch": "The button on another saved account that makes it the one in use.",
 	"settings_accounts_title": "The group at the top of My account that lists the accounts signed in on this device.",
+	"settings_activity_games": "A switch in Settings › Activity privacy, below Spotify's: whether the desktop app shows others the activity games and apps send to Discord (their Rich Presence), and passes it on to Discord while it runs. Discord is a brand.",
 	"settings_activity_spotify": "A switch in Settings › Activity privacy. Spotify is a brand.",
 	"settings_app_delete_confirm": "Asks before deleting a developer application. {name} is the application's name.",
 	"settings_app_private": "Tooltip of a lock button on a developer application: only the team's members can add its bot to a Space.",
