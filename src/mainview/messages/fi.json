@@ -550,6 +550,7 @@
 	"e2e_no_device": "Salattuja viestejä ei voi vielä lähettää vastaanottajalle {name}. Laitteesi välittää ne, kun se on mahdollista.",
 	"e2e_no_e2e_here": "Yksityisviestit eivät ole vielä käytettävissä tässä sovelluksessa. Käytä Duvetia verkossa.",
 	"e2e_not_ready": "Salatut keskustelut eivät ole valmiina tällä laitteella",
+	"e2e_open_refused": "Salatut keskustelut pysyivät suljettuina, koska Duvetin ruutu, joka pyysi avaamaan ne, peruttiin.",
 	"e2e_other_tab": "Aiempi viesti odottaa täällä, että sen välilehti lähettää sen. Yritä sitä uudelleen tai sulje se ensin.",
 	"e2e_paused": "Salatut keskustelut on keskeytetty. Viestisi lähetetään, kun ne palaavat.",
 	"e2e_qr_label": "Koodi tämän laitteen käyttöönottoon",

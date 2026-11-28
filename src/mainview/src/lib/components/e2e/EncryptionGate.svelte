@@ -97,7 +97,7 @@
 		 * lockableKeyring). One that didn't open is said with Try again there (PLAN-E2E-PLATAFORMAS.md, Task 4).
 		 */
 		lockableKeyring: boolean;
-		/** Opens the core again now, after a keyring that didn't open. */
+		/** Opens the core again now, after a keyring that didn't open, or asks again after a no to opening it (#611). */
 		onTryAgain: () => Promise<void>;
 		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
 		setupActions: {
@@ -226,6 +226,9 @@
 				if (encryption.lostKey) {
 					return { text: t("e2e_lost_key"), label: t("e2e_delete_device"), run: confirmed(t("e2e_delete_device")) };
 				}
+				// The person's no to Duvet's box before this account's database first opened here (#611): their Try again
+				// asks again.
+				if (encryption.refused) return { text: t("e2e_open_refused"), label: t("e2e_try_again"), run: onTryAgain };
 				// A keyring that didn't open, where a person may have locked it: unlocking it lets the next open through,
 				// which Try again makes now. Elsewhere the engine goes again by itself, as from any failure that passes.
 				return encryption.storage && lockableKeyring

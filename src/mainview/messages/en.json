@@ -550,6 +550,7 @@
 	"e2e_no_device": "{name} can't receive encrypted messages yet. Your device will pass them on when they can.",
 	"e2e_no_e2e_here": "Direct messages aren't available in this app yet. Use Duvet on the web.",
 	"e2e_not_ready": "Encrypted conversations aren't ready on this device",
+	"e2e_open_refused": "Encrypted conversations stayed closed, as Duvet's box asking to open them was cancelled.",
 	"e2e_other_tab": "An earlier message here waits for its tab to send it. Retry or dismiss it first.",
 	"e2e_paused": "Encrypted conversations are paused. Your message will be sent when they're back.",
 	"e2e_qr_label": "A code for setting up this device",

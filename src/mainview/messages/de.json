@@ -550,6 +550,7 @@
 	"e2e_no_device": "An {name} können noch keine verschlüsselten Nachrichten gesendet werden. Dein Gerät gibt sie weiter, sobald es geht.",
 	"e2e_no_e2e_here": "Direktnachrichten sind in dieser App noch nicht verfügbar. Nutze Duvet im Web.",
 	"e2e_not_ready": "Verschlüsselte Unterhaltungen sind auf diesem Gerät nicht bereit",
+	"e2e_open_refused": "Die verschlüsselten Unterhaltungen bleiben geschlossen, weil das Dialogfeld von Duvet zum Öffnen abgebrochen wurde.",
 	"e2e_other_tab": "Eine frühere Nachricht hier wartet darauf, dass ihr Tab sie sendet. Wiederhole oder schließe sie zuerst.",
 	"e2e_paused": "Verschlüsselte Unterhaltungen sind pausiert. Deine Nachricht wird gesendet, sobald sie wieder da sind.",
 	"e2e_qr_label": "Ein Code zum Einrichten dieses Geräts",

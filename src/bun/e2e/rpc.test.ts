@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
-import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileMark, type BoundaryDeps, type UserMark } from "./rpc";
+import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileAccounts, type BoundaryDeps, type KnownAccounts } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import {
 	COMPARE_WITH_THE_BOX,
@@ -162,10 +162,10 @@ function person(...answers: boolean[]) {
 	return { asked, confirm };
 }
 
-/** The account opened last, kept in memory: a page of its own starts with none. */
-function memoryMark(): UserMark {
-	let last: string | null = null;
-	return { read: () => last, write: (userId) => void (last = userId) };
+/** The accounts opened here, kept in memory: a page of its own starts with none, as a new installation. */
+function memoryAccounts(): KnownAccounts {
+	let kept: string[] | null = null;
+	return { read: () => kept, write: (accounts) => void (kept = [...accounts]) };
 }
 
 /** A reply as the page reads it from JSON: its `ok` and its error whatever the op gives. */
@@ -181,7 +181,7 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 		start: null,
 		confirm: async () => false,
 		show: () => {},
-		lastUser: memoryMark(),
+		known: memoryAccounts(),
 		...deps,
 		reply: (reply: E2eReply) => {
 			replies.push(reply);
@@ -1192,7 +1192,7 @@ describe("a reply Bun can't send", () => {
 				start: null,
 				confirm: async () => false,
 				show: () => {},
-				lastUser: memoryMark(),
+				known: memoryAccounts(),
 				reply: (reply) => {
 					if (first) {
 						first = false;
@@ -1208,16 +1208,18 @@ describe("a reply Bun can't send", () => {
 });
 
 // #558: each account that used this installation keeps its database here (decision 13), and a script in one account's
-// page could name another's.
+// page could name another's. #611: Bun asks only the first time an account's database opens on the installation.
 describe("whose database Bun opens", () => {
 	const ready = () => fakeCore((op) => (op === "open" ? { ok: { state: "ready", handle: 1 } } : { ok: {} }));
 	const opens = (core: ReturnType<typeof ready>) =>
 		core.calls.filter(({ op }) => op === "open").map(({ params }) => params);
+	const CY = "0193a4b2-0000-7000-8000-0000000000d1";
 
-	test("another account than the one opened last asks first, and only that one's database is destroyed", async () => {
+	test("an account not opened here before asks first, and only the open one's database is destroyed", async () => {
 		const core = ready();
 		const { asked, confirm } = person(false, true);
 		const page = pageOf({ start: core.start, confirm });
+		// The installation's first account opens as it always did: there's no other account's data here to read.
 		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
 		expect(asked).toEqual([]);
 
@@ -1232,62 +1234,101 @@ describe("whose database Bun opens", () => {
 		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
 		expect(core.calls.some(({ op }) => op === "destroy")).toBe(false);
 
-		// The person's yes: Bo's opens, and is the one opened last, which opens again without asking.
+		// The person's yes: Bo's opens, and opens again without asking.
 		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
 		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
 		expect(asked).toHaveLength(2);
 		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
 		expect((await page.ask("destroy", { userId: BO })).ok).toEqual({});
 		expect(core.calls.filter(({ op }) => op === "destroy")).toEqual([{ op: "destroy", params: { userId: BO } }]);
+		// Its database deleted, Bo's isn't an account opened here any more: opening it again asks.
+		expect((await page.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(3);
 	});
 
-	test("the account opened last is the installation's, from one start of the app to the next", async () => {
-		const folder = mkdtempSync(join(tmpdir(), "duvet-boundary-"));
-		folders.push(folder);
-		const mark = join(folder, "e2e", "last-user");
-		const first = pageOf({ start: ready().start, lastUser: fileMark(mark) });
-		await first.ask("open", { userId: ANA });
-
-		const { asked, confirm } = person(false);
-		const lost = fakeCore((op) => (op === "open" ? { ok: { state: "failed", reason: "bad_key" } } : { ok: {} }));
-		const next = pageOf({ start: lost.start, confirm, lastUser: fileMark(mark) });
-		expect((await next.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
-		expect((await next.ask("destroy", { userId: BO })).error).toMatchObject({ code: "refused" });
-		expect(asked).toHaveLength(1);
-		expect((await next.ask("open", { userId: ANA })).ok).toEqual({ state: "failed", reason: "bad_key" });
-		expect(asked).toHaveLength(1);
-		// Its key lost, Ana's database didn't open, and it's still hers: its data can go (Ruling 26's way out).
-		expect((await next.ask("destroy", { userId: ANA })).ok).toEqual({});
-		// A mark Bun can't read is no account: the next open asks nothing of the first account to open here.
-		writeFileSync(mark, "not an account");
-		expect(fileMark(mark).read()).toBeNull();
-		expect(fileMark(join(folder, "nothing")).read()).toBeNull();
-	});
-
-	// #558's re-review, RM3 (a): a script that asks for another account right after the person's yes to one shouldn't
-	// get a box the person takes for the one they just answered.
-	test("a second switch to another account in one run asks in other words than the first", async () => {
-		const { asked, confirm } = person(true, true);
+	// #611: a switch between saved accounts is a new page as the other one, whose engine opens that account's database.
+	test("a switch between accounts opened here asks nothing, a third account asks, and a no asks again on Try again", async () => {
+		const { asked, confirm } = person(true, false, true);
 		const page = pageOf({ start: ready().start, confirm });
 		await page.ask("open", { userId: ANA });
 		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
-		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
-		expect(asked).toHaveLength(2);
+		expect(asked).toHaveLength(1);
+		for (const userId of [ANA, BO, ANA, BO])
+			expect((await page.ask("open", { userId })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(1);
+
+		// A third account: the person's no opens nothing, and their Try again, another open, asks again.
+		expect((await page.ask("open", { userId: CY })).error).toMatchObject({ code: "refused" });
+		expect((await page.ask("open", { userId: CY })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(3);
+		expect(asked[0]?.message).toContain(BO);
+		expect(asked[1]?.message).toContain(CY);
+		expect(asked[2]).toEqual(asked[1]);
+		// #558's re-review, RM3 (a): a second new account in one run asks in words of its own, so a script that asks right
+		// after the person's yes to one doesn't get a box they take for the one they just answered.
 		expect(asked[1]?.title).not.toBe(asked[0]?.title);
-		expect(asked[1]?.message).toContain("already switched");
-		expect(asked[1]?.message).toContain(ANA);
+		// Words for a switch as for a sign-in, and none of the old alarm for an account opened here before.
+		for (const question of asked) {
+			expect(question.message).toContain("switched to it");
+			expect(question.title).not.toBe("Switch accounts again?");
+		}
+		for (const userId of [ANA, BO, CY]) expect((await page.ask("open", { userId })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(3);
 	});
 
-	// RM3 (b): a mark the file didn't take would let the next switch back go unasked.
-	test("a mark the file didn't take asks, as Bun opened another account since", async () => {
+	test("the accounts opened here are the installation's, from one start to the next, with the one an earlier version opened last", async () => {
+		const folder = mkdtempSync(join(tmpdir(), "duvet-boundary-"));
+		folders.push(folder);
+		const file = join(folder, "e2e", "known-users");
+		const last = join(folder, "e2e", "last-user");
+		// An installation from before the list: its mark names Ana, who opens after the update without a question.
+		mkdirSync(join(folder, "e2e"));
+		writeFileSync(last, ANA);
 		const { asked, confirm } = person(true, false);
-		// A file that keeps saying Ana, whatever Bun writes.
-		const stuck: UserMark = { read: () => ANA, write: () => {} };
-		const page = pageOf({ start: ready().start, confirm, lastUser: stuck });
-		await page.ask("open", { userId: ANA });
-		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
-		expect((await page.ask("open", { userId: ANA })).error).toMatchObject({ code: "refused" });
+		const first = pageOf({ start: ready().start, confirm, known: fileAccounts(file, last) });
+		expect((await first.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(0);
+		expect((await first.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(1);
+
+		const lost = fakeCore((op) => (op === "open" ? { ok: { state: "failed", reason: "bad_key" } } : { ok: {} }));
+		const next = pageOf({ start: lost.start, confirm, known: fileAccounts(file, last) });
+		expect((await next.ask("open", { userId: CY })).error).toMatchObject({ code: "refused" });
+		expect((await next.ask("destroy", { userId: CY })).error).toMatchObject({ code: "refused" });
 		expect(asked).toHaveLength(2);
+		for (const userId of [BO, ANA]) {
+			expect((await next.ask("open", { userId })).ok).toEqual({ state: "failed", reason: "bad_key" });
+		}
+		expect(asked).toHaveLength(2);
+		// Its key lost, Ana's database didn't open, and it's still hers: its data can go (Ruling 26's way out), and with
+		// it her place among the accounts opened here.
+		expect((await next.ask("destroy", { userId: ANA })).ok).toEqual({});
+		expect(fileAccounts(file, last).read()).toEqual([BO]);
+		// What isn't an account's ID in the list is none; no list and no mark is an installation's start.
+		writeFileSync(file, "not an account");
+		expect(fileAccounts(file, last).read()).toEqual([]);
+		expect(fileAccounts(join(folder, "none"), join(folder, "nothing")).read()).toBeNull();
+	});
+
+	// RM3 (b): a list Bun can't read, or that didn't take a yes, must never pass for an installation's start.
+	test("a list Bun can't read asks even for the first account, and a yes it didn't keep holds for the run", async () => {
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { asked, confirm } = person(true);
+			const unreadable: KnownAccounts = {
+				read: () => {
+					throw new Error("EACCES");
+				},
+				write: () => {},
+			};
+			const page = pageOf({ start: ready().start, confirm, known: unreadable });
+			expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+			expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+			expect(asked).toHaveLength(1);
+			expect(logged).toHaveBeenCalled();
+		} finally {
+			logged.mockRestore();
+		}
 	});
 });
 

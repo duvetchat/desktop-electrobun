@@ -189,13 +189,13 @@ describe("what Bun reads of the page", () => {
 				answers.push(yes);
 				return yes;
 			};
-			let last: string | null = null;
-			const lastUser = { read: () => last, write: (userId: string) => void (last = userId) };
+			let kept: string[] | null = null;
+			const known = { read: () => kept, write: (accounts: string[]) => void (kept = [...accounts]) };
 			const send = e2eBoundary({
 				start,
 				confirm,
 				show: () => {},
-				lastUser,
+				known,
 				reply: (reply) => void replies.push(reply),
 			});
 			const sent: number[] = [];

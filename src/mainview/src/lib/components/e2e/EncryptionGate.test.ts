@@ -174,6 +174,24 @@ describe("the encryption gate", () => {
 		expect(page).toContain("onTryAgain={tryAgain}");
 	});
 
+	// #611: the person's no to Duvet's box before an account's database first opens on this computer; their Try again
+	// asks again, wherever the key is kept.
+	test("a no to opening the account's database offers to try again, which asks again", () => {
+		const state: EngineState = { name: "failed", lostKey: false, refused: true };
+		for (const lockableKeyring of [false, true]) {
+			const html = render(EncryptionGate, { props: { ...props(state), lockableKeyring } }).body.replace(
+				/<!--[^]*?-->/g,
+				"",
+			);
+			expect(html).toContain(en.e2e_open_refused);
+			expect(html).toMatch(/<button [^>]*>\s*Try again\s*<\/button>/);
+			expect(html).not.toContain(en.e2e_failed);
+		}
+		expect(source("EncryptionGate.svelte")).toContain(
+			'{ text: t("e2e_open_refused"), label: t("e2e_try_again"), run: onTryAgain }',
+		);
+	});
+
 	test("a database no key opens still offers to delete it", () => {
 		const lost = render(EncryptionGate, {
 			props: { ...props({ name: "failed", lostKey: true }), lockableKeyring: true },

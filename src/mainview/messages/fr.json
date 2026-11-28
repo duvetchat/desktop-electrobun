@@ -550,6 +550,7 @@
 	"e2e_no_device": "Impossible pour l’instant d’envoyer des messages chiffrés à {name}. Ton appareil les transmettra dès que possible.",
 	"e2e_no_e2e_here": "Les messages privés ne sont pas encore disponibles dans cette app. Utilise Duvet sur le web.",
 	"e2e_not_ready": "Les conversations chiffrées ne sont pas prêtes sur cet appareil",
+	"e2e_open_refused": "Les conversations chiffrées sont restées fermées, car la boîte de Duvet qui demandait de les ouvrir a été annulée.",
 	"e2e_other_tab": "Un message précédent attend ici que son onglet l’envoie. Réessaie-le ou ferme-le d’abord.",
 	"e2e_paused": "Les conversations chiffrées sont en pause. Ton message sera envoyé à leur retour.",
 	"e2e_qr_label": "Un code pour configurer cet appareil",

@@ -550,6 +550,7 @@
 	"e2e_no_device": "Ainda não é possível enviar mensagens criptografadas para {name}. Seu dispositivo vai repassá-las quando for possível.",
 	"e2e_no_e2e_here": "As mensagens diretas ainda não estão disponíveis neste app. Use o Duvet na web.",
 	"e2e_not_ready": "As conversas criptografadas não estão prontas neste dispositivo",
+	"e2e_open_refused": "As conversas criptografadas continuam fechadas, porque a caixa do Duvet que pedia para abri-las foi cancelada.",
 	"e2e_other_tab": "Uma mensagem anterior daqui está esperando a aba dela enviá-la. Tente de novo ou dispense-a primeiro.",
 	"e2e_paused": "As conversas criptografadas estão pausadas. Sua mensagem será enviada quando elas voltarem.",
 	"e2e_qr_label": "Um código para configurar este dispositivo",

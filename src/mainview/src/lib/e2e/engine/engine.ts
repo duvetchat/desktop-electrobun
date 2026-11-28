@@ -146,7 +146,8 @@ export interface EngineParts {
  * another one is offered, as one of them may still hold the keys. What the encrypted backup shows (Task 32) is apart
  * from it: backup() and onBackup(). `failed` with `lostKey` is a database its key no longer opens; with `storage`, the
  * core's storage failed, its keyring or its disk (a locked Secret Service, a Keychain that refused): another open may
- * get past it, which the person's Try again makes now (PLAN-E2E-PLATAFORMAS.md, Task 4).
+ * get past it, which the person's Try again makes now (PLAN-E2E-PLATAFORMAS.md, Task 4). With `refused`, the person
+ * said no to opening this account's database (the desktop's box, #558), which their Try again asks again (#611).
  */
 export type EngineState =
 	| { name: "starting" }
@@ -161,7 +162,7 @@ export type EngineState =
 	| { name: "removed" }
 	| { name: "locked" }
 	| { name: "unsupported" }
-	| { name: "failed"; lostKey: boolean; storage?: true }
+	| { name: "failed"; lostKey: boolean; storage?: true; refused?: true }
 	| { name: "update"; minimum: string | null };
 
 const DAY = 24 * 3600 * 1000;
@@ -227,6 +228,8 @@ export class E2EEngine {
 	/** A start that failed and goes again (calls it off), and the uploads every day. */
 	#retry: (() => void) | null = null;
 	#retries = 0;
+	/** The person said no to opening this account's database: the start waits for their Try again (#611). */
+	#refused = false;
 	#daily: (() => void) | null = null;
 	/** The device this session is bound to, once it is. */
 	#device: string | null = null;
@@ -1198,10 +1201,15 @@ export class E2EEngine {
 
 	/**
 	 * The person's Try again, after a start that failed and goes again by itself (a keyring that didn't open): it goes
-	 * now, as a new gateway session's READY makes it go. With no start waiting to go again, it does nothing.
+	 * now, as a new gateway session's READY makes it go. After the person's no to opening the account's database, it
+	 * asks again (#611). With no start waiting to go again, it does nothing.
 	 */
 	tryAgain(): Promise<void> {
 		return this.#queue(async () => {
+			if (this.#refused) {
+				this.#refused = false;
+				return this.#boot();
+			}
 			if (!this.#retry) return;
 			this.#retry();
 			this.#retry = null;
@@ -1649,12 +1657,15 @@ export class E2EEngine {
 
 	/**
 	 * A start that failed: a client too old waits for its update, and the person's no to opening this account's database
-	 * on the desktop (desktop-electrobun#558) waits for the app's next start, as going again would put the same question
-	 * up again at once. Anything else goes again later.
+	 * on the desktop (desktop-electrobun#558) waits for their Try again (#611), as going again by itself would put the
+	 * same question up again at once. Anything else goes again later.
 	 */
 	#failed(error: unknown) {
 		if (error instanceof UpdateRequiredError) return this.#set({ name: "update", minimum: error.minimum });
-		if (error instanceof CoreError && error.code === "refused") return this.#set({ name: "failed", lostKey: false });
+		if (error instanceof CoreError && error.code === "refused") {
+			this.#refused = true;
+			return this.#set({ name: "failed", lostKey: false, refused: true });
+		}
 		console.error("[e2e] The engine didn't start:", error);
 		this.#later();
 	}

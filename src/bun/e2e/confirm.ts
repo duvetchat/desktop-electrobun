@@ -286,28 +286,28 @@ export function verifyQuestion({ user, digits }: { user: string; digits: string 
 }
 
 /**
- * Opening the database of another account than the one this installation opened last (#558): each account that used
- * Duvet here keeps its own, which signing out leaves. By its ID, which is all Bun knows of it. `again`, a second switch
- * since the app started, in words of its own: a script that asks right after the person's yes to the first would
- * otherwise get a box they take for the one they just answered.
+ * Opening the database of an account this installation never opened (#558, #611): each account that used Duvet here
+ * keeps its own, which signing out leaves. Asked once an account, as a person signs in to it or switches to it, so the
+ * words fit both. By its ID, which is all Bun knows of it: a name the page sent could be any account's. `again`, a
+ * second new account since the app started, in words of its own: a script that asks right after the person's yes to
+ * the first would otherwise get a box they take for the one they just answered.
  */
 export function otherAccountQuestion(user: string, again = false): Question {
+	const only = "Open them only if you've just signed in to this account, or switched to it, in Duvet.";
 	if (again) {
 		return {
-			title: "Switch accounts again?",
+			title: "Open one more account's encrypted conversations?",
 			message:
-				"Duvet already switched to another account's encrypted conversations since it started, and now it's asked to " +
-				"switch again.\n\nOpen this account's only if you've just signed out and signed in to it here." +
-				`\n\nIts ID: ${user}`,
+				"Since it started, Duvet has already opened a new account's encrypted conversations here, and now it's asked " +
+				`to open another's for the first time.\n\n${only}\n\nIts ID: ${user}`,
 			yes: "Open",
 		};
 	}
 	return {
-		title: "Open another account's encrypted conversations?",
+		title: "Open this account's encrypted conversations?",
 		message:
-			"Duvet will open the encrypted conversations this computer keeps for another account than the one it opened last." +
-			"\n\nOpen them only if you've just signed in to that account here." +
-			`\n\nIts ID: ${user}`,
+			"Duvet hasn't opened this account's encrypted conversations on this computer before." +
+			`\n\n${only}\n\nIts ID: ${user}`,
 		yes: "Open",
 	};
 }

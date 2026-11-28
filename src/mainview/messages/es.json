@@ -550,6 +550,7 @@
 	"e2e_no_device": "Todavía no se pueden enviar mensajes cifrados a {name}. Tu dispositivo se los pasará cuando sea posible.",
 	"e2e_no_e2e_here": "Los mensajes directos todavía no están disponibles en esta app. Usa Duvet en la web.",
 	"e2e_not_ready": "Las conversaciones cifradas no están listas en este dispositivo",
+	"e2e_open_refused": "Las conversaciones cifradas siguen cerradas, porque se canceló el cuadro de Duvet que pedía abrirlas.",
 	"e2e_other_tab": "Un mensaje anterior de aquí espera a que su pestaña lo envíe. Reinténtalo o descártalo primero.",
 	"e2e_paused": "Las conversaciones cifradas están en pausa. Tu mensaje se enviará cuando vuelvan.",
 	"e2e_qr_label": "Un código para configurar este dispositivo",
