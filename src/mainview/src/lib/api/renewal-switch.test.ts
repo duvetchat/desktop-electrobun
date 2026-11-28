@@ -36,7 +36,7 @@ async function renewalOut(api: Promise<typeof import("./api")>) {
 	const { refreshSession } = await api;
 	let answer: (response: Response) => void = () => {};
 	const fetched = spyOn(globalThis, "fetch").mockImplementation(
-		(() => new Promise<Response>((resolve) => (answer = resolve))) as typeof fetch,
+		((_input: string | URL | Request) => new Promise<Response>((resolve) => (answer = resolve))) as typeof fetch,
 	);
 	void refreshSession();
 	await Bun.sleep(0);
