@@ -19,8 +19,14 @@
 //   sh -c "\"<launcher>\" &". Between a shell's double quotes `"`, `$`, `` ` `` and `\` don't stand for themselves: the
 //   chmod would fail once the old build is gone, and nothing would open again. A data folder with any of them gets
 //   "Download update" too.
+// - On macOS it deletes the running .app, moves the new one into its place from the data folder, and opens it with
+//   sh -c '… open "<bundle>"' (#619). So the bundle's path must be one a shell reads as itself, its own folder and each
+//   of its folders this user's to empty, the app not run from App Translocation's read-only copy (macOS's, for an app
+//   opened where it was downloaded), and the bundle on the data folder's volume, as a rename can't cross volumes once
+//   the old bundle is gone. Any other bundle gets "Download update".
+import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { isNewerVersion, manifestVerifies, parseManifest, type UpdateManifest } from "./update-manifest";
 
 /** Electrobun's update info, as its checkForUpdate gives it. */
@@ -78,6 +84,26 @@ export function shellCanQuote(folder: string): boolean {
 	return !/["$`\\]/.test(folder);
 }
 
+/** Whether Electrobun can replace the running app's bundle on macOS, its data in that folder (the file's header). */
+export function bundleCanBeReplaced(bundle: string, appData: string): boolean {
+	if (!shellCanQuote(bundle) || bundle.includes("/AppTranslocation/")) return false;
+	try {
+		if (statSync(dirname(bundle)).dev !== statSync(appData).dev) return false;
+		accessSync(dirname(bundle), constants.W_OK | constants.X_OK);
+		// Grows as it's walked: each folder's own folders after it.
+		const folders = [bundle];
+		for (const folder of folders) {
+			accessSync(folder, constants.R_OK | constants.W_OK | constants.X_OK);
+			for (const entry of readdirSync(folder, { withFileTypes: true })) {
+				if (entry.isDirectory()) folders.push(join(folder, entry.name));
+			}
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /** The SHA-256 of a file, in hex, read as a stream. */
 export async function fileSha256(path: string): Promise<string> {
 	const hasher = new Bun.CryptoHasher("sha256");
@@ -97,8 +123,10 @@ export class UpdateChecker {
 		private readonly publicKey: Uint8Array<ArrayBuffer>,
 		private readonly onOffer: (offer: UpdateOffer | null) => void,
 		private readonly fetcher: (url: string) => Promise<Response> = (url) => fetch(url),
-		/** The system whose rules for the app's data folder hold: Windows' update.bat, Linux's shell. */
+		/** The system whose rules for the app's place hold: Windows' update.bat, Linux's shell, macOS's bundle. */
 		private readonly platform: string = process.platform,
+		/** The running app's bundle on macOS, as Electrobun finds it: Contents/MacOS/bun's. */
+		private readonly bundle: string = resolve(dirname(process.execPath), "..", ".."),
 	) {}
 
 	/** What the title bar offers; null for nothing. */
@@ -191,10 +219,11 @@ export class UpdateChecker {
 		}
 	}
 
-	/** Whether Electrobun can apply an update with the app's data in that folder, on this system. */
+	/** Whether Electrobun can apply an update with the app's data in that folder, and on macOS its bundle where it is. */
 	private canApplyIn(folder: string): boolean {
 		if (this.platform === "win32") return updateBatCanName(folder);
 		if (this.platform === "linux") return shellCanQuote(folder);
+		if (this.platform === "darwin") return bundleCanBeReplaced(this.bundle, folder);
 		return true;
 	}
 

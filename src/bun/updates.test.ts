@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import config from "../../electrobun.config";
@@ -85,7 +85,18 @@ type SetUp = {
 	hashes?: string[];
 	folder?: string;
 	platform?: string;
+	/** The running app's bundle, which macOS's rules read; a writable one beside the data folder when it's left out. */
+	bundle?: string;
 };
+
+/** A Mac app's bundle in a folder, its own folders inside as Electrobun's build makes them, writable. */
+function macBundle(parent: string, name = "Duvet.app"): string {
+	const bundle = join(parent, name);
+	for (const folder of ["MacOS", "Resources/app/views"])
+		mkdirSync(join(bundle, "Contents", folder), { recursive: true });
+	writeFileSync(join(bundle, "Contents", "MacOS", "bun"), "");
+	return bundle;
+}
 
 /** A checker over a release of the build BUILD at newbuild01, 1.2.0, signed for this platform, on a stable 1.1.0. Its
  * app data folder is under no system's rules unless the case names the system. */
@@ -117,6 +128,7 @@ async function setUp(opts: SetUp = {}) {
 		},
 		// A system Electrobun doesn't build for, so no folder rule applies.
 		opts.platform ?? "freebsd",
+		opts.bundle ?? macBundle(appData),
 	);
 	return { checker, updater, did, extraction, offers, fetched };
 }
@@ -219,6 +231,73 @@ describe("the app's own updates (#456)", () => {
 		expect(shellCanQuote("/home/José Smith/data & more (x) 'y' %^!/com.duvet.desktop/stable")).toBe(true);
 		for (const odd of ['"', "$", "`", "\\"]) {
 			expect(shellCanQuote(`/home/a${odd}b/.local/share/com.duvet.desktop/stable`)).toBe(false);
+		}
+	});
+
+	// Electrobun deletes the running .app, moves the new one into its place from the app's data folder, and opens it with
+	// sh -c '… open "<bundle>"' (#619): where any of it can't be done, the app would be left half deleted, or gone.
+	test("a translocated or unwritable bundle gets Download update", async () => {
+		const DOWNLOAD: UpdateOffer[] = [{ version: "1.2.0", how: "download" }];
+		const root = mkdtempSync(join(tmpdir(), "duvet-bundle-"));
+		// What macOS runs an app from when it's opened where it was downloaded, never moved: a read-only copy.
+		const translocated = await setUp({
+			platform: "darwin",
+			bundle: macBundle(join(root, "AppTranslocation", "4F1D", "d")),
+		});
+		await translocated.checker.check();
+		expect(translocated.offers).toEqual(DOWNLOAD);
+		expect(translocated.did).toEqual(["check newbuild01"]);
+
+		// This user can't write the folder it's in, the bundle, or a folder inside it: the deletion stops there.
+		const bundle = macBundle(join(root, "Applications"));
+		for (const locked of [join(root, "Applications"), bundle, join(bundle, "Contents", "Resources")]) {
+			chmodSync(locked, 0o555);
+			try {
+				const { checker, did, offers } = await setUp({ platform: "darwin", bundle });
+				await checker.check();
+				expect(offers).toEqual(DOWNLOAD);
+				expect(did).toEqual(["check newbuild01"]);
+				await checker.apply();
+				expect(did).toEqual(["check newbuild01"]);
+			} finally {
+				chmodSync(locked, 0o755);
+			}
+		}
+		// The same bundle, writable, is replaced in place.
+		const writable = await setUp({ platform: "darwin", bundle });
+		await writable.checker.check();
+		expect(writable.offers).toEqual([RESTART]);
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	test("a bundle path a shell would misread gets Download update", async () => {
+		const root = mkdtempSync(join(tmpdir(), "duvet-bundle-"));
+		for (const odd of ['"', "$", "`", "\\"]) {
+			const { checker, offers } = await setUp({ platform: "darwin", bundle: macBundle(join(root, `a${odd}b`)) });
+			await checker.check();
+			expect(offers).toEqual([{ version: "1.2.0", how: "download" }]);
+		}
+		// What a shell's double quotes keep as it is.
+		const { checker, offers } = await setUp({
+			platform: "darwin",
+			bundle: macBundle(join(root, "José's apps & (x) %!")),
+		});
+		await checker.check();
+		expect(offers).toEqual([RESTART]);
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	// A rename can't cross volumes, and Electrobun renames the new bundle into place once the old one is deleted.
+	const otherVolume = existsSync("/dev/shm") && statSync("/dev/shm").dev !== statSync(tmpdir()).dev;
+	test.skipIf(!otherVolume)("a bundle on another volume than the app's data gets Download update", async () => {
+		const elsewhere = mkdtempSync(join("/dev/shm", "duvet-bundle-"));
+		try {
+			const { checker, did, offers } = await setUp({ platform: "darwin", bundle: macBundle(elsewhere) });
+			await checker.check();
+			expect(offers).toEqual([{ version: "1.2.0", how: "download" }]);
+			expect(did).toEqual(["check newbuild01"]);
+		} finally {
+			rmSync(elsewhere, { recursive: true, force: true });
 		}
 	});
 
