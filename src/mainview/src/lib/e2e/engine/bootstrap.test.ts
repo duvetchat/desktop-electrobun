@@ -283,20 +283,23 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 		SLOW,
 	);
 
-	// desktop-electrobun#558: the desktop asks before it opens another account's database than the one it opened last.
+	// desktop-electrobun#558: the desktop asks before it opens an account's database it never opened; #611: a no is
+	// asked again on the person's Try again, never by itself.
 	test(
-		"a no to opening this account's database ends the tries with the failed bar, asking no more",
+		"a no to opening this account's database waits for the person's Try again, which asks again",
 		async () => {
 			const fake = new FakeApi();
 			const ana = fake.addUser();
 			useFake(fake);
+			const answers = [false, true];
 			let asked = 0;
 			const host = new Proxy(testHost(), {
 				get(target, name) {
 					if (name === "open") {
-						return async () => {
+						return async (userId: string) => {
 							asked++;
-							throw new CoreError("refused", "the person didn't confirm it");
+							if (!answers.shift()) throw new CoreError("refused", "the person didn't confirm it");
+							return target.open(userId);
 						};
 					}
 					const value = Reflect.get(target, name);
@@ -305,13 +308,20 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			});
 			const a = testDevice(fake, ana, { host });
 			await a.engine.start();
-			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false, refused: true });
 			// Neither the time nor a new gateway session asks again: the person said no.
 			a.clock.advance(10 * MINUTE);
 			a.connect(null);
 			await a.engine.makeIdentity();
-			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false, refused: true });
 			expect(asked).toBe(1);
+			// Their Try again asks again, and the yes opens it.
+			await a.engine.tryAgain();
+			expect(asked).toBe(2);
+			expect(a.engine.state).toEqual({ name: "first_device", recoveryKey: null, finishing: false });
+			// Nothing waits for another Try again.
+			await a.engine.tryAgain();
+			expect(asked).toBe(2);
 			await a.engine.stop();
 		},
 		SLOW,

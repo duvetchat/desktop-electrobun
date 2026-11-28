@@ -1,23 +1,19 @@
 import type { ChatDraft } from "$lib/drafts";
 import type { MessageContent } from "$lib/e2e/engine/content";
-import { heldText, MessageType, quotedText, type Message } from "$lib/types";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
+import { directMessageToMessage, type Message } from "$lib/types";
 
 /**
- * A conversation's message of a thread, as the API gives it without its text, with what this device's own database
- * holds of it and of its quote (PLAN-E2E-CLIENTES.md, «La vista de una conversación»: lib/types' heldText and
- * quotedText). A notice (a pin's, a call's, a share's) draws none of the API's text, as its words come from its own
- * fields; no preview is drawn.
+ * A conversation's thread as the API answers it, each row built as the chat's list builds its own (lib/types'
+ * directMessageToMessage, #613): a text or voice message and every quote draw what this device's own database holds of
+ * them (PLAN-E2E-CLIENTES.md, «La vista de una conversación»), its files are the device's, a notice draws its own fields,
+ * and nothing else the API sends draws as a member's: its components, its flags, its files, a row it made up.
  */
-export function withHeld(message: Message, content: MessageContent): Message {
-	const written = message.type === MessageType.Text || message.type === MessageType.Voice;
-	const ref = message.referenced_message;
-	return {
-		...message,
-		...(written ? heldText(content, message, message.seq) : { content: null }),
-		embeds: null,
-		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
-	};
-}
+export const conversationThread = (
+	thread: DirectMessage[],
+	members: Conversation["members"],
+	content: MessageContent,
+): Message[] => thread.flatMap((message) => directMessageToMessage(message, members, content) ?? []);
 
 /**
  * A thread as it is now: its messages as loaded, each as the chat's list has it now when it has it, and the replies to

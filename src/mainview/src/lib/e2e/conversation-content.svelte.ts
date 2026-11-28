@@ -65,7 +65,7 @@ export function heldRow(conversationId: string, id: string): Held {
 }
 
 /**
- * What a view reads of the conversation's messages (lib/types' directMessageToMessage, lib/threads' withHeld), for
+ * What a view reads of the conversation's messages (lib/types' directMessageToMessage, lib/threads' conversationThread), for
  * `user`, the person: their typed text only under a row naming them its author (#575, N-M5), whatever another names.
  */
 export function contentOf(conversationId: string, user: string | undefined): MessageContent {

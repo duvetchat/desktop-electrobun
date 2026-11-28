@@ -1,6 +1,6 @@
 import { getHostURL, route } from "$lib/common/common";
 import { inAppWords } from "$lib/api/error-wording";
-import { duvetClient } from "$lib/e2e/client";
+import { duvetClient, ownSession } from "$lib/e2e/client";
 import { currentShell } from "$lib/platform";
 import {
 	renewalDue,
@@ -431,6 +431,10 @@ export function markSessionRefreshed(): void {
 
 let refreshing: Promise<string> | null = null;
 
+/** What a request or renewal that would go out with another account's session gives (#612): nothing, ever, as the page
+ * loads again as that account (ownSession). Failing would only show an error for a moment. */
+const neverAnswered = <T>(): Promise<T> => new Promise<T>(() => {});
+
 /** Rotates the session's tokens and resolves to the new access token. Concurrent callers share one
  * request, its retry included. A rejected session (401/403) signs out; rate limits, server and network
  * errors don't, and a network error goes once more first. Only the main window does it: any other of
@@ -473,6 +477,7 @@ async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
 }
 
 async function requestRefresh(): Promise<string> {
+	if (!ownSession()) return neverAnswered();
 	const refreshHeaders = new Headers({ "X-Duvet-Client": duvetClient() });
 	const currentSessionToken = localStorage.getItem("duvet_refresh_token");
 	if (currentSessionToken) {
@@ -503,6 +508,9 @@ async function requestRefresh(): Promise<string> {
 			(err) => err instanceof RefreshFailedError,
 			() => new Promise((r) => setTimeout(r, LOST_RENEWAL_RETRY_MS)),
 		);
+		// Another page switched accounts while it was out: storage holds that account's session now, which this one's
+		// answer mustn't overwrite (#620's review, M3), and the page loads again as it.
+		if (!ownSession()) return neverAnswered();
 		const newToken: string = resData.token;
 		accessToken.set(newToken);
 		localStorage.setItem("duvet_session_token", newToken);
@@ -512,6 +520,7 @@ async function requestRefresh(): Promise<string> {
 		markSessionRefreshed();
 		return newToken;
 	} catch (refreshError) {
+		if (!ownSession()) return neverAnswered();
 		if (refreshError instanceof RefreshFailedError && (refreshError.status === 401 || refreshError.status === 403)) {
 			accessToken.set(null);
 			localStorage.removeItem("duvet_session_token");
@@ -603,6 +612,8 @@ const coreFetch = async <T = any>(
 			? sendForm(url, init, upload, bytes, options.onUploadProgress)
 			: fetchWithin(url, init, options.answerMs ?? requestLimits.answerMs);
 
+	// The session storage holds is another account's once another page switched accounts (#612).
+	if (!given && !ownSession()) return neverAnswered();
 	const token = given ? given.token : get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = given ? given.sessionToken : localStorage.getItem("duvet_refresh_token");
 
@@ -650,6 +661,8 @@ const coreFetch = async <T = any>(
 			// would revoke them under the requests already retrying with them.
 			const current = get(accessToken) || localStorage.getItem("duvet_session_token");
 			const newToken = current && current !== token ? current : await refreshSession(token);
+			// The main window's renewal another window took may be another account's (#612).
+			if (!ownSession()) return neverAnswered();
 			headers.set("Authorization", `Bearer ${newToken}`);
 			const newSessionToken = localStorage.getItem("duvet_refresh_token");
 			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);

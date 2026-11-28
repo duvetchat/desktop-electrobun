@@ -6,9 +6,10 @@
 // conversation says of its group, and conversation-content.svelte.ts what the device holds of their messages. The hosts
 // load with the engine's start, never with a page.
 import { get } from "svelte/store";
+import { forgetAccount } from "$lib/accounts";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
-import { logout, onSignOut } from "$lib/api/auth";
+import { logout, onSignOut, signOutLimits } from "$lib/api/auth";
 import {
 	getConversations,
 	type Conversation,
@@ -22,7 +23,7 @@ import { useDeviceSearch } from "$lib/search";
 import { conversations, dmMessages, friendsReady } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
-import { deviceName, forgetDevice } from "./client";
+import { deviceName, forgetDevice, leavePage } from "./client";
 import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
 import { decryptedFiles, useNamer } from "./decrypted-files.svelte";
 import { CoreError } from "./errors";
@@ -257,7 +258,10 @@ export const MADE_ONCE: readonly string[] = ["createConversation", "shareHistory
 
 /** Starts the page's engine for the session's user, once until it stops: its core closes as the user signs out. */
 export async function startEngine(userId: string, platform: EnginePlatform = pagePlatform()): Promise<void> {
-	if (started) return;
+	if (started) {
+		if (userId !== pageUser) await leaveForAnotherUser();
+		return;
+	}
 	started = true;
 	pageUser = userId;
 	onSignOut(stopEngine);
@@ -412,6 +416,19 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 		});
 	}
 	void follow();
+}
+
+/**
+ * A READY of another user than the engine's (#612): the page's session is another account's now (another page's switch
+ * of accounts, through the storage the app's pages share), which this engine, its core and database its own account's,
+ * mustn't run on. It stops, as a sign-out stops it, and the page loads again as that account, no engine starting before.
+ */
+async function leaveForAnotherUser(): Promise<void> {
+	await Promise.race([stopEngine(), new Promise((resolve) => setTimeout(resolve, signOutLimits.closeMs))]).catch(
+		(error: unknown) => console.error("[e2e] The engine didn't stop:", error),
+	);
+	started = true;
+	leavePage();
 }
 
 /** A tab that doesn't lead shows the leader's state: asked as a leader starts, and as the tab shows again. */
@@ -764,9 +781,15 @@ export const finishKeysWithout = () => onDevices("finishKeysWithout", undefined,
  */
 export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 
-/** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */
+/**
+ * Remove this device and delete its data (decision 13): its data goes, then the person is signed out, their account
+ * leaving the saved ones first, as Settings' Sign out has it leave (#615): switching to it would land on signing in.
+ */
 export async function removeThisDevice(): Promise<void> {
 	await onDevices("removeThisDevice", undefined, (made) => made.removeThisDevice());
-	if (pageUser) forgetDevice(pageUser);
+	if (pageUser) {
+		forgetDevice(pageUser);
+		forgetAccount(pageUser);
+	}
 	await logout();
 }

@@ -28,6 +28,7 @@
 		getConversationMessageThread,
 		pinConversationMessage,
 		unpinConversationMessage,
+		type DirectMessage,
 	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { keyboard } from "$lib/keyboard.svelte";
@@ -56,7 +57,7 @@
 	import { t } from "$lib/i18n";
 	import { formatNumber, formatRelativeTime } from "$lib/i18n/format";
 	import { belowIndicator } from "$lib/jumps";
-	import { threadNow, withHeld } from "$lib/threads";
+	import { conversationThread, threadNow } from "$lib/threads";
 	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
 	import { sharedLine } from "$lib/e2e/sharing";
 	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
@@ -354,19 +355,18 @@
 	let threadLoading = $state(false);
 	let threadError = $state("");
 	let threadMessages = $state.raw<Message[]>([]);
+	// A conversation's thread as the API answers it: its rows become messages as they draw, as the list's do (#613).
+	let threadRows = $state.raw<DirectMessage[]>([]);
 	let threadRootMessage = $state.raw<Message | null>(null);
 	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them. A
 	// conversation's messages and their quotes come without their text, which this device's database holds: asked for
 	// as the thread draws, so a row its list let go is read again.
 	const threadShown = $derived.by(() => {
 		if (spaceId) return threadNow(threadMessages, messages);
-		const quoted = threadMessages.flatMap((m) => m.referenced_message?.message_id ?? []);
-		want(channelId, [...threadMessages.map((m) => m.id), ...quoted]);
-		const held = contentOf(channelId, $currentUser?.id);
-		return threadNow(
-			threadMessages.map((m) => withHeld(m, held)),
-			messages,
-		);
+		const quoted = threadRows.flatMap((m) => m.referenced_message?.message_id ?? []);
+		want(channelId, [...threadRows.map((m) => m.id), ...quoted]);
+		const inConversation = $conversations.find((c) => c.id === channelId)?.members ?? [];
+		return threadNow(conversationThread(threadRows, inConversation, contentOf(channelId, $currentUser?.id)), messages);
 	});
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.
 	let threadScrollEl = $state<HTMLElement | null>(null);
@@ -1096,14 +1096,16 @@
 		threadLoading = true;
 		threadError = "";
 		threadMessages = [];
+		threadRows = [];
 		threadRootMessage = message;
 
 		try {
 			// A conversation's thread has an endpoint of its own: channelId is the conversation there.
-			const thread = isConversation
-				? await getConversationMessageThread(channelId, message.id)
-				: await getMessageThread(channelId, message.id);
-			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			if (isConversation) threadRows = await getConversationMessageThread(channelId, message.id);
+			else {
+				const thread = await getMessageThread(channelId, message.id);
+				threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			}
 		} catch (e) {
 			threadError = getApiError(e, t("chat_thread_load_failed"));
 		} finally {

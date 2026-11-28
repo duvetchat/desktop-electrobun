@@ -1,4 +1,4 @@
-// Bun's own words (#464): the menu_, window_ and os_ messages of each of the app's language files
+// Bun's own words (#464): the menu_, window_, os_ and e2e_box_ messages of each of the app's language files
 // (src/mainview/messages/<locale>.json), and the pseudo-language's made from English's. i18n.ts imports this as a macro
 // (with { type: "macro" }): it runs as Bun's bundle is built, which then holds these messages as they are and none of
 // the page's, the thousands the page has itself. The tests and `bun run` run it as they read i18n.ts.
@@ -7,8 +7,9 @@ import { join } from "node:path";
 import { LOCALES, PSEUDO } from "../mainview/src/lib/i18n/locale";
 import { pseudoMessages } from "../mainview/src/lib/i18n/pseudo";
 
-/** The prefixes of the keys whose words the Bun process shows (src/mainview/messages/README.md). */
-export const BUN_PREFIXES = ["menu_", "window_", "os_"] as const;
+/** The prefixes of the keys whose words the Bun process shows (src/mainview/messages/README.md): e2e_box_ are its
+ * encryption boxes' (#614). */
+export const BUN_PREFIXES = ["menu_", "window_", "os_", "e2e_box_"] as const;
 
 export const isBunKey = (key: string) => BUN_PREFIXES.some((prefix) => key.startsWith(prefix));
 

@@ -107,4 +107,4 @@ Key names are words, though: Ctrl, Alt, Shift and Esc are translated (German wri
 | `error_` | errors and notices that come from the API or the network |
 | `e2e_` | end-to-end encryption: what encrypted direct messages and groups say, devices and keys |
 | `format_` | sizes and other formats (`lib/i18n/format.ts`) |
-| `menu_`, `window_`, `os_` | the Bun process: the menu bar, window titles, permission prompts |
+| `menu_`, `window_`, `os_`, `e2e_box_` | the Bun process: the menu bar, window titles, permission prompts, the encryption's boxes outside the window |

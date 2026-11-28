@@ -1,6 +1,6 @@
 // The accounts signed in on this device (#?): each keeps its own tokens, so Settings can switch between them without
 // asking for a password again. Plain functions over localStorage, so the page and the settings window share them.
-import { keepUser } from "$lib/e2e/client";
+import { keepNextUser, ownSession } from "$lib/e2e/client";
 
 export const ACCOUNTS_KEY = "duvet.accounts.v1";
 const SESSION_KEY = "duvet_session_token";
@@ -95,10 +95,11 @@ export function forgetAccount(id: string): StoredAccount[] {
 	return next;
 }
 
-/** The account in use, with the tokens in storage: null when no one is signed in. */
+/** The account in use, with the tokens in storage: null when no one is signed in, or when another page switched to
+ * another account, whose tokens storage holds now (#620's review, M5). */
 export function accountForUser(user: AccountUser): StoredAccount | null {
 	const accessToken = localStorage.getItem(SESSION_KEY);
-	if (!accessToken) return null;
+	if (!accessToken || !ownSession()) return null;
 	return {
 		id: user.id,
 		name: user.alias ?? user.username,
@@ -111,12 +112,13 @@ export function accountForUser(user: AccountUser): StoredAccount | null {
 
 /** Makes a saved account the one the app uses, when its next page loads. */
 export function activateAccount(account: StoredAccount) {
+	// As this account: its first identify names this installation's device of its own, never the one of the account it
+	// leaves (lib/e2e/client.ts). Named before its tokens are written, so every page of the app that finds them finds
+	// that they're another account's than its own, and sends nothing with them (#612), this one included as it goes.
+	keepNextUser(account.id);
 	localStorage.setItem(SESSION_KEY, account.accessToken);
 	if (account.refreshToken) localStorage.setItem(REFRESH_KEY, account.refreshToken);
 	else localStorage.removeItem(REFRESH_KEY);
 	// The next page starts a session from now: an old rotation stamp would renew it before its time.
 	localStorage.setItem(REFRESHED_KEY, String(Date.now()));
-	// And as this account: its first identify names this installation's device of its own, never the one of the account
-	// it leaves (lib/e2e/client.ts).
-	keepUser(account.id);
 }

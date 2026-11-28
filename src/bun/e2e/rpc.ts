@@ -137,37 +137,49 @@ export interface BoundaryDeps {
 	confirm: Confirm;
 	/** What Bun shows the person outside the page that asks nothing (confirm.ts): a new device's fingerprints. */
 	show: Show;
-	/** The account whose database this installation opened last (fileMark). */
-	lastUser: UserMark;
+	/** The accounts whose databases this installation opened (fileAccounts). */
+	known: KnownAccounts;
 	/** Sends the page a reply: the main window's `e2eReply` message. */
 	reply: (reply: E2eReply) => void;
 }
 
-/** The account whose database this installation opened last: its ID, or none; a mark Bun can't read throws. */
-export interface UserMark {
-	read(): string | null;
-	write(userId: string): void;
+/**
+ * The accounts whose databases this installation opened (#611): its first, and each one the person said yes to. None
+ * kept yet is null; a list Bun can't read throws.
+ */
+export interface KnownAccounts {
+	read(): string[] | null;
+	write(accounts: string[]): void;
 }
 
-/** The account opened last, kept in a file: what isn't an account's ID in it, or no file, is none. */
-export function fileMark(file: string): UserMark {
+/** A file's text, or null without the file; one Bun can't read throws. */
+function readKept(file: string): string | null {
+	try {
+		return readFileSync(file, "utf8");
+	} catch (error) {
+		if (isRecord(error) && error.code === "ENOENT") return null;
+		throw error;
+	}
+}
+
+/**
+ * The accounts opened here, kept in a file, one ID a line: what isn't an account's ID in it is none. Without it, the
+ * account an earlier version kept as the one it opened last (`lastUser`), so an update asks nobody again.
+ */
+export function fileAccounts(file: string, lastUser: string): KnownAccounts {
 	return {
 		read() {
-			let kept: string;
-			try {
-				kept = readFileSync(file, "utf8");
-			} catch (error) {
-				if (isRecord(error) && error.code === "ENOENT") return null;
-				throw error;
-			}
-			return UUID.test(kept) ? kept : null;
+			const kept = readKept(file);
+			if (kept !== null) return kept.split("\n").filter((line) => UUID.test(line));
+			const last = readKept(lastUser);
+			return last !== null && UUID.test(last) ? [last] : null;
 		},
-		write(userId) {
+		write(accounts) {
 			try {
 				mkdirSync(dirname(file), { recursive: true });
-				writeFileSync(file, userId);
+				writeFileSync(file, accounts.join("\n"));
 			} catch (error) {
-				console.error("[e2e] the account opened last wasn't kept:", error);
+				console.error("[e2e] the accounts opened here weren't kept:", error);
 			}
 		},
 	};
@@ -236,13 +248,13 @@ function devices(value: unknown, field = "remove"): string[] {
  * Bun's half of the boundary: the handler of the main window's `e2e` message. It answers each request with `reply`, in
  * the order they came, and never throws: a throw in the app's worker would end it, and the app with it.
  */
-export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryDeps): (message: unknown) => void {
+export function e2eBoundary({ start, confirm, show, known, reply }: BoundaryDeps): (message: unknown) => void {
 	let worker: CoreWorker | null = null;
 	/** The account the page opened last, whether its database opened or not: the only one whose data it may delete. */
 	let current: string | null = null;
-	/** The account whose database Bun opened last in this run, which a mark the file didn't take can't hide (RM3). */
-	let openedLast: string | null = null;
-	/** Whether the person said yes to another account's database in this run already. */
+	/** The accounts opened in this run, which a list the file didn't take can't hide (RM3). */
+	const openedHere = new Set<string>();
+	/** Whether the person said yes to a new account's database in this run already. */
 	let switched = false;
 	/** The core's instance: one more each time its worker stops, which the page is told. */
 	let instance = 1;
@@ -293,21 +305,27 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 	}
 
 	/**
-	 * Another account than the one this installation opened last asks the person first (#558): signing out leaves each
-	 * account's database here (decision 13), and a script in one account's page would read or delete another's. What's
-	 * open closes before the box, so a no leaves no database open. A mark Bun can't read asks too, and so does one that
-	 * isn't the account Bun opened last in this run: its write didn't go down (RM3). A second switch has words of its own.
+	 * An account whose database this installation never opened asks the person first (#558, #611): signing out leaves
+	 * each account's database here (decision 13), and a script in one account's page would read or delete another's. Its
+	 * first account opens as before, and an account opened once, with the person's yes or as the first, opens again
+	 * without a question: a box at every switch would train the yes it's there to hold back. What's open closes before the
+	 * box, so a no leaves no database open, and a list Bun can't read asks. A second new account in one run has words of
+	 * its own.
 	 */
 	async function mayOpen(userId: string) {
-		let last: string | null | undefined;
+		let kept: string[] | null | undefined;
 		try {
-			last = lastUser.read();
+			kept = known.read();
 		} catch (error) {
-			console.error("[e2e] the account opened last couldn't be read:", error);
+			console.error("[e2e] the accounts opened here couldn't be read:", error);
 		}
-		const another =
-			last === undefined || (openedLast !== null && last !== openedLast) || (last !== null && last !== userId);
-		if (another) {
+		if (openedHere.has(userId) || kept?.includes(userId)) {
+			// Opened in this run before its database was deleted, as a start over does: it gets its place back (#620's
+			// review, I1), unless the list couldn't be read.
+			if (kept !== undefined && !kept?.includes(userId)) known.write([...(kept ?? []), userId]);
+			return;
+		}
+		if (kept !== null || openedHere.size > 0) {
 			if (worker) unwrap(await core("close"));
 			opened = null;
 			let yes = false;
@@ -319,8 +337,23 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 			if (!yes) throw refused("refused", "the person didn't confirm it");
 			switched = true;
 		}
-		if (last !== userId) lastUser.write(userId);
-		openedLast = userId;
+		openedHere.add(userId);
+		// A list Bun couldn't read isn't written over: what it can't read, it may hold.
+		if (kept !== undefined) known.write([...(kept ?? []), userId]);
+	}
+
+	/**
+	 * An account whose database was deleted leaves the list, so the next start asks for it (#611). The run keeps it: the
+	 * engine's start over deletes the database, then opens the same account in the same page (#620's review, I1), and a
+	 * run that opened an account is never an installation's start, even on a list Bun can't keep (M1).
+	 */
+	function forget(userId: string) {
+		try {
+			const kept = known.read();
+			if (kept?.includes(userId)) known.write(kept.filter((id) => id !== userId));
+		} catch (error) {
+			console.error("[e2e] the accounts opened here couldn't be read:", error);
+		}
 	}
 
 	/**
@@ -470,7 +503,9 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 				return {};
 			case "destroy": {
 				const userId = uuid(p.userId, "userId");
-				// The account the page opened: a script in its page can't delete another's (#558).
+				// The account open here: a script in another account's page reaches it only by opening it first, which asks
+				// for an account this installation hasn't opened (#558, #611). One it has opens asked nothing, and its database
+				// can then be deleted as its core's other commands can be run (decision 60's accepted limit).
 				if (userId !== current) throw refused("refused", "only the database of the account opened here is deleted");
 				underWay = null;
 				user = null;
@@ -478,7 +513,9 @@ export function e2eBoundary({ start, confirm, show, lastUser, reply }: BoundaryD
 				notify(null);
 				const destroyed = await core("destroy", { userId });
 				opened = null;
-				return unwrap(destroyed);
+				const done = unwrap(destroyed);
+				forget(userId);
+				return done;
 			}
 			case "handle":
 				return handleCommand(p.command);

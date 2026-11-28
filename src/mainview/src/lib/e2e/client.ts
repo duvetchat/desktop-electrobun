@@ -76,8 +76,10 @@ export function lastUser(): string | null {
 	return localStorage.getItem(USER_KEY);
 }
 
-/** Keeps whose session the page connected as. Storage that refuses it only leaves the identify naming the user before. */
-export function keepUser(userId: string): void {
+/** Names whose session the next page is, as a switch of accounts does: this page's own isn't any more, so it sends
+ * nothing more with the session storage holds while it goes (ownSession). Storage that refuses it only leaves the
+ * identify naming the user before. */
+export function keepNextUser(userId: string): void {
 	try {
 		localStorage.setItem(USER_KEY, userId);
 	} catch (error) {
@@ -85,10 +87,74 @@ export function keepUser(userId: string): void {
 	}
 }
 
+/** Keeps whose session the page connected as (its READY's), which is this page's own from then on. */
+export function keepUser(userId: string): void {
+	keepNextUser(userId);
+	page?.agree();
+}
+
 /** Forgets whose session the page had: a sign-in may be another account's, whose identify mustn't name the device of
  * the one before. READY tells whose it is. */
 export function forgetUser(): void {
 	localStorage.removeItem(USER_KEY);
+	page?.agree();
+}
+
+/**
+ * The account a page is (#612): the one storage named as the page loaded, or the one it wrote there since (its READY's,
+ * a sign-in's none). The app's pages share storage, the web's tabs and the desktop app's windows alike: another page
+ * that switches accounts or signs in names another account there, and the session tokens there are that account's from
+ * then on. This page then sends nothing with them, as its engine, core and database stay its own account's, and loads
+ * again, once, as that account.
+ */
+export class PageAccount {
+	#agreed = lastUser();
+	#left = false;
+
+	constructor(private readonly reload: () => void) {}
+
+	/** What storage names now is this page's own word, which it wrote. */
+	agree(): void {
+		this.#agreed = lastUser();
+	}
+
+	/** Loads the page again, once. */
+	leave(): void {
+		if (this.#left) return;
+		this.#left = true;
+		this.reload();
+	}
+
+	/** Whether the session storage holds is still this page's account's: once another page named another one, it isn't,
+	 * and the page loads again. */
+	own(): boolean {
+		if (lastUser() === this.#agreed) return true;
+		this.leave();
+		return false;
+	}
+}
+
+/** This page's account, once it follows storage's (followAccount): none in a test that doesn't. */
+let page: PageAccount | null = null;
+
+/** From now on, the page follows the account storage names (PageAccount): what another page writes there, which
+ * `onStorage` hears of (the storage event), loads it again when it isn't this page's account. */
+export function followAccount(onStorage: (changed: (key: string | null) => void) => void, reload: () => void): void {
+	const followed = new PageAccount(reload);
+	page = followed;
+	// A null key is storage cleared whole.
+	onStorage((key) => {
+		if (key === null || key === USER_KEY) followed.own();
+	});
+}
+
+/** Whether the session storage holds is still this page's account's, which a page that follows none always has. */
+export const ownSession = (): boolean => page?.own() ?? true;
+
+/** Loads the page again, once, as the account whose session storage holds. */
+export function leavePage(): void {
+	if (page) page.leave();
+	else window.location.reload();
 }
 
 /** The device the next identify names: the one kept for the user the page last connected as, or none. */

@@ -194,7 +194,7 @@ describe.skipIf(!coreLibrary)("through Bun's half, to a real core", () => {
 			},
 			confirm: async () => false,
 			show: () => {},
-			lastUser: { read: () => null, write: () => {} },
+			known: { read: () => null, write: () => {} },
 			reply: (reply) => toPage(JSON.parse(JSON.stringify(reply))),
 		});
 		const host = new DesktopCoreHost({

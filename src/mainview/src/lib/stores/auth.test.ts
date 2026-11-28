@@ -5,6 +5,8 @@ import { get } from "svelte/store";
 // SvelteKit's environment as it loads: this file loads it afresh, under its own mock, whatever the files before it
 // loaded (#176).
 mock.module("$app/environment", () => ({ browser: true }));
+// A browser's window, where the store hears the other pages' writes (lib/session.ts, and #612's account).
+Object.assign(globalThis, { window: { addEventListener: () => {} } });
 localStorage.setItem("duvet_session_token", "stored-token");
 const { accessToken } = await import("$lib/stores/auth");
 

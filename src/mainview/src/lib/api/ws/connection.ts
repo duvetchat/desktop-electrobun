@@ -150,7 +150,7 @@ import { forgetMemberPages, memberJoined, withMemberPage, withMemberRole } from 
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
-import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
+import { identifyDevice, keepDevice, keepUser, ownSession } from "$lib/e2e/client";
 import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
 import { deviceText, moveTyped } from "$lib/e2e/conversation-content.svelte";
@@ -835,6 +835,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 	switch (payload.type) {
 		case "READY": {
 			markStartup("ready");
+			// Another page switched accounts since this one identified: what it names of storage is that page's (#612).
+			if (!ownSession()) return;
 			const { user, sessionToken, unread_rooms } = payload.data;
 			lastSeq = 0;
 			freshSessionWanted = false;
@@ -2154,6 +2156,8 @@ export function createWebSocketConnection(): GatewayConnection {
 		if (destroyed) {
 			return;
 		}
+		// The stored token is another account's once another page switched accounts: the page loads again (#612).
+		if (!ownSession()) return;
 
 		let socket: WebSocket;
 		let early: WebSocket | null = null;
@@ -2188,6 +2192,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			markStartup("socket", typeof openedAt === "number" ? openedAt : Date.now());
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
+			if (!ownSession()) return;
 			const identify = identifyData(
 				localStorage.getItem("duvet_session_token"),
 				lastSeq > 0 && !freshSessionWanted ? { lastSeq, sessionToken: get(wsSessionToken) } : null,

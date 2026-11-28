@@ -136,14 +136,15 @@ export async function logIn(options: { password: string; email: string }) {
 	const data = await logInRequest(options);
 	const token = data.token;
 
+	// Maybe another account's session: its first identify names none of the device of whoever was here before. Forgotten
+	// before the tokens are written, so another page of the app finds the account changed before it finds them (#612).
+	forgetUser();
 	accessToken.set(token);
 	localStorage.setItem("duvet_session_token", token);
 	if (data.session_token) {
 		localStorage.setItem("duvet_refresh_token", data.session_token);
 	}
 	markSessionRefreshed();
-	// Maybe another account's session: its first identify names none of the device of whoever was here before.
-	forgetUser();
 
 	return data;
 }

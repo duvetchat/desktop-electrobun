@@ -14,6 +14,7 @@
 //   showWindow), so a notice that replaces the one shown (the QR's renewal, every 9 minutes: RM5) is written into the same
 //   window, as text, by a script of Bun's: the page itself has none. A window the person closed stays closed for the rest
 //   of its run, as a new one would come in front.
+import { language } from "../i18n";
 import type { Rect } from "../window-frame";
 import type { Notice, NoticeBox } from "./confirm";
 
@@ -44,10 +45,10 @@ export interface NoticeWindow {
 /** Text as HTML gives it back: the five characters markup reads, as numeric references. */
 const escaped = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
-/** The notice's page, as the window's address: its words, escaped, with no script. */
+/** The notice's page, as the window's address: its words, escaped, with no script, in the language Bun speaks. */
 export function noticePage({ title, message }: Notice): string {
 	const html =
-		'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">' +
+		`<!doctype html><html lang="${language()}"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">` +
 		`<title>${escaped(title)}</title><style>body{margin:0;padding:20px 24px;font:14px/1.5 system-ui,sans-serif;` +
 		`white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>${escaped(message)}</body></html>`;
 	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;

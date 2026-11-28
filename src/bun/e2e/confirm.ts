@@ -5,8 +5,10 @@
 // On Windows Bun shows the box itself, through user32: Electrobun 1.15.1's showMessageBox calls MessageBoxW with OK and
 // Cancel (only for those labels, or Yes and No) and never MB_DEFBUTTON2, so OK would be the default, whatever its
 // defaultId says. Elsewhere it's Electrobun's, Cancel first: macOS's NSAlert takes its first button as the default,
-// GTK the defaultId. On macOS only the title and the message show, so the message says everything.
+// GTK the defaultId. On macOS only the title and the message show, so the message says everything. Every box says its
+// words in the language the main window's page says (#614, ../i18n.ts), asked for as the box is made.
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
+import { t } from "../i18n";
 
 /** A question for the person: its title, what it means, and the label of the button that says yes (no commas). */
 export interface Question {
@@ -77,7 +79,7 @@ export function nativeConfirm(deps: {
 				type: "warning",
 				title: question.title,
 				message: question.message,
-				buttons: ["Cancel", question.yes],
+				buttons: [t("e2e_box_cancel"), question.yes],
 				defaultId: 0,
 				cancelId: 0,
 			});
@@ -222,25 +224,19 @@ export function noticeWorker({ title, message, foreground }: Notice & { foregrou
  */
 export function approvalQuestion({ device, fingerprint }: { device: string; fingerprint: string }): Question {
 	return {
-		title: "Approve a new device?",
-		message:
-			"A new device will be added to your account, and it will read your encrypted conversations." +
-			`\n\nFingerprint: ${fingerprint}` +
-			`\n\n${COMPARE_WITH_THE_BOX}` +
-			`\n\nIts ID: ${device}`,
-		yes: "Approve",
+		title: t("e2e_box_approval_title"),
+		message: t("e2e_box_approval_message", { fingerprint, compare: compareWithTheBox(), device }),
+		yes: t("e2e_box_approve"),
 	};
 }
 
 /**
  * What every approving device says of the new device's fingerprint: this box, the page's (e2e_approval_fingerprint_line,
- * the web's only gate) and the Android app's (mobile#363). A computer's is in a box of the Duvet app's own, not in its
- * window, which a script there could draw on; a browser has no box, and its page is its only screen (decision 58).
+ * the web's only gate) and the Android app's (mobile#363), in the same words in each language. A computer's is in a box
+ * of the Duvet app's own, not in its window, which a script there could draw on; a browser has no box, and its page is
+ * its only screen (decision 58).
  */
-export const COMPARE_WITH_THE_BOX =
-	"Approve it only if it's the device you're setting up now, and it shows the same 16 characters. The Duvet app on a " +
-	"computer shows them in a box of its own, outside its window: don't approve it if they're only in its window. Duvet " +
-	"in a browser shows them on its page.";
+export const compareWithTheBox = () => t("e2e_box_approval_compare");
 
 /** What Bun shows the person, outside the page, that asks nothing. */
 export interface Notice {
@@ -257,14 +253,7 @@ export type Show = (notice: Notice | null) => void;
  * bytes aren't the commitment's; an approval by the code shows the commitment's.
  */
 export function newDeviceNotice({ code, scan }: { code: string; scan: string }): Notice {
-	return {
-		title: `Set up this device (${code})`,
-		message:
-			"Approve this device on another of yours only if that one shows the same 16 characters as here." +
-			`\n\nWith a code:\n${code}` +
-			`\n\nScanning its QR code with your phone:\n${scan}` +
-			"\n\nCompare them with this box, not with Duvet's window, and keep it open until this device is set up.",
-	};
+	return { title: t("e2e_box_setup_title", { code }), message: t("e2e_box_setup_message", { code, scan }) };
 }
 
 /**
@@ -275,54 +264,41 @@ export function verifyQuestion({ user, digits }: { user: string; digits: string 
 	const groups = digits.split(" ");
 	const lines = [0, 4, 8].map((at) => groups.slice(at, at + 4).join(" ")).join("\n");
 	return {
-		title: "Mark this contact as verified?",
-		message:
-			"Duvet will mark this contact as verified on this device." +
-			`\n\nSecurity number:\n${lines}` +
-			"\n\nMark them only if you compared this number with the one on their device, and they're the same." +
-			`\n\nTheir ID: ${user}`,
-		yes: "Mark verified",
+		title: t("e2e_box_verify_title"),
+		message: t("e2e_box_verify_message", { digits: lines, user }),
+		yes: t("e2e_box_verify_yes"),
 	};
 }
 
 /**
- * Opening the database of another account than the one this installation opened last (#558): each account that used
- * Duvet here keeps its own, which signing out leaves. By its ID, which is all Bun knows of it. `again`, a second switch
- * since the app started, in words of its own: a script that asks right after the person's yes to the first would
- * otherwise get a box they take for the one they just answered.
+ * Opening the database of an account this installation never opened (#558, #611): each account that used Duvet here
+ * keeps its own, which signing out leaves. Asked once an account, as a person signs in to it or switches to it, so the
+ * words fit both. By its ID, which is all Bun knows of it: a name the page sent could be any account's. `again`, a
+ * second new account since the app started, in words of its own: a script that asks right after the person's yes to
+ * the first would otherwise get a box they take for the one they just answered.
  */
 export function otherAccountQuestion(user: string, again = false): Question {
-	if (again) {
-		return {
-			title: "Switch accounts again?",
-			message:
-				"Duvet already switched to another account's encrypted conversations since it started, and now it's asked to " +
-				"switch again.\n\nOpen this account's only if you've just signed out and signed in to it here." +
-				`\n\nIts ID: ${user}`,
-			yes: "Open",
-		};
-	}
-	return {
-		title: "Open another account's encrypted conversations?",
-		message:
-			"Duvet will open the encrypted conversations this computer keeps for another account than the one it opened last." +
-			"\n\nOpen them only if you've just signed in to that account here." +
-			`\n\nIts ID: ${user}`,
-		yes: "Open",
-	};
+	return again
+		? {
+				title: t("e2e_box_account_again_title"),
+				message: t("e2e_box_account_again_message", { user }),
+				yes: t("e2e_box_open"),
+			}
+		: { title: t("e2e_box_account_title"), message: t("e2e_box_account_message", { user }), yes: t("e2e_box_open") };
 }
 
 /** Taking devices off the account (sign_device_list): each one by its ID, which is all Bun can tell of it. */
 export function removalQuestion(remove: string[]): Question {
-	const one = remove.length === 1;
+	const count = remove.length;
 	return {
-		title: one ? "Remove a device from your account?" : "Remove devices from your account?",
-		message:
-			`${one ? "This device" : "These devices"} will be removed from your account, and won't read your encrypted ` +
-			`conversations from now on:\n${remove.join("\n")}\n\nRemove ${one ? "it" : "them"} only if you asked for it.`,
-		yes: "Remove",
+		title: t("e2e_box_removal_title", { count }),
+		message: t("e2e_box_removal_message", { count, devices: remove.join("\n") }),
+		yes: t("e2e_box_remove"),
 	};
 }
+
+/** A box's message of paragraphs, one blank line apart. */
+const paragraphs = (...lines: string[]) => lines.join("\n\n");
 
 /**
  * Changing the keys (rotate_keys), with the devices it takes off the list; `finishing`, a rotation already made; `gone`,
@@ -330,29 +306,28 @@ export function removalQuestion(remove: string[]): Question {
  * ID: a server that stopped serving a device's certificate would have this device drop one that's still there.
  */
 export function rotationQuestion(remove: string[], finishing: boolean, gone: string[] = []): Question {
-	const devices = remove.length > 0 ? `\n\nThese devices will be removed from your account:\n${remove.join("\n")}` : "";
+	const devices = remove.length > 0 ? [t("e2e_box_rotation_removes", { devices: remove.join("\n") })] : [];
 	if (gone.length > 0) {
 		return {
-			title: "Finish changing your security keys without these devices?",
-			message:
-				"Duvet will finish the change of security keys it started, and show your new recovery key again, without " +
-				`these devices, which aren't on your account any more:\n${gone.join("\n")}${devices}\n\nFinish without ` +
-				"them only if you removed them from your account, here or on another of your devices.",
-			yes: "Finish",
+			title: t("e2e_box_rotation_gone_title"),
+			message: paragraphs(
+				t("e2e_box_rotation_gone_message", { gone: gone.join("\n") }),
+				...devices,
+				t("e2e_box_rotation_gone_only"),
+			),
+			yes: t("e2e_box_finish"),
 		};
 	}
 	return finishing
 		? {
-				title: "Finish changing your security keys?",
-				message: `Duvet will finish the change of security keys it started, and show your new recovery key again.${devices}`,
-				yes: "Finish",
+				title: t("e2e_box_rotation_finish_title"),
+				message: paragraphs(t("e2e_box_rotation_finish_message"), ...devices),
+				yes: t("e2e_box_finish"),
 			}
 		: {
-				title: "Change your security keys?",
-				message:
-					"Duvet will make new security keys and a new recovery key for your account, and your contacts will see " +
-					`that your keys changed.${devices}\n\nChange them only if you asked for it.`,
-				yes: "Change keys",
+				title: t("e2e_box_rotation_title"),
+				message: paragraphs(t("e2e_box_rotation_message"), ...devices, t("e2e_box_rotation_only")),
+				yes: t("e2e_box_change_keys"),
 			};
 }
 
@@ -360,18 +335,11 @@ export function rotationQuestion(remove: string[], finishing: boolean, gone: str
 export function newKeysQuestion(finishing: boolean): Question {
 	return finishing
 		? {
-				title: "Finish making your security keys?",
-				message: "Duvet will finish making the security keys it started, and show your recovery key again.",
-				yes: "Finish",
+				title: t("e2e_box_keys_finish_title"),
+				message: t("e2e_box_keys_finish_message"),
+				yes: t("e2e_box_finish"),
 			}
-		: {
-				title: "Make new security keys?",
-				message:
-					"Duvet will make new security keys and a recovery key for your account." +
-					"\n\nIf your account has security keys already, this starts over: what you have from before can't be " +
-					"read here, and your other devices need setting up again.\n\nContinue only if you asked for it.",
-				yes: "Make keys",
-			};
+		: { title: t("e2e_box_keys_title"), message: t("e2e_box_keys_message"), yes: t("e2e_box_make_keys") };
 }
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;

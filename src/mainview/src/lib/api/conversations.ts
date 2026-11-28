@@ -1,7 +1,7 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
-import type { CallNotice, GatewayMessage, MessageType, Presence } from "$lib/types";
+import type { CallNotice, MessageType, Presence } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
 
@@ -155,7 +155,7 @@ export async function getConversationMessageThread(
 	conversationId: string,
 	messageId: string,
 	signal?: AbortSignal,
-): Promise<GatewayMessage[]> {
+): Promise<DirectMessage[]> {
 	const res = await api.get(`/api/users/@me/conversations/${conversationId}/messages/${messageId}/thread`, { signal });
 	return res.data;
 }
