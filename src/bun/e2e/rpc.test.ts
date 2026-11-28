@@ -464,6 +464,36 @@ describe("what asks the person first, outside the page", () => {
 		}
 	});
 
+	// #622: the page names the language Bun speaks, a script's choice among them, so a box that asks says its words in
+	// English too, as every box did before #614: a script can't leave the person a box they can't read.
+	test("a box that asks, in another language than English, says the English after it", () => {
+		const asks = () => [
+			approvalQuestion({ device: NEW_A, fingerprint: "0000 1111 2222 3333" }),
+			verifyQuestion({ user: BO, digits: "11111 22222 33333 44444 55555 66666 77777 88888 99999 00000 12345 67890" }),
+			otherAccountQuestion(BO),
+			otherAccountQuestion(BO, true),
+			removalQuestion([NEW_A, NEW_B]),
+			rotationQuestion([NEW_A], false),
+			rotationQuestion([], true, [NEW_B]),
+			newKeysQuestion(false),
+		];
+		const english = asks();
+		try {
+			setLanguage("fi");
+			for (const [at, box] of asks().entries()) {
+				const theEnglish = english[at]?.message ?? "";
+				expect(box.message.endsWith(`\n\n${theEnglish}`)).toBe(true);
+				expect(box.message.length).toBeGreaterThan(theEnglish.length + 2);
+				expect(box.title).not.toBe(english[at]?.title);
+			}
+		} finally {
+			setLanguage("en");
+		}
+		// In English, once.
+		expect(english[0]?.message.split(en.e2e_approval_fingerprint_line)).toHaveLength(2);
+		expect(approvalQuestion({ device: NEW_A, fingerprint: "0000 1111 2222 3333" })).toEqual(english[0]);
+	});
+
 	test("a notice replaces the one shown, and none takes it away; without the core's platform nothing shows", () => {
 		const boxes: { title: string; closed: boolean }[] = [];
 		const show = nativeNotice({

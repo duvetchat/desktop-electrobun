@@ -74,6 +74,17 @@ export function t(key: BunMessageKey, values?: MessageValues): string {
 	return tIn(current, key, values);
 }
 
+/** What `say` makes in a language for the moment, `t` included: a box's English after its words (#622). */
+export function inLanguage<T>(locale: UiLocale, say: () => T): T {
+	const before = current;
+	current = locale;
+	try {
+		return say();
+	} finally {
+		current = before;
+	}
+}
+
 /** What the app keeps of the language between two starts (language.json in its data). */
 export const keptLanguage = (locale: UiLocale) => JSON.stringify({ locale });
 

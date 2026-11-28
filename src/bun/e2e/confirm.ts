@@ -6,9 +6,10 @@
 // Cancel (only for those labels, or Yes and No) and never MB_DEFBUTTON2, so OK would be the default, whatever its
 // defaultId says. Elsewhere it's Electrobun's, Cancel first: macOS's NSAlert takes its first button as the default,
 // GTK the defaultId. On macOS only the title and the message show, so the message says everything. Every box says its
-// words in the language the main window's page says (#614, ../i18n.ts), asked for as the box is made.
+// words in the language the main window's page says (#614, ../i18n.ts), asked for as the box is made, and a box that
+// asks says them in English after (#622).
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
-import { t } from "../i18n";
+import { inLanguage, language, t } from "../i18n";
 
 /** A question for the person: its title, what it means, and the label of the button that says yes (no commas). */
 export interface Question {
@@ -218,16 +219,27 @@ export function noticeWorker({ title, message, foreground }: Notice & { foregrou
 }
 
 /**
+ * A question in the page's language, and its message in English after it when that's another (#622). The page names
+ * the language Bun speaks, a script's choice among them, and these boxes are the last line against a script there
+ * (Ruling 6): their words are always in the language the app was written in too, as before #614.
+ */
+function withEnglish(ask: () => Question): Question {
+	const asked = ask();
+	if (language() === "en") return asked;
+	return { ...asked, message: paragraphs(asked.message, inLanguage("en", ask).message) };
+}
+
+/**
  * Approving a device: what the core will certify, by the fingerprint of the commitment it takes (approvalFingerprint).
  * A new device of the Duvet app shows its own in a box of Bun's (newDeviceNotice), where nothing in its page can change
  * it (#557). The ID is the commitment's writer's to choose: it's shown, not compared.
  */
 export function approvalQuestion({ device, fingerprint }: { device: string; fingerprint: string }): Question {
-	return {
+	return withEnglish(() => ({
 		title: t("e2e_box_approval_title"),
 		message: t("e2e_box_approval_message", { fingerprint, compare: compareWithTheBox(), device }),
 		yes: t("e2e_box_approve"),
-	};
+	}));
 }
 
 /**
@@ -263,11 +275,11 @@ export function newDeviceNotice({ code, scan }: { code: string; scan: string }):
 export function verifyQuestion({ user, digits }: { user: string; digits: string }): Question {
 	const groups = digits.split(" ");
 	const lines = [0, 4, 8].map((at) => groups.slice(at, at + 4).join(" ")).join("\n");
-	return {
+	return withEnglish(() => ({
 		title: t("e2e_box_verify_title"),
 		message: t("e2e_box_verify_message", { digits: lines, user }),
 		yes: t("e2e_box_verify_yes"),
-	};
+	}));
 }
 
 /**
@@ -278,23 +290,25 @@ export function verifyQuestion({ user, digits }: { user: string; digits: string 
  * the first would otherwise get a box they take for the one they just answered.
  */
 export function otherAccountQuestion(user: string, again = false): Question {
-	return again
-		? {
-				title: t("e2e_box_account_again_title"),
-				message: t("e2e_box_account_again_message", { user }),
-				yes: t("e2e_box_open"),
-			}
-		: { title: t("e2e_box_account_title"), message: t("e2e_box_account_message", { user }), yes: t("e2e_box_open") };
+	return withEnglish(() =>
+		again
+			? {
+					title: t("e2e_box_account_again_title"),
+					message: t("e2e_box_account_again_message", { user }),
+					yes: t("e2e_box_open"),
+				}
+			: { title: t("e2e_box_account_title"), message: t("e2e_box_account_message", { user }), yes: t("e2e_box_open") },
+	);
 }
 
 /** Taking devices off the account (sign_device_list): each one by its ID, which is all Bun can tell of it. */
 export function removalQuestion(remove: string[]): Question {
 	const count = remove.length;
-	return {
+	return withEnglish(() => ({
 		title: t("e2e_box_removal_title", { count }),
 		message: t("e2e_box_removal_message", { count, devices: remove.join("\n") }),
 		yes: t("e2e_box_remove"),
-	};
+	}));
 }
 
 /** A box's message of paragraphs, one blank line apart. */
@@ -306,6 +320,10 @@ const paragraphs = (...lines: string[]) => lines.join("\n\n");
  * ID: a server that stopped serving a device's certificate would have this device drop one that's still there.
  */
 export function rotationQuestion(remove: string[], finishing: boolean, gone: string[] = []): Question {
+	return withEnglish(() => rotationWords(remove, finishing, gone));
+}
+
+function rotationWords(remove: string[], finishing: boolean, gone: string[]): Question {
 	const devices = remove.length > 0 ? [t("e2e_box_rotation_removes", { devices: remove.join("\n") })] : [];
 	if (gone.length > 0) {
 		return {
@@ -333,13 +351,15 @@ export function rotationQuestion(remove: string[], finishing: boolean, gone: str
 
 /** A new identity (create_identity, or reset_identity, which the core runs alike); `finishing`, one already made. */
 export function newKeysQuestion(finishing: boolean): Question {
-	return finishing
-		? {
-				title: t("e2e_box_keys_finish_title"),
-				message: t("e2e_box_keys_finish_message"),
-				yes: t("e2e_box_finish"),
-			}
-		: { title: t("e2e_box_keys_title"), message: t("e2e_box_keys_message"), yes: t("e2e_box_make_keys") };
+	return withEnglish(() =>
+		finishing
+			? {
+					title: t("e2e_box_keys_finish_title"),
+					message: t("e2e_box_keys_finish_message"),
+					yes: t("e2e_box_finish"),
+				}
+			: { title: t("e2e_box_keys_title"), message: t("e2e_box_keys_message"), yes: t("e2e_box_make_keys") },
+	);
 }
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
