@@ -45,7 +45,8 @@ export default {
 			// A stable or canary build signs every binary with the Developer ID given (ELECTROBUN_DEVELOPER_ID, the release
 			// workflow's macos job) and the hardened runtime, then Apple notarizes it, its self-extracting bundle and its
 			// .dmg when its account is given too, each stapled (#619). Without them it signs nothing, as a dev build never
-			// does.
+			// does, and its bundled Bun is signed ad hoc instead, so the keys it keeps in the Keychain are its own
+			// (scripts/localize-bundle.ts, #618).
 			codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
 			notarize: Boolean(
 				process.env.ELECTROBUN_DEVELOPER_ID &&

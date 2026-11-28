@@ -16,9 +16,11 @@
 // <name>.desktop with English's (config.app.description, line 1996) before either hook; this adds each other language's
 // Comment[<lang>] to it, and nix/package.nix's entry takes them from there.
 //
+// macOS, postBuild alone: the app's bundled Bun is signed ad hoc (signBunAdHoc, #618).
+//
 // Electrobun runs this with its own Bun, from the project root, for every target; it does nothing on Windows.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tIn, type BunMessageKey } from "../src/bun/i18n";
 import { SHIPPED, type Locale } from "../src/mainview/src/lib/i18n/locale";
@@ -93,6 +95,19 @@ export function localizeBundle(app: string, locales: readonly Locale[]): void {
 	}
 }
 
+/** The bundled Bun, Contents/MacOS/bun, signed ad hoc; null for a bundle without one (#618). Bun ships it signed with
+ * Bun's own Developer ID, and the Keychain trusts the app that made an item by its signature, so in a build Electrobun
+ * signs nothing of (a dev build, the test channel's canary) any official Bun would read the keys the app keeps there,
+ * asked nothing. Ad hoc, the signature names this Bun's own bytes alone. A build Electrobun signs gets Duvet's Developer
+ * ID in its place, after this hook (electrobun.config.ts). */
+export function signBunAdHoc(app: string): string | null {
+	const bun = join(app, "Contents", "MacOS", "bun");
+	if (!existsSync(bun)) return null;
+	const signed = spawnSync("codesign", ["--force", "--sign", "-", bun], { stdio: "inherit" });
+	if (signed.status !== 0) throw new Error(`codesign couldn't sign ${bun} ad hoc`);
+	return bun;
+}
+
 /** The desktop entry's comment, which Linux launchers show beside the app's name. */
 export const DESKTOP_COMMENT = "os_desktop_comment" satisfies BunMessageKey;
 
@@ -151,6 +166,9 @@ if (import.meta.main) {
 			if (lint.status !== 0) process.exit(lint.status ?? 1);
 		}
 		console.log(`[languages] ${app}: ${SHIPPED.join(", ")}`);
+		// The self-extracting bundle of postWrap runs no Bun.
+		const bun = process.platform === "darwin" && !process.env.ELECTROBUN_WRAPPER_BUNDLE_PATH && signBunAdHoc(app);
+		if (bun) console.log(`[signature] ${bun}: ad hoc`);
 	} else if (os === "linux") {
 		const entry = localizeDesktopEntry(bundleOf(process.env), SHIPPED);
 		console.log(`[languages] ${entry}: ${SHIPPED.join(", ")}`);

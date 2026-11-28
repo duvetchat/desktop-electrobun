@@ -68,9 +68,9 @@ test.skipIf(!existsSync(LIBRARY))(
  * session bus Linux has no Secret Service, so the key goes to a file beside the database. The run can't be this one:
  * process.env doesn't reach the library's getenv, and this machine's session bus has a person's keyring on it. With
  * `bus`, the run keeps this process's environment: its session bus, which must be one of its own (SECRET_SERVICE), or
- * the login keychain of CI's macOS runner (KEYCHAIN).
+ * the login keychain of CI's macOS runner (KEYCHAIN). With `bun`, it runs in that Bun: a build's own.
  */
-function asTheApp(steps: string, home: string, bus = false): any[] {
+function asTheApp(steps: string, home: string, bus = false, bun = process.execPath): any[] {
 	const script = `
 		const { startCore } = await import(${JSON.stringify(join(import.meta.dir, "core.ts"))});
 		const library = ${JSON.stringify(LIBRARY)};
@@ -83,7 +83,7 @@ function asTheApp(steps: string, home: string, bus = false): any[] {
 		process.exit(0);
 	`;
 	const noBus = { DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(home, "no-bus")}`, XDG_RUNTIME_DIR: home };
-	const run = Bun.spawnSync([process.execPath, "-e", script], {
+	const run = Bun.spawnSync([bun, "-e", script], {
 		env: { ...process.env, ...(bus ? {} : noBus) },
 		stdout: "pipe",
 		stderr: "pipe",
@@ -276,5 +276,74 @@ describe.skipIf(!KEYCHAIN || !existsSync(LIBRARY))("the core in the Keychain", (
 		expect(otherKey).toMatchObject({ ok: { state: "failed", reason: "bad_key" } });
 		expect(destroyed).toEqual({ ok: {} });
 		expect(listedAfter).toBe(44);
+	}, 60_000);
+});
+
+/**
+ * A built macOS app, as DUVET_E2E_MACOS_APP names it under KEYCHAIN's word (ci.yml's macos job, after its dev build):
+ * one Electrobun signs nothing of, a dev build's or the test channel's canary, whose Contents/MacOS/bun keeps each
+ * database's key in the Keychain (#618).
+ */
+const MACOS_APP = (KEYCHAIN && process.env.DUVET_E2E_MACOS_APP) || "";
+
+/** The Keychain's prompts off for the run (SecKeychainSetUserInteractionAllowed): what it would ask for fails instead. */
+const NO_PROMPTS = `
+	const { dlopen, FFIType } = await import("bun:ffi");
+	const { symbols } = dlopen("/System/Library/Frameworks/Security.framework/Security", {
+		SecKeychainSetUserInteractionAllowed: { args: [FFIType.bool], returns: FFIType.i32 },
+	});
+	if (symbols.SecKeychainSetUserInteractionAllowed(false) !== 0) throw new Error("the Keychain's prompts stayed on");
+`;
+
+/** security(1)'s output, which fails the test when it fails. */
+function security(...args: string[]): string {
+	const run = Bun.spawnSync(["security", ...args], { stdout: "pipe", stderr: "pipe" });
+	if (run.exitCode !== 0) throw new Error(`security ${args[0]} failed: ${run.stderr.toString()}`);
+	return run.stdout.toString();
+}
+/** The keychains security(1) lists, each a quoted path. */
+const keychains = (listed: string) => [...listed.matchAll(/"([^"]+)"/g)].map((found) => found[1]);
+
+describe.skipIf(!MACOS_APP || !existsSync(LIBRARY))("the key of a macOS build without a Developer ID", () => {
+	test("is that build's Bun's alone: another official Bun is refused it, and never asked", () => {
+		const home = folder();
+		const owner = crypto.randomUUID();
+		// A keychain of the test's own, the user's default while it runs: the core keeps the key in the default one.
+		const keychain = join(home, "test.keychain-db");
+		const password = crypto.randomUUID();
+		const before = {
+			default: keychains(security("default-keychain", "-d", "user")),
+			list: keychains(security("list-keychains", "-d", "user")),
+		};
+		security("create-keychain", "-p", password, keychain);
+		try {
+			security("unlock-keychain", "-p", password, keychain);
+			security("set-keychain-settings", keychain);
+			security("list-keychains", "-d", "user", "-s", keychain, ...before.list);
+			security("default-keychain", "-d", "user", "-s", keychain);
+			const opens = `${NO_PROMPTS}
+				const core = startCore({ library, folder, keyring });
+				note(await core.run("open", { userId: "${owner}" }));
+				await core.run("close");`;
+			// The build's own Bun makes the database and its key, then opens it again, asked nothing.
+			const [made, again] = asTheApp(
+				`${opens}
+				note(await core.run("open", { userId: "${owner}" }));
+				await core.run("close");
+				core.stop();`,
+				home,
+				true,
+				join(MACOS_APP, "Contents", "MacOS", "bun"),
+			);
+			// This test's Bun, an official one as Electrobun bundles: the Keychain would have to ask, which it can't here.
+			const [stranger] = asTheApp(`${opens} core.stop();`, home, true);
+			expect(made).toMatchObject({ ok: { state: "ready", keyStorage: "keyring" } });
+			expect(again).toMatchObject({ ok: { state: "ready", keyStorage: "keyring" } });
+			expect(stranger).toMatchObject({ ok: { state: "failed", reason: "storage" } });
+		} finally {
+			security("default-keychain", "-d", "user", "-s", ...before.default);
+			security("list-keychains", "-d", "user", "-s", ...before.list);
+			security("delete-keychain", keychain);
+		}
 	}, 60_000);
 });
