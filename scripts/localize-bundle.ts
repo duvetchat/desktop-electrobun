@@ -5,7 +5,8 @@
 // macOS: the first time the app uses the microphone or the camera, macOS asks, with the app's
 // NSMicrophoneUsageDescription or NSCameraUsageDescription under its question, in the system's language: from the
 // bundle's Contents/Resources/<language>.lproj/InfoPlist.strings when it has the language (CFBundleLocalizations lists
-// them), else the Info.plist's own, English (electrobun.config.ts: build.mac.entitlements). This writes them.
+// them), else the Info.plist's own, English. This writes them all: Electrobun writes its own words there, as the
+// config's entitlements are true (electrobun.config.ts: build.mac.entitlements).
 // Electrobun 1.15.1 (node_modules/electrobun/src/cli/index.ts) writes the app's Info.plist (line 2092), copies the app's
 // files in, runs postBuild (2901), then signs the bundle (3164), which seals what it holds. A canary or stable build then
 // tars it, makes the self-extracting bundle the app is opened from, with the same Info.plist (3475), runs postWrap (3496)
@@ -46,12 +47,24 @@ export function stringsFile(texts: Record<string, string>): string {
 		.join("");
 }
 
-/** The Info.plist, with the bundle's languages (CFBundleLocalizations) and English, the language it's written in, as
- * its development region: the one macOS falls back to. Either key already there is replaced. */
-export function withLocalizations(plist: string, locales: readonly Locale[]): string {
-	const without = plist
+/** A plist <string>'s text, its XML escaped. */
+const xmlText = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** The Info.plist, with the bundle's languages (CFBundleLocalizations), English, the language it's written in, as its
+ * development region, the one macOS falls back to, and English's usage descriptions as its own, in place of the words
+ * Electrobun makes of each entitlement (electrobun.config.ts: build.mac.entitlements). Each key already there is
+ * replaced. */
+export function withLocalizations(
+	plist: string,
+	locales: readonly Locale[],
+	texts: Record<string, string> = usageTexts("en"),
+): string {
+	let without = plist
 		.replace(/\s*<key>CFBundleLocalizations<\/key>\s*<array>[\s\S]*?<\/array>/g, "")
 		.replace(/\s*<key>CFBundleDevelopmentRegion<\/key>\s*<string>[^<]*<\/string>/g, "");
+	for (const key of Object.keys(texts)) {
+		without = without.replace(new RegExp(`\\s*<key>${key}</key>\\s*<string>[^<]*</string>`, "g"), "");
+	}
 	const end = without.lastIndexOf("</dict>");
 	if (end === -1) throw new Error("the Info.plist has no dict");
 	const keys = [
@@ -61,6 +74,10 @@ export function withLocalizations(plist: string, locales: readonly Locale[]): st
 		"    <array>",
 		...locales.map((locale) => `        <string>${locale}</string>`),
 		"    </array>",
+		...Object.entries(texts).flatMap(([key, text]) => [
+			`    <key>${key}</key>`,
+			`    <string>${xmlText(text)}</string>`,
+		]),
 	];
 	return `${without.slice(0, end).trimEnd()}\n${keys.join("\n")}\n${without.slice(end)}`;
 }

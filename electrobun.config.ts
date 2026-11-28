@@ -42,15 +42,16 @@ export default {
 		},
 		mac: {
 			icon: "icon.iconset",
-			// macOS asks before the app uses the microphone or the camera, with these lines: Electrobun writes an
-			// entitlement's text into Info.plist as its usage description (audio-input as NSMicrophoneUsageDescription,
-			// camera as NSCameraUsageDescription), and an app without them can't open either. Screen sharing needs no
-			// entry: macOS asks for Screen Recording itself. With codesign on, Electrobun would also sign these texts as
-			// the entitlements' values, where the hardened runtime wants true: check the mic and the camera then.
-			// English's os_ messages (#464); each other language's goes in its InfoPlist.strings (scripts.postBuild).
+			// The microphone and the camera, which macOS asks for before the app uses them. A signed build runs under the
+			// hardened runtime, which reads each as a Boolean, and Electrobun signs an entitlement's value as it's given
+			// (#619): true, so it isn't refused without a question. Electrobun writes a usage description into Info.plist
+			// for each (audio-input as NSMicrophoneUsageDescription, camera as NSCameraUsageDescription), without which
+			// the app can't open either, in words of its own: scripts.postBuild puts English's os_ messages there, and
+			// each other language's in its InfoPlist.strings (#464). Screen sharing needs no entry: macOS asks for
+			// Screen Recording itself.
 			entitlements: {
-				"com.apple.security.device.audio-input": en.os_microphone_usage,
-				"com.apple.security.device.camera": en.os_camera_usage,
+				"com.apple.security.device.audio-input": true,
+				"com.apple.security.device.camera": true,
 			},
 		},
 		win: {

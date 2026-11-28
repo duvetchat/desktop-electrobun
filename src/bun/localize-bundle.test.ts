@@ -26,7 +26,7 @@ import { tIn } from "./i18n";
 // the bundle between Electrobun writing it and signing it; on Linux, the desktop entry's Comment.
 
 // The Info.plist as Electrobun 1.15.1 writes it (its CLI: InfoPlistContents), with the usage descriptions it makes of
-// the entitlements.
+// the entitlements: its own words, for an entitlement that's true (generateUsageDescriptions).
 const ELECTROBUN_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -38,7 +38,9 @@ const ELECTROBUN_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
     <key>CFBundleName</key>
     <string>Duvet-dev</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Duvet uses your microphone for voice rooms, calls and voice messages.</string>
+    <string>This app requires access for audio input</string>
+    <key>NSCameraUsageDescription</key>
+    <string>This app requires access for camera</string>
 </dict>
 </plist>`;
 
@@ -104,8 +106,20 @@ describe("the Info.plist", () => {
 		const plist = withLocalizations(ELECTROBUN_PLIST, ["en", "es"]);
 		expect(plist).toContain("<key>CFBundleLocalizations</key>\n    <array>\n        <string>en</string>");
 		expect(plist).toContain("<key>CFBundleDevelopmentRegion</key>\n    <string>en</string>");
-		expect(plist).toContain("<string>Duvet uses your microphone for voice rooms, calls and voice messages.</string>");
+		expect(plist).toContain("<key>CFBundleName</key>\n    <string>Duvet-dev</string>");
 		expect(plist.endsWith("</dict>\n</plist>")).toBe(true);
+	});
+
+	// What a language without its InfoPlist.strings shows: English's messages, in place of Electrobun's words.
+	test("has English's usage texts as its own", () => {
+		const plist = withLocalizations(ELECTROBUN_PLIST, ["en", "es"]);
+		for (const [key, text] of Object.entries(usageTexts("en"))) {
+			expect(plist).toContain(`<key>${key}</key>\n    <string>${text}</string>`);
+			expect(plist.match(new RegExp(`<key>${key}</key>`, "g"))).toHaveLength(1);
+		}
+		expect(plist).not.toContain("This app requires access");
+		const escaped = withLocalizations(ELECTROBUN_PLIST, ["en"], { NSCameraUsageDescription: "A & <b>" });
+		expect(escaped).toContain("<key>NSCameraUsageDescription</key>\n    <string>A &amp; &lt;b&gt;</string>");
 	});
 
 	test("written again, has its languages once, the new ones", () => {
@@ -137,6 +151,7 @@ describe("a bundle", () => {
 					CFBundleIdentifier: "com.duvet.desktop",
 					CFBundleDevelopmentRegion: "en",
 					CFBundleLocalizations: ["en", "fr"],
+					...usageTexts("en"),
 				});
 			}
 		} finally {
@@ -153,14 +168,15 @@ describe("the build", () => {
 		expect(config.scripts.postWrap).toBe("scripts/localize-bundle.ts");
 	});
 
-	// The Info.plist's own texts, which a language without its InfoPlist.strings shows: English's messages, as they
-	// read once formatted, so nothing in them is ICU's.
-	test("writes English's messages into the Info.plist as its own texts", () => {
+	// A signed build runs under the hardened runtime, which reads a device's entitlement as a Boolean. Electrobun 1.15.1
+	// signs an entitlement's value as it's given (its CLI: buildEntitlementsFile), so a usage text there would be the
+	// permission's value, and macOS would refuse the microphone and the camera without asking (#619). Electrobun makes
+	// a usage description of each true one in its own words, which the hook replaces with English's.
+	test("asks for the microphone and the camera with true, as the hardened runtime reads them", () => {
 		const entitlements: Record<string, unknown> = config.build.mac.entitlements;
-		expect(entitlements["com.apple.security.device.audio-input"]).toBe(
-			tIn("en", USAGE_MESSAGES.NSMicrophoneUsageDescription),
-		);
-		expect(entitlements["com.apple.security.device.camera"]).toBe(tIn("en", USAGE_MESSAGES.NSCameraUsageDescription));
+		expect(entitlements["com.apple.security.device.audio-input"]).toBe(true);
+		expect(entitlements["com.apple.security.device.camera"]).toBe(true);
+		expect(Object.keys(USAGE_MESSAGES).sort()).toEqual(["NSCameraUsageDescription", "NSMicrophoneUsageDescription"]);
 	});
 });
 
