@@ -95,11 +95,21 @@ export const MANIFEST: NoticesManifest = {
 			texts: ["licenses/electrobun.txt", "licenses/zig-bsdiff.txt", "licenses/zig-zstd.txt", "licenses/zstd.txt"],
 		},
 		{
-			// The runtime Electrobun ships: https://github.com/oven-sh/bun/blob/bun-v1.3.9/LICENSE.md
+			// The runtime Electrobun ships: https://github.com/oven-sh/bun/blob/bun-v1.3.9/LICENSE.md, then where the source
+			// of what it links under the LGPL is, and those parts' texts: WebKit's Source/WebCore/LICENSE-APPLE and
+			// Source/JavaScriptCore/COPYING.LIB at the commit bun-v1.3.9's cmake/tools/SetupWebKit.cmake names
+			// (8af7958ff0e2a4787569edf64641a1ae7cfe074a), and TinyCC's COPYING at the one its BuildTinyCC.cmake names
+			// (12882eee073cfe5c7621bcfadf679e1372d4537b).
 			name: "Bun",
 			version: "1.3.9",
-			license: "MIT",
-			texts: ["licenses/bun.md"],
+			license: "MIT AND BSD-2-Clause AND LGPL-2.0-or-later AND LGPL-2.1-or-later",
+			texts: [
+				"licenses/bun.md",
+				"licenses/bun-source.txt",
+				"licenses/bun-webkit-LICENSE-APPLE.txt",
+				"licenses/bun-javascriptcore-COPYING.LIB.txt",
+				"licenses/bun-tinycc-COPYING.txt",
+			],
 		},
 		{
 			// WebView2Loader.dll, from the Microsoft.Web.WebView2 package of that version: its LICENSE.txt, then its

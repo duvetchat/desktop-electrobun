@@ -1,0 +1,10 @@
+Bun 1.3.9 statically links JavaScriptCore and parts of WebCore, from WebKit, under the GNU Library General Public
+License version 2 or later, the GNU Lesser General Public License version 2.1 or later and Apple's BSD licence, and
+TinyCC, under the GNU Lesser General Public License version 2.1 or later. Their source, as this Bun is built from it:
+
+  Bun:     https://github.com/oven-sh/bun/tree/bun-v1.3.9
+  WebKit:  https://github.com/oven-sh/WebKit/tree/8af7958ff0e2a4787569edf64641a1ae7cfe074a
+  TinyCC:  https://github.com/oven-sh/tinycc/tree/12882eee073cfe5c7621bcfadf679e1372d4537b
+
+Bun's notice above says how to relink Bun with a changed JavaScriptCore. Apple's licence, JavaScriptCore's copy of
+the Library General Public License and TinyCC's copy of the Lesser General Public License follow.
