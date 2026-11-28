@@ -13,7 +13,7 @@ setDefaultTimeout(60_000);
 
 // Real cores (host-bun.ts: the core's own library) talking through the fake API by hand, with the commands and routes
 // the engine will use: what each device sends is what its core made, and what it applies is what the fake handed out.
-// Without the core for this platform (macOS), there's nothing to run them with.
+// Without the core for this platform (an Intel Mac), there's nothing to run them with.
 const CONVERSATIONS = "/api/users/@me/conversations";
 /** What the app says it is, as each of its requests does (X-Duvet-Client). */
 const CLIENT = "desktop-windows/1.2.0";

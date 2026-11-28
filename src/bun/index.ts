@@ -302,8 +302,8 @@ const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUB
 // page reaches it through e2e/rpc.ts alone: the commands of the core's contract, and a yes in the system's box, over
 // this window, before what approves a device or makes new keys, and before the database of an account this
 // installation never opened opens (#558, #611; those it opened are in <userData>/e2e/known-users). On Linux the core
-// keeps the key in the Secret Service, or in a file beside the database when the session has none. A build without the
-// library (macOS's, for now) answers unsupported.
+// keeps the key in the Secret Service, or in a file beside the database when the session has none; on macOS in the
+// login Keychain. A build without the library (an Intel Mac's) answers unsupported.
 const coreLibrary = coreLibraryPath(nativeLibraryPath);
 // What asks nothing (a new device's fingerprints, #557): Windows' own box, and elsewhere a window of Bun's, over the main
 // window, which goes with it (notice-window.ts).

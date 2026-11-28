@@ -169,7 +169,7 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			await until(() => a.engine.state.name === "first_device");
 			await a.engine.stop();
 
-			// macOS's and Linux's app carry no core: the host says so, and nothing more is asked.
+			// A build that carries no core (an Intel Mac's): the host says so, and nothing more is asked.
 			const log: string[] = [];
 			const none = watchedHost(testHost(), log);
 			const bare = testDevice(fake, ana, {

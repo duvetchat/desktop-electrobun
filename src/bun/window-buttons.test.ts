@@ -138,6 +138,7 @@ describe.skipIf(process.platform !== "darwin")("on a Mac, the library", () => {
 		return { symbols, appkit, text, frameOf, makeWindow, turn };
 	};
 
+	// Each builds the libraries first, as the app's build does: about 9 s on GitHub's macOS runner, past Bun's 5 s.
 	test("centres the three buttons in the title line and keeps them there", async () => {
 		const { symbols, appkit, text, frameOf, makeWindow, turn } = await load();
 		const { onMain } = appkit;
@@ -180,7 +181,7 @@ describe.skipIf(process.platform !== "darwin")("on a Mac, the library", () => {
 		expect(frameOf(made.close).x).toBe(30);
 
 		onMain(made.window, "close");
-	});
+	}, 60_000);
 
 	test("leaves alone what isn't a window with the three buttons", async () => {
 		const { symbols, appkit, makeWindow, frameOf } = await load();
@@ -196,5 +197,5 @@ describe.skipIf(process.platform !== "darwin")("on a Mac, the library", () => {
 		expect(symbols.wb_placeWindowButtons(made.pointer, -4, 52)).toBe(false);
 		expect(frameOf(made.close)).toEqual(before);
 		onMain(made.window, "close");
-	});
+	}, 60_000);
 });

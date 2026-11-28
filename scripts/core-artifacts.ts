@@ -1,8 +1,8 @@
 // Puts in their places the core's artifacts the desktop carries (PLAN-E2E-CLIENTES.md, its section on the core's
 // artifacts): the files of the release artifacts-<commit> of duvetchat/e2e, which the core's artifacts.yml built from
-// that commit of its main. It downloads them with gh, under its own session (the core's repository is private), into
-// ~/.cache/duvet-core/<commit>/; checks each against the release's SHA256SUMS before any goes anywhere; and writes
-// native/core/SOURCE.json, the commit and each file's SHA-256, which src/bun/core-artifacts.test.ts checks.
+// that commit of its main. It downloads them with gh into ~/.cache/duvet-core/<commit>/; checks each against the
+// release's SHA256SUMS before any goes anywhere; and writes native/core/SOURCE.json, the commit and each file's
+// SHA-256, which src/bun/core-artifacts.test.ts checks.
 //
 //   bun scripts/core-artifacts.ts <commit>
 import { mkdirSync } from "node:fs";
@@ -15,6 +15,7 @@ const REPOSITORY = "duvetchat/e2e";
 export const CARRIED: Record<string, string> = {
 	"duvet_e2e_ffi.dll": "native/core/win-x64/duvet_e2e_ffi.dll",
 	"libduvet_e2e_ffi.so": "native/core/linux-x64/libduvet_e2e_ffi.so",
+	"macos-arm64-libduvet_e2e_ffi.dylib": "native/core/macos-arm64/libduvet_e2e_ffi.dylib",
 	"duvet_e2e_wasm.js": "src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm.js",
 	"duvet_e2e_wasm_bg.wasm": "src/mainview/src/lib/e2e/wasm/duvet_e2e_wasm_bg.wasm",
 };

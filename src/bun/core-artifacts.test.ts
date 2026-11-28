@@ -18,6 +18,14 @@ describe("the core's artifacts", () => {
 		for (const [path, hash] of Object.entries(files)) expect(await sha256(path)).toBe(hash);
 	});
 
+	// PLAN-E2E-PLATAFORMAS.md, Task 8 and Review Focus 11: the release names it by its system, the app by its own name.
+	test("macOS's library is its release's macos-arm64 file, byte for byte", async () => {
+		const path = "native/core/macos-arm64/libduvet_e2e_ffi.dylib";
+		expect(CARRIED["macos-arm64-libduvet_e2e_ffi.dylib"]).toBe(path);
+		const source = await Bun.file(join(root, "native/core/SOURCE.json")).json();
+		expect(source.files[path]).toBe(await sha256(path));
+	});
+
 	test("a downloaded file is taken only with the hash SHA256SUMS gives it", () => {
 		const bytes = new TextEncoder().encode("the core");
 		const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
