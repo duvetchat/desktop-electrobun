@@ -1185,6 +1185,8 @@
 	"settings_accounts_remove_label": "Poista {name} tältä laitteelta",
 	"settings_accounts_switch": "Vaihda",
 	"settings_accounts_title": "Tilit",
+	"settings_activity_games": "Jaa mitä pelaan",
+	"settings_activity_games_line": "Pelit ja sovellukset, jotka näyttävät toimintasi Discordissa, näyttävät sen myös Spaceissasi oleville ihmisille: mitä pelaat, sen tiedot ja kuinka kauan. Discord saa sen edelleen, kun se on käynnissä. Tallennettu tälle laitteelle.",
 	"settings_activity_spotify": "Jaa mitä kuuntelen Spotifyssa",
 	"settings_activity_spotify_line": "Kun Spotify toistaa tällä tietokoneella, työtilojesi ihmiset näkevät kappaleen, sen esittäjän ja sen, kuinka pitkällä se on. Tallennettu tälle laitteelle.",
 	"settings_app_create_failed": "Sovellusta ei voitu luoda",

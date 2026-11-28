@@ -19,7 +19,8 @@ import {
 } from "./notification-setup";
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
-import { ipcHeld, ipcPath, LineReader } from "./ipc";
+import { discordIpcPath, ipcHeld, ipcPath, LineReader } from "./ipc";
+import { DiscordPipe } from "./discord-ipc";
 import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
 import { startPlayerRelay } from "./player-relay";
 import { Maximizer, rectOf } from "./window-frame";
@@ -126,6 +127,8 @@ type AppRPCSchema = {
 			stopWindowResize: void;
 			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
 			setSpotifyActivity: { enabled: boolean };
+			// The webview's "Share the games I play" setting (#600, discord-ipc.ts), sent at start and on each change.
+			setGameActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
 			// From the main window: a state its other windows mirror, sent on to each of them.
@@ -232,6 +235,15 @@ function setSpotifyActivity(enabled: boolean) {
 	broadcastAggregatedActivities();
 }
 
+// The activity games send to Discord's Rich Presence pipe (#600, discord-ipc.ts): Duvet holds discord-ipc-0 while the
+// webview's setting lets it, and each game's activity goes out with the IPC apps'. Off, the pipe is left to Discord.
+const discordPipe = new DiscordPipe({
+	path: discordIpcPath(0, process.platform, process.env),
+	discordPaths: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => discordIpcPath(n, process.platform, process.env)),
+	activities: clientActivities,
+	socketFile: process.platform !== "win32",
+});
+
 // The app's own updates, on the stable channel (#456, updates.ts): found, downloaded and verified against the manifest the
 // release workflow signs, then offered on the title bar; applied only when the user asks.
 const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUBLIC_KEY, "base64")), (offer) =>
@@ -283,6 +295,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			setSpotifyActivity: ({ enabled }) => {
 				markWebviewReady();
 				setSpotifyActivity(enabled);
+			},
+			setGameActivity: ({ enabled }) => {
+				markWebviewReady();
+				if (enabled) void discordPipe.start();
+				else discordPipe.stop();
 			},
 			windowState: (message) => {
 				relay.stateFromMain(message);

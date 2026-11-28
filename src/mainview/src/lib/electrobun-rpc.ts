@@ -70,6 +70,8 @@ export type AppRPCSchema = {
 			// F12 and the other DevTools keys, on Linux, where Chromium's own handling kills the app (lib/native-context-menu.ts).
 			openDevTools: void;
 			setSpotifyActivity: { enabled: boolean };
+			// Whether Bun holds Discord's Rich Presence pipe, for the activity games send there (src/bun/discord-ipc.ts).
+			setGameActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
 			// From the main window: a state its other windows mirror, which Bun sends on to each of them.
@@ -115,6 +117,7 @@ export type AppRPCClient = {
 		openExternal: (params: { url: string }) => void;
 		openDevTools: () => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
+		setGameActivity: (params: { enabled: boolean }) => void;
 		startupTimings: (params: { marks: Record<string, number> }) => void;
 		windowState: (message: WindowStateMessage) => void;
 		openAppWindow: (request: OpenAppWindow) => void;

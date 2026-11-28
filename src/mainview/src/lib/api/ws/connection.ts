@@ -36,6 +36,7 @@ import {
 	everyEmoji,
 	userActivities,
 	shareSpotify,
+	shareGameActivity,
 	pendingTeamInvites,
 	myBuckets,
 	allSpacesReady,
@@ -172,8 +173,10 @@ getElectrobunRpc()
 		setInterval(() => {
 			if (localActivities?.length || activitiesUnsent) sendActivities();
 		}, ACTIVITY_RESEND_MS);
-		// Spotify's reader runs in the Bun process; its setting is kept in this device's storage.
+		// Spotify's reader runs in the Bun process, and so does Discord's pipe (#600); their settings are kept in this
+		// device's storage.
 		shareSpotify.subscribe((enabled) => rpc.send.setSpotifyActivity({ enabled }));
+		shareGameActivity.subscribe((enabled) => rpc.send.setGameActivity({ enabled }));
 	})
 	.catch(() => {});
 

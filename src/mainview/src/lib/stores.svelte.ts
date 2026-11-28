@@ -554,6 +554,13 @@ shareSpotify.subscribe((v) => {
 	safeStorageNs?.setItem("duvet_share_spotify", String(v));
 });
 
+/** The desktop app shares the activity games send to Discord's Rich Presence (src/bun/discord-ipc.ts) as the user's;
+ * on unless turned off. */
+export const shareGameActivity = writable<boolean>(safeStorageNs?.getItem("duvet_share_game_activity") !== "false");
+shareGameActivity.subscribe((v) => {
+	safeStorageNs?.setItem("duvet_share_game_activity", String(v));
+});
+
 let initialMicId = "";
 const safeStorage = getSafeStorage();
 if (safeStorage) {
