@@ -229,12 +229,15 @@ test("pins, a thread's messages and search results are kept as they are, not as 
 
 // The re-review of task 16: a conversation's thread asks the device for its messages' rows and their quotes', as it
 // draws (a quote whose message isn't in the chat's list would draw no text), and draws each through what it holds.
+// #613: its rows are the API's answer as the list builds its own (lib/threads.ts' conversationThread), with the
+// conversation's members, never the API's message as it came.
 test("a conversation's thread asks for its quotes with its messages, as it draws", () => {
 	const list = source("MessageList.svelte");
 	expect(list).toMatch(
-		/const quoted = threadMessages\.flatMap\(\(m\) => m\.referenced_message\?\.message_id \?\? \[\]\);\s*want\(channelId, \[\.\.\.threadMessages\.map\(\(m\) => m\.id\), \.\.\.quoted\]\);/,
+		/const quoted = threadRows\.flatMap\(\(m\) => m\.referenced_message\?\.message_id \?\? \[\]\);\s*want\(channelId, \[\.\.\.threadRows\.map\(\(m\) => m\.id\), \.\.\.quoted\]\);/,
 	);
-	expect(list).toContain("threadMessages.map((m) => withHeld(m, held))");
+	expect(list).toContain("conversationThread(threadRows, inConversation, contentOf(channelId, $currentUser?.id))");
+	expect(list).toContain("if (isConversation) threadRows = await getConversationMessageThread(channelId, message.id);");
 });
 
 // #324: the list's sort made two Dates per comparison, every time the list changed.
