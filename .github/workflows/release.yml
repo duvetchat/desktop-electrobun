@@ -3,9 +3,10 @@ name: Release
 # The desktop's builds, on GitHub's runners: Electrobun builds only for the system it runs on.
 #   - A tag v<package.json's version> on main publishes that version (#456): each system's stable build, signed and
 #     published to the rolling desktop-stable release of the public duvetchat/releases, where the app's updater and
-#     duvet.chat/download look. The windows job publishes stable-win-x64-*, the linux job stable-linux-x64-* (#590), with
-#     the same steps; each signed manifest names its platform, so none serves another system, and one system's job
-#     failing leaves the other's release as it goes. Any other tag stops before the build.
+#     duvet.chat/download look. The windows job publishes stable-win-x64-*, the linux job stable-linux-x64-* (#590) and
+#     the macos job stable-macos-arm64-* (#619), with the same steps, macOS's with Apple's signing and notarization among
+#     them; each signed manifest names its platform, so none serves another system, and one system's job failing leaves
+#     the others' releases as they go. Any other tag stops before the build.
 #   - By hand (workflow_dispatch), the test channel (PLAN-E2E-CLIENTES.md, Task 34 and Ruling 9): the canary build of
 #     the branch it's given, on the system it's given (Windows, Linux or macOS, unsigned), pointed at the API it's given
 #     (lib/common/common.ts's targets; `local` is a stack on the same computer, at localhost:9876 and localhost:8765, as
@@ -127,6 +128,108 @@ jobs:
         working-directory: src/mainview
       # stable-linux-x64-Duvet.tar.zst (the update), -Duvet-Setup.tar.gz (the installer) and -update.json.
       - run: bun run build:stable
+      - name: Sign the update
+        run: bun scripts/sign-update.ts
+        env:
+          DESKTOP_UPDATE_SIGNING_KEY: ${{ secrets.DESKTOP_UPDATE_SIGNING_KEY }}
+      - name: Publish to duvetchat/releases
+        run: bun scripts/publish-release.ts
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+
+  # The windows job's steps on macOS arm64 (#619), with Apple's among them: Duvet's Developer ID in a keychain of the
+  # job's own, which the build signs every binary with, under the hardened runtime, before Apple notarizes the app, its
+  # self-extracting bundle and the .dmg, each stapled. It publishes stable-macos-arm64-*, the .dmg among them.
+  # src/bun/release-workflow.test.ts holds its other steps to the windows job's. Only a signed and notarized build
+  # reaches desktop-stable (PLAN-E2E-PLATAFORMAS.md): without Apple's secrets the job stops before it builds, and a
+  # notarization Apple refuses stops the build, before anything is published. Windows and Linux publish all the same.
+  # A macOS build carries the core, which no frame may reach before RM1 (#588), so a tag publishes one only once the
+  # repository's RELEASE_MACOS variable says macOS is on, as RELEASE_LINUX does for Linux.
+  macos:
+    if: github.event_name == 'push' && vars.RELEASE_MACOS == 'true'
+    runs-on: macos-latest
+    # Apple notarizes three times, each waited for.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Only the tag of package.json's version, on main
+        shell: bash
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v$version" ]; then
+            echo "::error::$GITHUB_REF isn't v$version, package.json's version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::v$version isn't on main"
+            exit 1
+          fi
+      # The Developer ID certificate (its .p12 in base64, and its password), and the Apple account that notarizes: the
+      # Apple ID, an app-specific password for it, and the team's ID. Without any of them, nothing installs or builds.
+      - name: Apple's secrets, or no build
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for name in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::No signed and notarized macOS build without these secrets:$missing"
+            exit 1
+          fi
+      # The dylib the build copies into the app, as the windows job checks its DLL.
+      - name: The core's artifacts, as native/core/SOURCE.json records them
+        run: bun test ./src/bun/core-artifacts.test.ts
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      # The certificate in a keychain only this job has, its password made here, which codesign uses without asking. The
+      # identity's SHA-1 is what the build signs with (ELECTROBUN_DEVELOPER_ID): Electrobun's binaries, and
+      # scripts/build-native.ts's libraries, the core's among them.
+      - name: Duvet's Developer ID, in a keychain of this job's own
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/developer-id.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          printf %s "$MACOS_CERTIFICATE" | base64 --decode > "$certificate"
+          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application: / && !found { print $2; found = 1 }')
+          if [ -z "$identity" ]; then
+            echo "::error::The certificate holds no Developer ID Application identity"
+            exit 1
+          fi
+          echo "ELECTROBUN_DEVELOPER_ID=$identity" >> "$GITHUB_ENV"
+      # stable-macos-arm64-Duvet.app.tar.zst (the update), -Duvet.dmg (the installer) and -update.json, signed, notarized
+      # and stapled (electrobun.config.ts).
+      - run: bun run build:stable
+        env:
+          ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_PASSWORD }}
+          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Sign the update
         run: bun scripts/sign-update.ts
         env:

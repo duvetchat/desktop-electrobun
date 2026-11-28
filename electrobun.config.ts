@@ -42,6 +42,17 @@ export default {
 		},
 		mac: {
 			icon: "icon.iconset",
+			// A stable or canary build signs every binary with the Developer ID given (ELECTROBUN_DEVELOPER_ID, the release
+			// workflow's macos job) and the hardened runtime, then Apple notarizes it, its self-extracting bundle and its
+			// .dmg when its account is given too, each stapled (#619). Without them it signs nothing, as a dev build never
+			// does.
+			codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+			notarize: Boolean(
+				process.env.ELECTROBUN_DEVELOPER_ID &&
+				process.env.ELECTROBUN_APPLEID &&
+				process.env.ELECTROBUN_APPLEIDPASS &&
+				process.env.ELECTROBUN_TEAMID,
+			),
 			// The microphone and the camera, which macOS asks for before the app uses them. A signed build runs under the
 			// hardened runtime, which reads each as a Boolean, and Electrobun signs an entitlement's value as it's given
 			// (#619): true, so it isn't refused without a question. Electrobun writes a usage description into Info.plist
