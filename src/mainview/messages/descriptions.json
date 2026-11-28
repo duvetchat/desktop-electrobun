@@ -1147,6 +1147,7 @@
 	"public_app_connecting": "Beside a spinner while the app connects, before anything else shows.",
 	"public_app_open_chat_failed": "A notice when a direct message with someone couldn't be opened or started.",
 	"public_app_resize_sidebar": "Screen reader name of the sidebar's right edge, which is dragged (or moved with the arrow keys) to make the sidebar wider or narrower.",
+	"public_download_android": "[short] The download page's button: the app for Android phones (an APK file).",
 	"public_download_other_systems": "Under the download button. duvet.chat is the website's address: keep it as it is.",
 	"public_download_page_title": "The browser tab's title of the download page. Duvet is the app's name.",
 	"public_download_title": "Heading of the download page (a verb: get the app). Duvet is the app's name.",

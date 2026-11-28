@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import config from "../../electrobun.config";
 import { pageCopyRules, SECOND_WINDOW_PAGES } from "../mainview/src/lib/app-windows";
@@ -67,4 +67,15 @@ describe("the pages the packaged app has", () => {
 		const built = new Set(pages().map((page) => `src/mainview/build/${page}.html`));
 		expect(Object.keys(copy).filter((from) => from.endsWith(".html") && !built.has(from))).toEqual([]);
 	});
+});
+
+// #626: Android's update notice (the 426's «Update Duvet») opens duvet.chat/download, and the cutover's step 8 puts each
+// version's APK at one name in duvetchat/releases' android-stable, as the desktop's release does Windows' installer in
+// desktop-stable: the page links both there.
+test("the download page offers Windows' installer and Android's APK, each at its rolling release's one name", () => {
+	const page = readFileSync(join(routes, "download", "+page.svelte"), "utf8");
+	const releases = "https://github.com/duvetchat/releases/releases/download/";
+	expect(page).toContain(`"${releases}desktop-stable/stable-win-x64-Duvet-Setup.zip"`);
+	expect(page).toContain(`"${releases}android-stable/stable-android-arm64-Duvet.apk"`);
+	expect(page).toContain('t("public_download_android")');
 });
