@@ -1,7 +1,7 @@
-// The Bun process's words in the app's language (#464): the menu bar, the windows' titles, what Bun answers the pages
-// and macOS's permission prompts. The same messages as the page's (src/mainview/messages/<locale>.json, ICU
-// MessageFormat), through an i18next instance of Bun's own with i18next-icu; only the menu_, window_ and os_ ones, which
-// bun-messages.ts picks as the bundle is built.
+// The Bun process's words in the app's language (#464): the menu bar, the windows' titles, what Bun answers the pages,
+// macOS's permission prompts, and the encryption's boxes (#614, e2e/confirm.ts). The same messages as the page's
+// (src/mainview/messages/<locale>.json, ICU MessageFormat), through an i18next instance of Bun's own with i18next-icu;
+// only the menu_, window_, os_ and e2e_box_ ones, which bun-messages.ts picks as the bundle is built.
 //
 // Bun has no language of its own: the main window's page says which it's in, at its start and at each change
 // (appLanguage, src/bun/index.ts), and the app keeps the last one for its next start, whose menu bar is set before any
@@ -22,8 +22,11 @@ import type en from "../mainview/messages/en.json";
 import { LOCALES, matchLocale, PSEUDO, SHIPPED, type Locale, type UiLocale } from "../mainview/src/lib/i18n/locale";
 import { bunMessages } from "./bun-messages" with { type: "macro" };
 
-/** A message of Bun's: one of the language files' menu_, window_ and os_ keys. */
-export type BunMessageKey = Extract<keyof typeof en, `menu_${string}` | `window_${string}` | `os_${string}`>;
+/** A message of Bun's: one of the language files' menu_, window_, os_ and e2e_box_ keys. */
+export type BunMessageKey = Extract<
+	keyof typeof en,
+	`menu_${string}` | `window_${string}` | `os_${string}` | `e2e_box_${string}`
+>;
 export type MessageValues = Record<string, string | number | Date>;
 
 const MESSAGES = bunMessages();

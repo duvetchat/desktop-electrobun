@@ -12,7 +12,7 @@ const read = (locale: string): Record<string, string> =>
 	JSON.parse(readFileSync(join(import.meta.dir, "..", "mainview", "messages", `${locale}.json`), "utf8"));
 
 describe("Bun's messages", () => {
-	test("are each language file's menu_, window_ and os_ ones, and no other", () => {
+	test("are each language file's menu_, window_, os_ and e2e_box_ ones, and no other", () => {
 		const messages = bunMessages();
 		for (const locale of LOCALES) {
 			const own = Object.fromEntries(Object.entries(read(locale)).filter(([key]) => isBunKey(key)));

@@ -1,23 +1,29 @@
 import { afterAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileAccounts, type BoundaryDeps, type KnownAccounts } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import {
-	COMPARE_WITH_THE_BOX,
+	approvalQuestion,
 	IDOK,
 	MB_DEFBUTTON2,
 	MB_OKCANCEL,
 	nativeConfirm,
 	nativeNotice,
 	newDeviceNotice,
+	newKeysQuestion,
+	otherAccountQuestion,
+	removalQuestion,
 	rotationQuestion,
+	verifyQuestion,
 	type Notice,
 	type Question,
 } from "./confirm";
+import { setLanguage, tIn } from "../i18n";
 import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
+import { LOCALES } from "../../mainview/src/lib/i18n/locale";
 import en from "../../mainview/messages/en.json";
 import conventions from "../../mainview/src/lib/e2e/testing/e2e-conventions.json";
 
@@ -161,6 +167,10 @@ function person(...answers: boolean[]) {
 	};
 	return { asked, confirm };
 }
+
+/** A language's messages, as the page and Bun read them. */
+const messagesOf = (locale: string): Record<string, string> =>
+	JSON.parse(readFileSync(join(ROOT, "src", "mainview", "messages", `${locale}.json`), "utf8"));
 
 /** The accounts opened here, kept in memory: a page of its own starts with none, as a new installation. */
 function memoryAccounts(): KnownAccounts {
@@ -343,6 +353,15 @@ describe("what asks the person first, outside the page", () => {
 			defaultId: 0,
 			cancelId: 0,
 		});
+		// Its Cancel in the page's language too (#614).
+		try {
+			setLanguage("es");
+			await elsewhere(question);
+			expect(asked[1]).toMatchObject({ buttons: [messagesOf("es").e2e_box_cancel, "Approve"] });
+		} finally {
+			setLanguage("en");
+		}
+		asked.length = 1;
 		for (response of [0, -1, 2]) expect(await elsewhere(question)).toBe(false);
 		// A box that fails to show is a no.
 		const broken = nativeConfirm({
@@ -406,9 +425,49 @@ describe("what asks the person first, outside the page", () => {
 		expect(await approvalFingerprint(Buffer.from(scanned.qr, "base64"))).toBe(scanned.fingerprint);
 	});
 
-	// #557's re-review, RC1: every approving device says the same of the new device's fingerprint, the web's page too.
-	test("the approver's box says what the approving page says of the new device's fingerprint", () => {
-		expect(COMPARE_WITH_THE_BOX).toBe(en.e2e_approval_fingerprint_line);
+	// #557's re-review, RC1: every approving device says the same of the new device's fingerprint, the web's page too,
+	// and in each of the app's languages (#614).
+	test("the approver's box says what the approving page says of the new device's fingerprint, in every language", () => {
+		for (const locale of LOCALES) {
+			const page = messagesOf(locale).e2e_approval_fingerprint_line;
+			expect({ locale, box: tIn(locale, "e2e_box_approval_compare") }).toEqual({ locale, box: page });
+		}
+		const approval = approvalQuestion({ device: NEW_A, fingerprint: "0000 1111 2222 3333" });
+		expect(approval.message).toContain(en.e2e_approval_fingerprint_line);
+	});
+
+	// #614: the box is the one screen a script in the page can't draw on, and it says the page's words in the page's
+	// language: what Bun asks and shows is in the language the main window's page says, as its menus are.
+	test("every box speaks the language the main window's page is in", () => {
+		const boxes = () => [
+			approvalQuestion({ device: NEW_A, fingerprint: "0000 1111 2222 3333" }),
+			newDeviceNotice({ code: "0000 1111 2222 3333", scan: "4444 5555 6666 7777" }),
+			verifyQuestion({ user: BO, digits: "11111 22222 33333 44444 55555 66666 77777 88888 99999 00000 12345 67890" }),
+			otherAccountQuestion(BO),
+			otherAccountQuestion(BO, true),
+			removalQuestion([NEW_A]),
+			removalQuestion([NEW_A, NEW_B]),
+			rotationQuestion([NEW_A], false),
+			rotationQuestion([NEW_A], true),
+			rotationQuestion([], true, [NEW_B]),
+			newKeysQuestion(false),
+			newKeysQuestion(true),
+		];
+		const english = boxes();
+		const es = messagesOf("es");
+		try {
+			setLanguage("es");
+			const spanish = boxes();
+			for (const [at, box] of spanish.entries()) {
+				expect(box.title).not.toBe(english[at]?.title);
+				expect(box.message).not.toBe(english[at]?.message);
+			}
+			expect(spanish[0]).toMatchObject({ title: es.e2e_box_approval_title, yes: es.e2e_box_approve });
+			expect(spanish[0]?.message).toContain(es.e2e_approval_fingerprint_line);
+			expect(spanish[3]?.message).toContain(BO);
+		} finally {
+			setLanguage("en");
+		}
 	});
 
 	test("a notice replaces the one shown, and none takes it away; without the core's platform nothing shows", () => {
