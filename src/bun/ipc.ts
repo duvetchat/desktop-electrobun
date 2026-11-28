@@ -4,9 +4,18 @@ import { posix } from "node:path";
  * Linux, TMPDIR on macOS), falling back to /tmp. An empty variable counts as unset. */
 export function ipcPath(platform: NodeJS.Platform, env: Record<string, string | undefined>): string {
 	if (platform === "win32") return "\\\\.\\pipe\\duvet-ipc";
-	const dir = env.XDG_RUNTIME_DIR || env.TMPDIR || env.TMP || env.TEMP || "/tmp";
-	return posix.join(dir, "duvet-ipc.sock");
+	return posix.join(runtimeDir(env), "duvet-ipc.sock");
 }
+
+/** Where Discord's IPC pipe number index is, as its SDK looks for it (#600): a named pipe on Windows, else a socket
+ * of that name in the directory ipcPath uses. */
+export function discordIpcPath(index: number, platform: NodeJS.Platform, env: Record<string, string | undefined>) {
+	if (platform === "win32") return `\\\\.\\pipe\\discord-ipc-${index}`;
+	return posix.join(runtimeDir(env), `discord-ipc-${index}`);
+}
+
+const runtimeDir = (env: Record<string, string | undefined>) =>
+	env.XDG_RUNTIME_DIR || env.TMPDIR || env.TMP || env.TEMP || "/tmp";
 
 /** Whether something listens at path already: a connection to it goes through. Another Duvet that runs keeps its IPC
  * server: on Windows, Bun 1.3.9 panics listening on a pipe another process holds, past any try (#188), and on Unix the

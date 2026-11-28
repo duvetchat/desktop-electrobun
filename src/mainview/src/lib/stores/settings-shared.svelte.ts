@@ -9,6 +9,7 @@ import { parseLayoutPrefs } from "$lib/layout-prefs";
 import { audioStore, type AudioSettings } from "$lib/stores/audio.svelte";
 import {
 	shareSpotify,
+	shareGameActivity,
 	voiceFaces,
 	myBuckets,
 	pendingTeamInvites,
@@ -93,6 +94,7 @@ export function sharedSettings(): Record<string, Shared> {
 		buckets: writing(myBuckets, list),
 		voiceFaces: writing(voiceFaces, flag),
 		shareSpotify: writing(shareSpotify, flag),
+		shareGameActivity: writing(shareGameActivity, flag),
 		// The microphone and camera voice uses, and its noise suppression: Settings changes them for the main window's
 		// voice.
 		micId: writing(selectedMicId, (value) => (typeof value === "string" ? value : undefined)),
