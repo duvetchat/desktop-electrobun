@@ -1,5 +1,35 @@
 import { describe, expect, test } from "bun:test";
-import { fitActivity } from "./activities";
+import { atMostEvery, fitActivity } from "./activities";
+
+describe("atMostEvery", () => {
+	test("sends a burst of changes at most once an interval, the first at once and the last among them", async () => {
+		let value = 0;
+		const sent: { value: number; at: number }[] = [];
+		const changed = atMostEvery(50, () => sent.push({ value, at: performance.now() }));
+		const start = performance.now();
+		for (let i = 1; i <= 30; i++) {
+			value = i;
+			changed();
+			if (i === 1) expect(sent).toHaveLength(1);
+			await Bun.sleep(10);
+		}
+		await Bun.sleep(80);
+		const elapsed = performance.now() - start;
+		expect(sent.length).toBeLessThanOrEqual(Math.ceil(elapsed / 50) + 1);
+		for (let i = 1; i < sent.length; i++) expect(sent[i].at - sent[i - 1].at).toBeGreaterThanOrEqual(48);
+		expect(sent[0].value).toBe(1);
+		expect(sent.at(-1)?.value).toBe(30);
+	});
+
+	test("sends a change at once when the interval since the last is over", async () => {
+		let sends = 0;
+		const changed = atMostEvery(30, () => sends++);
+		changed();
+		await Bun.sleep(40);
+		changed();
+		expect(sends).toBe(2);
+	});
+});
 
 describe("fitActivity", () => {
 	test("keeps an activity within the limits as it is", () => {

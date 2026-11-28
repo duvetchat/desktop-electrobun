@@ -20,6 +20,28 @@ export interface ActivityPayload {
 	};
 }
 
+/** How often the user's activities go out at most: the gateway drops a connection's messages past 10 a second, voice's
+ * and calls' with them, and a game may set its activity many times a second (#600). */
+export const ACTIVITY_UPDATE_MS = 1000;
+
+/** send, at most once every ms: a call within ms of the last send is put off to the end of that time, and those that
+ * come meanwhile join it, so what's current then is what goes, and the last change is never lost. */
+export function atMostEvery(ms: number, send: () => void): () => void {
+	let last = -Infinity;
+	let waiting: ReturnType<typeof setTimeout> | undefined;
+	const now = () => {
+		waiting = undefined;
+		last = performance.now();
+		send();
+	};
+	return () => {
+		if (waiting) return;
+		const wait = last + ms - performance.now();
+		if (wait > 0) waiting = setTimeout(now, wait);
+		else now();
+	};
+}
+
 /** A text cut to the gateway's 128 characters (code points, as it counts them), ending in an ellipsis when cut. */
 export function clip(value: string): string {
 	const chars = [...value];

@@ -1185,6 +1185,8 @@
 	"settings_accounts_remove_label": "Supprimer {name} de cet appareil",
 	"settings_accounts_switch": "Changer",
 	"settings_accounts_title": "Comptes",
+	"settings_activity_games": "Partager ce à quoi je joue",
+	"settings_activity_games_line": "Les jeux et les applis qui affichent ton activité sur Discord la montrent aussi aux personnes de tes Espaces, avec ce à quoi tu joues, ses détails et depuis combien de temps. Discord continue de la recevoir, mais si Discord a été ouvert avant Duvet, seul Discord la reçoit jusqu’à sa fermeture. Enregistré sur cet appareil.",
 	"settings_activity_spotify": "Partager ce que j’écoute sur Spotify",
 	"settings_activity_spotify_line": "Pendant que Spotify joue sur cet ordinateur, les personnes présentes dans tes Espaces voient la chanson, son artiste et son état d’avancement. Enregistré sur cet appareil.",
 	"settings_app_create_failed": "Impossible de créer l’application",
