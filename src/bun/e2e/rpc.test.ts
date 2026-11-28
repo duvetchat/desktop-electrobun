@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from "../../mainview/src/lib/e2e/host";
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, fileMark, type BoundaryDeps, type UserMark } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
+import { coreLibraryFile } from "./library";
 import {
 	COMPARE_WITH_THE_BOX,
 	IDOK,
@@ -103,16 +104,9 @@ const ATTACHMENT = "0193a4b2-0000-7000-8000-0000000000c3";
 const MIB2 = 2 * 1024 * 1024;
 
 const ROOT = join(import.meta.dir, "../../..");
-/** The library native/core carries for this platform's tests, or the build DUVET_E2E_FFI names; none on macOS. */
-const LIBRARY: string | null =
-	process.env.DUVET_E2E_FFI ||
-	(process.arch !== "x64"
-		? null
-		: process.platform === "linux"
-			? join(ROOT, "native/core/linux-x64/libduvet_e2e_ffi.so")
-			: process.platform === "win32"
-				? join(ROOT, "native/core/win-x64/duvet_e2e_ffi.dll")
-				: null);
+/** The library this platform's build carries (library.ts), or the build DUVET_E2E_FFI names; none on an Intel Mac. */
+const carried = coreLibraryFile();
+const LIBRARY: string | null = process.env.DUVET_E2E_FFI || (carried && join(ROOT, carried));
 const withCore = LIBRARY !== null && existsSync(LIBRARY);
 
 const folders: string[] = [];

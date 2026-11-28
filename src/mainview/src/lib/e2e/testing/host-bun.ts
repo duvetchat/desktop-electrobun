@@ -1,7 +1,7 @@
 // A CoreHost over bun:ffi, for tests alone (PLAN-E2E-CLIENTES.md, Task 6): the core's own library as the desktop's Bun
 // loads it, each user's database in a folder of its own, opened with a key the test gives (key_storage "provided"). So
 // the engine's tests run on real MLS material. DUVET_E2E_FFI names another build of the library (the API's suites pass
-// theirs); without it, the one native/core carries for this platform, and none on macOS.
+// theirs); without it, the one native/core carries for this platform: Windows' and Linux's on x64, macOS's on arm64.
 //
 // Every test file under `bun test --isolate` loads the library again, but in one process: its state goes from file to
 // file, its handles counted on and a database a file left open still locked. So each host keeps to a folder of its own.
@@ -17,16 +17,22 @@ import { throughCore } from "../parts";
 
 const native = join(import.meta.dir, "../../../../../../native/core");
 
-/** The library this platform loads: the one DUVET_E2E_FFI names, else native/core's for it, else none (macOS). */
+/** The library native/core carries for each system whose build carries one (src/bun/e2e/library.ts). */
+const NATIVE: Record<string, string> = {
+	"win32-x64": "win-x64/duvet_e2e_ffi.dll",
+	"linux-x64": "linux-x64/libduvet_e2e_ffi.so",
+	"darwin-arm64": "macos-arm64/libduvet_e2e_ffi.dylib",
+};
+
+/** The library native/core carries for a system, or none: no release of the core builds for it (an Intel Mac). */
+export function nativeCoreLibrary(platform: string, arch: string): string | null {
+	const file = NATIVE[`${platform}-${arch}`];
+	return file ? join(native, file) : null;
+}
+
+/** The library this platform loads: the one DUVET_E2E_FFI names, else native/core's for it, else none. */
 export const coreLibrary: string | null =
-	process.env.DUVET_E2E_FFI ||
-	(process.arch !== "x64"
-		? null
-		: process.platform === "linux"
-			? join(native, "linux-x64/libduvet_e2e_ffi.so")
-			: process.platform === "win32"
-				? join(native, "win-x64/duvet_e2e_ffi.dll")
-				: null);
+	process.env.DUVET_E2E_FFI || nativeCoreLibrary(process.platform, process.arch);
 
 const load = (path: string) =>
 	dlopen(path, {

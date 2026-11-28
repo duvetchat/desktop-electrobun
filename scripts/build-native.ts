@@ -6,8 +6,11 @@
 //     src/bun/window-buttons.ts, #406);
 //   - libPasteboard.dylib, the recovery key's Copy, for this Mac alone and concealed (pasteboard.mm,
 //     src/bun/secret-clipboard.ts, PLAN-E2E-PLATAFORMAS.md's Task 6).
+// Beside them it leaves a copy of the end-to-end encryption core's library, the release's (src/bun/e2e/library.ts,
+// Task 8), which it signs as it signs them.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { coreLibraryCopy, coreLibraryFile } from "../src/bun/e2e/library";
 
 const OUT_DIR = "native/macos/build";
 const LIBRARIES = [
@@ -37,6 +40,9 @@ const run = (cmd: string, args: string[]) => {
 // Notarization needs every Mach-O signed; Electrobun 1.15.1's signer only walks Contents/MacOS.
 const identity = process.env.ELECTROBUN_DEVELOPER_ID;
 const sign = identity && process.env.ELECTROBUN_BUILD_ENV !== "dev";
+const signLibrary = (out: string) => {
+	if (sign) run("codesign", ["--force", "--timestamp", "--options", "runtime", "--sign", identity, out]);
+};
 
 for (const { name, source, frameworks } of LIBRARIES) {
 	const out = `${OUT_DIR}/${name}`;
@@ -56,6 +62,16 @@ for (const { name, source, frameworks } of LIBRARIES) {
 		"-o",
 		out,
 	]);
-	if (sign) run("codesign", ["--force", "--timestamp", "--options", "runtime", "--sign", identity, out]);
+	signLibrary(out);
 	console.log(`[native] built ${out} (${targetArch})`);
+}
+
+// The core's copy goes where the build's copy rule takes it from; native/core's file keeps the release's bytes, which
+// native/core/SOURCE.json pins. An Intel Mac's build carries none.
+const core = coreLibraryFile();
+const [copy] = Object.keys(coreLibraryCopy());
+if (core && copy) {
+	copyFileSync(core, copy);
+	signLibrary(copy);
+	console.log(`[native] copied ${core} to ${copy}`);
 }
