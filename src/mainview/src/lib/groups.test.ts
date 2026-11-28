@@ -49,10 +49,8 @@ describe("newConversation", () => {
 	test("a group has 20 members at most, its owner among them: refused before anything is asked", () => {
 		const picked = (count: number) => Array.from({ length: count }, (_, n) => `friend-${n}`);
 		expect(newConversation(picked(19), "Twenty")).toEqual({ kind: "group", name: "Twenty", userIds: picked(19) });
-		expect(newConversation(picked(20), "Twenty-one")).toEqual({
-			kind: "refused",
-			why: "A group can have 20 members at most.",
-		});
+		expect(newConversation(picked(20), "Twenty-one")).toEqual({ kind: "refused", why: "e2e_group_full" });
+		expect(refusal(newConversation(picked(20), "Twenty-one"))).toBe("A group can have 20 members at most.");
 	});
 
 	test("nobody picked is nothing to open, whatever name was typed", () => {

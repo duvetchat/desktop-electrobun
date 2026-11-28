@@ -73,7 +73,7 @@ test("leaving asks first, and what the API took goes here at once, a call there 
 // Task 22's review, M3: what an addition, a removal, a leave or a restart refuses says it in the app's words.
 test("a change of the members, a leave and a restart that didn't go say why in the app's words", () => {
 	const view = source("ConversationView.svelte");
-	expect(view).toContain('addMemberError = refusalWords(err, "Failed to add member");');
+	expect(view).toContain('addMemberError = refusalWords(err, t("people_group_add_member_failed"));');
 	expect(view).toContain('throw new Error(refusalWords(err, t("e2e_remove_failed")), { cause: err });');
 	expect(view).toMatch(
 		/return confirmRestart\(\{\s*restart: \(confirmed\) => restartGroup\(convId, confirmed\),\s*nameOf,\s*confirm: confirmAction,\s*refused: \(text\) => toast\(text, "error"\),\s*\}\);/,
@@ -203,7 +203,7 @@ test("a waiting message whose files went with the app says so at once, with Dism
 	// Under the message, why; and its bar offers no Retry, which could only say it again.
 	expect(list).toMatch(/\{#if isFailed && message\.unsent_note\}\s*\{@render unsentLine\(message\)\}/);
 	expect(list).toMatch(
-		/\{#if !message\.unsent_note\}\s*<button[^>]*onclick=\{\(\) => onRetry\(message\)\}>Retry<\/button>\s*\{\/if\}/,
+		/\{#if !message\.unsent_note\}\s*<button[^>]*onclick=\{\(\) => onRetry\(message\)\}\s*>\{t\("chat_message_retry"\)\}<\/button\s*>\s*\{\/if\}/,
 	);
 });
 

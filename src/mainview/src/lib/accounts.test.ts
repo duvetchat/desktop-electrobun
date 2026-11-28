@@ -7,6 +7,7 @@ import {
 	readAccounts,
 	rememberAccount,
 } from "./accounts";
+import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 
 const ana = {
 	id: "a1",
@@ -67,5 +68,19 @@ describe("the account in use", () => {
 		activateAccount(ben);
 		expect(localStorage.getItem("duvet_session_token")).toBe("access-b");
 		expect(localStorage.getItem("duvet_refresh_token")).toBeNull();
+	});
+
+	// The next page's first identify names the device this installation keeps for the account taken, and none of the
+	// account it left (lib/e2e/client.ts): it identifies before READY says whose session it is.
+	test("taking a saved account makes its device the one the next identify names", () => {
+		keepDevice(ana.id, "device-a");
+		keepUser(ana.id);
+		activateAccount(ben);
+		expect(identifyDevice()).toBeNull();
+		keepDevice(ben.id, "device-b");
+		activateAccount(ana);
+		expect(identifyDevice()).toBe("device-a");
+		activateAccount(ben);
+		expect(identifyDevice()).toBe("device-b");
 	});
 });

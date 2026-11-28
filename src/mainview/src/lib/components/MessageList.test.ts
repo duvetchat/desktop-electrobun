@@ -351,11 +351,11 @@ describe("a shared history's notice", () => {
 		const menu = list.slice(start, list.indexOf("{/snippet}", start));
 		const [forNotice, forOthers] = menu.split("{:else}");
 		expect(forNotice).toContain("{#if isNotice(message)}");
-		expect(forNotice).toContain("Delete message");
-		expect(forNotice).not.toContain("Edit message");
-		expect(forNotice).not.toContain("Pin message");
-		expect(forOthers).toContain("Edit message");
-		expect(forOthers).toContain("Pin message");
+		expect(forNotice).toContain('t("chat_delete_message")');
+		expect(forNotice).not.toContain('t("chat_edit_message")');
+		expect(forNotice).not.toContain('t("chat_pin")');
+		expect(forOthers).toContain('t("chat_edit_message")');
+		expect(forOthers).toContain('t("chat_pin")');
 		expect(list).toContain('mine &&\n\t\t\t(message.content ?? "").trim() !== "" &&');
 	});
 });
@@ -521,7 +521,7 @@ describe("editing a message", () => {
 	});
 
 	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
-		expect(editor).toContain('contenteditable="true"');
+		expect(editor).toContain('contenteditable={box.saving ? "false" : "true"}');
 		expect(editor).toContain('{t("chat_edit_save")}');
 		expect(editor).toContain('label={t("chat_edit_cancel")}');
 		expect(editor).toContain('event.key === "Escape"');

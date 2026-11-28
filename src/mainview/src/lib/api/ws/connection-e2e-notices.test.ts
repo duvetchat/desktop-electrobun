@@ -174,7 +174,8 @@ describe.skipIf(!coreLibrary)("a conversation's notice", () => {
 			await until(() => noticeOf(first.id) !== undefined, 10_000);
 			expect(noticeOf(first.id)).toMatchObject({
 				link: { conversationId: conversation, messageId: first.id },
-				where: "in a direct message",
+				place: "dm",
+				placeName: "",
 				text: `hello <@${ana}>, the plan`,
 				mentionMap: { [ana]: "me" },
 			});
@@ -290,7 +291,7 @@ describe.skipIf(!coreLibrary)("a conversation's notice", () => {
 			}))!;
 			await until(() => noticeOf(sent.id) !== undefined, 10_000);
 			expect(readOnce).toBe(true);
-			expect(noticeOf(sent.id)).toMatchObject({ text: "read by the tab that leads", where: "in a direct message" });
+			expect(noticeOf(sent.id)).toMatchObject({ text: "read by the tab that leads", place: "dm", placeName: "" });
 			expect(hosts).toBe(0);
 			held = null;
 
