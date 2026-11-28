@@ -16,6 +16,8 @@
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { SETTINGS_MENU_COMMAND } from "$lib/app-menu";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { currentShell } from "$lib/platform";
 	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
@@ -39,8 +41,8 @@
 		micsLoaded = true;
 	}
 
-	const micLabel = $derived(media.muted ? "Unmute" : "Mute");
-	const micTip = $derived(media.canSpeak ? micLabel : "You can't speak in this room");
+	const micLabel = $derived(media.muted ? t("shell_unmute") : t("shell_mute"));
+	const micTip = $derived(media.canSpeak ? micLabel : t("shell_cant_speak"));
 
 	let showUserSettings = $state(false);
 
@@ -68,10 +70,10 @@
 </script>
 
 {#snippet micList()}
-	<div class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">Microphone</div>
+	<div class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">{t("call_microphone")}</div>
 	{#if mics.length === 0}
 		{#if micsLoaded}
-			<div class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No microphones found</div>
+			<div class="text-duvet-ink2 px-2 py-1.5 text-[13px]">{t("call_no_microphones")}</div>
 		{/if}
 	{:else}
 		{#each mics as mic, index (mic.id || index)}
@@ -85,14 +87,14 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if collapsed}
-	<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={openSettings}>
+	<button class={iconButtonClass()} aria-label={t("shell_settings")} title={t("shell_settings")} onclick={openSettings}>
 		<GearSixIcon class="size-4" />
 	</button>
 {:else}
 	<div class="flex shrink-0 items-center gap-0.5">
 		<!-- The microphone: a press mutes; a right-click, or the chevron beside it, picks the device. -->
 		<div class="rounded-tile flex h-7 w-10 min-w-0 gap-px overflow-hidden">
-			<ContextMenu label="Microphone" onOpenChange={loadMics}>
+			<ContextMenu label={t("call_microphone")} onOpenChange={loadMics}>
 				{#snippet target(props)}
 					<MediaButton
 						label={micLabel}
@@ -112,14 +114,14 @@
 				{/snippet}
 				{@render micList()}
 			</ContextMenu>
-			<Menu side="top" align="end" label="Microphone" onOpenChange={loadMics}>
+			<Menu side="top" align="end" label={t("call_microphone")} onOpenChange={loadMics}>
 				{#snippet trigger(menuProps)}
-					<Tooltip text="Choose a microphone" side="top">
+					<Tooltip text={t("call_choose_microphone")} side="top">
 						{#snippet trigger(props)}
 							<button
 								{...mergeProps(menuProps, props)}
 								type="button"
-								aria-label="Choose a microphone"
+								aria-label={t("call_choose_microphone")}
 								class="text-duvet-ink2 hover:text-duvet-ink hover:bg-duvet-sb-hover flex h-7 w-4 shrink-0 items-center justify-center transition-colors duration-[120ms] motion-reduce:transition-none"
 							>
 								<ChevronDown size={11} strokeWidth={2.5} />
@@ -134,8 +136,8 @@
 		<!-- Deafen: a press silences everyone; the chevron sets how loud they play. -->
 		<div class="rounded-tile flex h-7 w-10 min-w-0 gap-px overflow-hidden">
 			<MediaButton
-				label={media.deafened ? "Undeafen" : "Deafen"}
-				tip={media.deafened ? "Undeafen" : "Deafen"}
+				label={media.deafened ? t("shell_undeafen") : t("shell_deafen")}
+				tip={media.deafened ? t("shell_undeafen") : t("shell_deafen")}
 				pressed={media.deafened}
 				pressedTone="danger"
 				stateInName
@@ -146,14 +148,14 @@
 			>
 				{#if media.deafened}<HeadphoneOff size={15} />{:else}<Headphones size={15} />{/if}
 			</MediaButton>
-			<Popover side="top" align="end" label="Audio output" class="rounded-panel">
+			<Popover side="top" align="end" label={t("shell_audio_output")} class="rounded-panel">
 				{#snippet trigger(popoverProps)}
-					<Tooltip text="Audio output" side="top">
+					<Tooltip text={t("shell_audio_output")} side="top">
 						{#snippet trigger(props)}
 							<button
 								{...mergeProps(popoverProps, props)}
 								type="button"
-								aria-label="Audio output"
+								aria-label={t("shell_audio_output")}
 								class="text-duvet-ink2 hover:text-duvet-ink hover:bg-duvet-sb-hover flex h-7 w-4 shrink-0 items-center justify-center transition-colors duration-[120ms] motion-reduce:transition-none"
 							>
 								<ChevronDown size={11} strokeWidth={2.5} />
@@ -163,12 +165,16 @@
 				{/snippet}
 				<div class="flex w-56 flex-col gap-2 p-3">
 					<div class="flex items-center justify-between gap-2">
-						<span class="text-duvet-ink2 text-[11px] font-semibold tracking-[0.06em] uppercase">Output volume</span>
-						<span class="text-duvet-ink2 text-[11px] tabular-nums">{Math.round($voiceOutputVolume * 100)}%</span>
+						<span class="text-duvet-ink2 text-[11px] font-semibold tracking-[0.06em] uppercase"
+							>{t("shell_output_volume")}</span
+						>
+						<span class="text-duvet-ink2 text-[11px] tabular-nums"
+							>{formatNumber(Math.round($voiceOutputVolume * 100) / 100, { style: "percent" })}</span
+						>
 					</div>
 					<Slider
 						value={Math.round($voiceOutputVolume * 100)}
-						label="Output volume"
+						label={t("shell_output_volume")}
 						oninput={(v) => voiceOutputVolume.set(v / 100)}
 						class="w-full!"
 					/>
@@ -177,8 +183,8 @@
 		</div>
 
 		<MediaButton
-			label="Settings"
-			tip="Settings"
+			label={t("shell_settings")}
+			tip={t("shell_settings")}
 			tone="quiet"
 			shape="panel"
 			class="rounded-tile! size-7!"

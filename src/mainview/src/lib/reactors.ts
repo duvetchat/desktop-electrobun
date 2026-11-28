@@ -1,4 +1,5 @@
 import { getAvatarURL, isUuid } from "$lib/common/common";
+import { t } from "$lib/i18n";
 import type { MemberOnSidebar } from "$lib/types";
 
 /** Someone who reacted, as the dialog of who reacted shows them. */
@@ -41,7 +42,7 @@ export function reactorOf(
 			avatar: getAvatarURL(userId, profile.avatar),
 		};
 	}
-	return { id: userId, name: "Someone", username: null, avatar: null };
+	return { id: userId, name: t("media_reactor_unknown"), username: null, avatar: null };
 }
 
 /**

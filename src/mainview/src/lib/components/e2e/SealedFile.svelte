@@ -8,7 +8,7 @@
 	import { decryptedFiles, saveFile } from "$lib/e2e/decrypted-files.svelte";
 	import { drawnBy } from "$lib/e2e/engine/files";
 	import { t } from "$lib/i18n";
-	import { formatFileSize } from "$lib/i18n/format";
+	import { formatFileSize, formatNumber } from "$lib/i18n/format";
 	import { MESSAGE_CARD, MESSAGE_CARD_ACTION } from "$lib/message-styles";
 	import type { Attachment } from "$lib/types";
 
@@ -34,7 +34,8 @@
 		fit?: string;
 		onPreview?: (src: string, alt?: string) => void;
 		authorName?: string;
-		channelName?: string;
+		/** The players' room name, as theirs: "" in a conversation, null for a room the app doesn't know. */
+		channelName?: string | null;
 		/** Under a spoiler's cover, still blurred. */
 		hidden?: boolean;
 		/** In a preview (a search's result, a pin, a thread's message), where a search on the device finds messages whose
@@ -72,7 +73,7 @@
 			: failure
 				? t("e2e_file_named", { name: file.name, status: failure })
 				: opened?.status === "loading"
-					? t("e2e_file_named", { name: file.name, status: t("e2e_file_progress", { percent }) })
+					? t("e2e_file_named", { name: file.name, status: t("e2e_file_progress", { percent: formatNumber(percent) }) })
 					: t("e2e_file_save_named", { name: file.name }),
 	);
 	// A video its browser couldn't play, or a picture it couldn't draw, is offered to save.
@@ -235,7 +236,7 @@
 				</button>
 			{:else if opened?.status === "loading"}
 				<span class="bg-duvet-media-scrim text-duvet-media-ink rounded-lg px-2 py-1 text-xs tabular-nums">
-					{t("e2e_file_progress", { percent })}
+					{t("e2e_file_progress", { percent: formatNumber(percent) })}
 				</span>
 				<span class="bg-duvet-ink/10 absolute inset-x-3 bottom-1.5 h-1 overflow-hidden rounded-full" aria-hidden="true">
 					<span class="bg-duvet-accent block h-full rounded-full" style="width: {percent}%"></span>
@@ -270,7 +271,10 @@
 		<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 			<span class="truncate text-[13.5px] leading-tight font-semibold">{file.name}</span>
 			<span class="text-duvet-ink2 text-[11.5px] leading-tight tabular-nums">
-				{failure ?? (opened?.status === "loading" ? t("e2e_file_progress", { percent }) : formatFileSize(file.size))}
+				{failure ??
+					(opened?.status === "loading"
+						? t("e2e_file_progress", { percent: formatNumber(percent) })
+						: formatFileSize(file.size))}
 			</span>
 		</span>
 		{#if !failure && listed}<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />{/if}

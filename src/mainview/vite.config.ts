@@ -18,8 +18,9 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: [rnnoiseWasm(), slimEmojiData(), tailwindcss(), sveltekit()],
 		// The desktop app (src/bun/index.ts) and app.html look for the dev server on 5173: if it's taken,
-		// fail instead of moving to another port, where neither would find it.
-		server: { port: 5173, strictPort: true },
+		// fail instead of moving to another port, where neither would find it. SvelteKit's Vite plugin
+		// narrows server.fs.allow to src/ and node_modules/, so messages/ is added alongside them (#464).
+		server: { port: 5173, strictPort: true, fs: { allow: ["messages"] } },
 		// The E2E core's worker (lib/e2e/web/worker.ts) is a module worker, which imports its WebAssembly's glue and
 		// hands the glue the .wasm's URL (a ?url import, an asset in a build): Vite's default, a classic script, takes
 		// neither.

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from "svelte";
+	import { t } from "$lib/i18n";
 
 	let { start }: { start: number } = $props();
 
@@ -12,8 +13,11 @@
 		const h = Math.floor(s / 3600);
 		const m = Math.floor((s % 3600) / 60);
 		const sec = s % 60;
-		if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")} elapsed`;
-		return `${m}:${String(sec).padStart(2, "0")} elapsed`;
+		const time =
+			h > 0
+				? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+				: `${m}:${String(sec).padStart(2, "0")}`;
+		return t("call_activity_elapsed", { time });
 	});
 </script>
 

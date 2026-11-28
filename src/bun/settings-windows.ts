@@ -5,6 +5,7 @@
 //
 // What makes a window is the caller's (settings-window-native.ts, which needs Electrobun): this file decides which
 // windows there are, where each opens and what it is told, so it can be tested.
+import { t } from "./i18n";
 import { isAppPage } from "./navigation";
 import { shellPreload, windowChrome, type TitleBarStyle, type WindowChrome, type WindowKind } from "./shell";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
@@ -31,9 +32,12 @@ export function parseOpenAppWindow(value: unknown): OpenAppWindow | null {
 export const windowKey = (request: OpenAppWindow) =>
 	request.window === "settings" ? "settings" : `space:${request.spaceId}`;
 
-/** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.10). */
-export const windowTitle = (request: OpenAppWindow) =>
-	request.window === "settings" ? "Duvet settings" : `${request.name || "Space"} · Space settings`;
+/** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.10), in the
+ * language Bun speaks now (i18n.ts). */
+export function windowTitle(request: OpenAppWindow): string {
+	if (request.window === "settings") return t("window_settings");
+	return request.name ? t("window_space_settings", { name: request.name }) : t("window_space_settings_unnamed");
+}
 
 /** What a Settings window's page mirrors of what the main window publishes: the values the windows share
  * (lib/settings-windows.ts: syncChannel), a Space's own only in that Space's window. The media controls' state is the
@@ -249,6 +253,11 @@ export class SettingsWindows {
 		this.#retitle(message);
 	}
 
+	/** The app's language changed (i18n.ts): every window is titled again, in it. */
+	retitle(): void {
+		for (const opened of this.#open.values()) this.#setTitle(opened);
+	}
+
 	// A Space renamed while its settings are open: the window takes the new name at once, as its page's own title
 	// does. The title was the name the Space had as the window opened, until it was closed and opened again.
 	#retitle(message: WindowStateMessage) {
@@ -256,14 +265,21 @@ export class SettingsWindows {
 		if (!space) return;
 		const opened = this.#open.get(windowKey({ window: "space-settings", spaceId: space.spaceId, name: space.name }));
 		if (!opened || opened.request.window !== "space-settings") return;
-		const title = windowTitle({ ...opened.request, name: space.name });
-		// The Space is published with every change of it, its members' presence among them: only a new name is one.
+		// The name the window goes by from now on, in this language and the next.
+		opened.request = { ...opened.request, name: space.name };
+		this.#setTitle(opened);
+	}
+
+	// The Space is published with every change of it, its members' presence among them: only a title that changes is
+	// set. A window that is going keeps the title it had.
+	#setTitle(opened: OpenWindow) {
+		const title = windowTitle(opened.request);
 		if (title === opened.title) return;
 		try {
 			opened.window.setTitle(title);
 			opened.title = title;
 		} catch {
-			// A window that is going keeps the title it had.
+			// Gone, or going.
 		}
 	}
 

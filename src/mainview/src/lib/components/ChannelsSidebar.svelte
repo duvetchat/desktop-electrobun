@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
+	import Rich from "$lib/components/Rich.svelte";
 	import {
 		AppWindow as AppWindowIcon,
 		Columns2 as ColumnsIcon,
@@ -11,23 +13,24 @@
 		Trash2 as TrashSimpleIcon,
 		Copy as CopySimpleIcon,
 		Link2 as LinkSimpleIcon,
-		ChevronDown as ChevronDownIcon,
 		MicOff as MicrophoneSlashIcon,
 		Headphones as HeadphonesIcon,
 		Video as VideoIcon,
 		Pencil as PencilIcon,
 	} from "@lucide/svelte";
 
-	import { onMount } from "svelte";
 	import { categoryDropPosition, topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { roomColumn } from "$lib/nav";
+	import { categoryNews, isCategoryOpen, noNews } from "$lib/space-tree";
+	import { expandCategory, spaceTree, treeFocus } from "$lib/stores/space-tree.svelte";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
+	import Disclosure from "$lib/components/ui/Disclosure.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
@@ -57,10 +60,13 @@
 		activeChannelId = null,
 		onSelect = () => {},
 		mac = false,
+		forceExpand = false,
 	}: {
 		guild: Guild;
 		channels: Channel[];
 		activeChannelId?: string | null;
+		/** An outside filter's override: every category shows its rooms, whatever the user folded. */
+		forceExpand?: boolean;
 		/** A room picked, and how: a click opens it in the current tab, ⌘-click or a middle click in a new one, ⌥-click
 		 * beside (lib/shell-layout.ts: openHow). */
 		onSelect?: (channelId: string, how: OpenHow) => void;
@@ -70,9 +76,6 @@
 
 	// The rooms of a Space, drawn as a tree under its row in the sidebar (#357, S-06), which has the Space's name and
 	// menu: the rooms in no category, then each category with its rooms, each voice room with who's in it.
-
-	let buttons = $state<(HTMLElement | null)[]>([]);
-	let expanded = $state<{ [key: string]: boolean }>({});
 
 	const space = $derived($gatewaySpaces.find((s) => s.id === guild.id));
 
@@ -151,7 +154,7 @@
 			newChannelCategory = null;
 		} catch (e) {
 			console.error(e);
-			toast(getApiError(e, "Failed to create room"), "error");
+			toast(getApiError(e, t("shell_room_create_failed")), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -165,27 +168,24 @@
 			confirmDeleteChannel = null;
 		} catch (err) {
 			console.error("Failed to delete channel:", err);
-			toast(getApiError(err, "Failed to delete room"), "error");
+			toast(getApiError(err, t("shell_room_delete_failed")), "error");
 		} finally {
 			isDeletingChannel = false;
 		}
 	}
 
-	// Filter clickable channels (exclude categories for keyboard nav)
-	const clickableChannels = $derived(channels.filter((c) => c.type !== "category"));
-	$effect(() => {
-		buttons = new Array(clickableChannels.length).fill(null);
-	});
-
 	// The rooms in the column's order (roomColumn), which a click on the Space follows too: those in no category, then
 	// each category with its rooms.
 	const column = $derived(roomColumn(channels));
 	const categories = $derived(column.categories.map((c) => c.category));
-	$effect(() => {
-		categories.forEach((cat) => {
-			if (expanded[cat.id] === undefined) expanded[cat.id] = true;
-		});
-	});
+	const newsByCategory = $derived(
+		new Map(
+			column.categories.map(({ category, rooms }) => [
+				category.id,
+				categoryNews(rooms, $shownUnreadRooms, $shownMentionCounts),
+			]),
+		),
+	);
 
 	type SidebarItem = { kind: "channel"; channel: Channel; indent: boolean } | { kind: "category"; channel: Channel };
 
@@ -199,8 +199,8 @@
 		),
 		...column.categories.flatMap(({ category: cat, rooms }): SidebarItem[] => [
 			{ kind: "category", channel: cat },
-			// A folded category still shows the room the focused pane is in.
-			...(expanded[cat.id] ? rooms : rooms.filter((ch) => ch.id === activeChannelId)).map(
+			// A folded category renders no rooms: a long list under a header that says nothing is what folds it away.
+			...(isCategoryOpen(spaceTree, cat.id) || forceExpand ? rooms : []).map(
 				(ch): SidebarItem => ({
 					kind: "channel",
 					channel: ch,
@@ -209,6 +209,33 @@
 			),
 		]),
 	] as SidebarItem[]);
+
+	// The same rows, with each category's open rooms inside its Disclosure: the flat list keeps the drag indexes,
+	// this keeps the tree's group where ARIA wants it.
+	type RenderRow =
+		| { kind: "channel"; channel: Channel; indent: boolean; idx: number }
+		| { kind: "category"; channel: Channel; idx: number; rooms: { channel: Channel; idx: number }[] };
+	const rendered = $derived.by(() => {
+		const rows: RenderRow[] = [];
+		let at = 0;
+		while (at < sidebarItems.length) {
+			const item = sidebarItems[at]!;
+			if (item.kind === "channel") {
+				rows.push({ kind: "channel", channel: item.channel, indent: item.indent, idx: at });
+				at++;
+				continue;
+			}
+			const rooms: { channel: Channel; idx: number }[] = [];
+			let next = at + 1;
+			while (next < sidebarItems.length && sidebarItems[next]!.kind === "channel") {
+				rooms.push({ channel: sidebarItems[next]!.channel, idx: next });
+				next++;
+			}
+			rows.push({ kind: "category", channel: item.channel, idx: at, rooms });
+			at = next;
+		}
+		return rows;
+	});
 
 	// ── Drag & Drop reorder ───────────────────────────────────────────────────
 	let draggedChannelId = $state<string | null>(null);
@@ -333,7 +360,7 @@
 			if (!isDraggingCategory) payload.parent_id = newParentId;
 			await updateRoom(guild.id, srcId, payload);
 		} catch (err) {
-			toast(getApiError(err, "Failed to move room"), "error");
+			toast(getApiError(err, t("shell_room_move_failed")), "error");
 		}
 	}
 
@@ -365,256 +392,246 @@
 			$activeVoiceRoomId = channel.id;
 		}
 	}
-
-	function toggleCategory(categoryId: string) {
-		expanded = { ...expanded, [categoryId]: !expanded[categoryId] };
-	}
-
-	function onKeyDown(e: KeyboardEvent, i: number) {
-		const key = (e as KeyboardEvent).key;
-		if (key === "ArrowDown") {
-			e.preventDefault();
-			const next = Math.min(i + 1, buttons.length - 1);
-			buttons[next]?.focus();
-		} else if (key === "ArrowUp") {
-			e.preventDefault();
-			const prev = Math.max(i - 1, 0);
-			buttons[prev]?.focus();
-		} else if (key === "Enter" || key === " ") {
-			e.preventDefault();
-			const channel = clickableChannels[i];
-			if (channel) selectChannel(channel);
-		}
-	}
-
-	// action to register button elements into the typed array
-	function register(node: HTMLElement, index: number) {
-		buttons[index] = node;
-		return {
-			destroy() {
-				if (buttons[index] === node) buttons[index] = null;
-			},
-			update(newIndex: number) {
-				// handle index updates (reassign to new index)
-				if (buttons[index] === node) buttons[index] = null;
-				index = newIndex;
-				buttons[index] = node;
-			},
-		};
-	}
-
-	onMount(() => {
-		// ensure first button is focusable for keyboard users
-		const firstBtn = buttons.at(0);
-		if (firstBtn) firstBtn.tabIndex = 0;
-	});
 </script>
 
+{#snippet channelRow(channel: Channel, itemIdx: number)}
+	{@const channelRow = `channel:${channel.id}`}
+	{@const room = space?.rooms.find((r) => r.id === channel.id)}
+	{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
+	{@const canJoin = channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
+	{@const isUnread =
+		channel.type === "text" && ($shownUnreadRooms.has(channel.id) || !!$shownMentionCounts[channel.id])}
+	{@const voiceCount = channel.voiceUsers?.length ?? 0}
+	{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
+	{@const typing = typingSentence(typers)}
+	{@const isActive = channel.id === activeChannelId}
+	<!-- The voice room the user is in reads as live. -->
+	{@const connected = channel.type === "voice" && $activeVoiceRoomId === channel.id}
+	<div role="none" class="group/channel {roomDropIndicatorClass(itemIdx)}">
+		<ContextMenu>
+			{#snippet target(props)}
+				<button
+					{...props}
+					class="focus-visible:outline-duvet-accent rounded-tile flex h-9 w-full items-center gap-[7px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
+						{isActive ? 'bg-duvet-accent-tint text-duvet-ink' : 'hover:bg-duvet-sb-hover'}
+						{connected
+						? 'text-duvet-alive-text font-semibold'
+						: isUnread
+							? 'text-duvet-ink font-semibold'
+							: isActive
+								? 'font-medium'
+								: 'text-duvet-ink2 hover:text-duvet-ink font-medium'}
+						{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
+					role="treeitem"
+					aria-level={3}
+					aria-selected={isActive ? "true" : undefined}
+					tabindex={treeFocus.id === channelRow ? 0 : -1}
+					onfocus={() => (treeFocus.id = channelRow)}
+					data-tree-id={channelRow}
+					data-tree-channel={channel.id}
+					title={typing ? `${channel.name} · ${typing}` : channel.name}
+					draggable="true"
+					ondragstart={(e) => {
+						// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
+						// which the API checks.
+						if (canManage) handleDragStartReorder(e, channel.id);
+						e.dataTransfer!.effectAllowed = "move";
+						e.dataTransfer!.setData(
+							"text/plain",
+							JSON.stringify({
+								type: "channel",
+								channelId: channel.id,
+								channelName: channel.name,
+								channelType: channel.type,
+								spaceId: guild.id,
+							}),
+						);
+					}}
+					ondragover={(e) => handleDragOver(e, itemIdx)}
+					ondrop={(e) => handleDrop(e, itemIdx)}
+					ondragend={handleDragEnd}
+					data-jump
+					onclick={(e) => canJoin && selectChannel(channel, openHow(e, mac))}
+					onauxclick={(e) => e.button === 1 && canJoin && selectChannel(channel, "tab")}
+					ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
+				>
+					<span
+						class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
+							? 'text-duvet-alive-text'
+							: isUnread || isActive || connected
+								? ''
+								: 'opacity-75'}"
+					>
+						{#if typers}
+							<TypingMark users={typers} />
+						{:else if channel.type === "text"}
+							<HashIcon class="size-[15px]" />
+						{:else if channel.type === "voice"}
+							<SpeakerSimpleHighIcon class="size-[15px]" />
+							{#if !canJoin}
+								<LockSimpleIcon
+									class="bg-duvet-sb-ring text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
+								/>
+							{/if}
+						{/if}
+					</span>
+					<span class="min-w-0 flex-1 truncate">{channel.name}</span>
+					{#if typing}<span class="sr-only">{typing}</span>{/if}
+					{#if channel.type === "text" && $shownMentionCounts[channel.id]}
+						<span
+							class="{countBadgeClass()} ml-1"
+							role="img"
+							aria-label={mentionsLabel($shownMentionCounts[channel.id] ?? 0)}
+							>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
+						>
+					{:else if isUnread && !isActive && channel.type === "text"}
+						<span class="bg-duvet-ink ml-1 size-[6px] shrink-0 rounded-full" role="img" aria-label={t("shell_unread")}
+						></span>
+					{:else if voiceCount > 0}
+						<span class="text-duvet-ink2 ml-1 shrink-0 text-[11.5px] font-normal"
+							>{t("shell_in_voice", { count: voiceCount })}</span
+						>
+					{/if}
+				</button>
+			{/snippet}
+			<MenuItem
+				icon={AppWindowIcon}
+				keys={keysFor(mac, SHELL_KEYS.openInTab)}
+				disabled={!canJoin}
+				onSelect={() => selectChannel(channel, "tab")}>{t("shell_open_in_new_tab")}</MenuItem
+			>
+			<MenuItem
+				icon={ColumnsIcon}
+				keys={keysFor(mac, SHELL_KEYS.openBeside)}
+				disabled={!canJoin}
+				onSelect={() => selectChannel(channel, "beside")}>{t("shell_open_beside")}</MenuItem
+			>
+			<MenuSeparator />
+			<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(channel.id)}>
+				{t("shell_room_copy_id")}
+			</MenuItem>
+			<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
+			{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
+				<MenuItem icon={LinkSimpleIcon} onSelect={() => openInviteModal(channel)}>{t("shell_invite_people")}</MenuItem>
+			{/if}
+			<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
+			{#if channel.type === "text"}
+				<NotificationSubmenu
+					targetId={channel.id}
+					target={1}
+					inherited={spaceLevel($notificationLevels, guild.id, space?.default_notifications)}
+					itemClass={menuItemClass()}
+					contentClass={MENU_PANEL}
+				/>
+			{/if}
+			{#if canManage}
+				<MenuSeparator />
+				<MenuItem icon={GearSixIcon} onSelect={() => openChannelSettings(channel)}>{t("shell_room_settings")}</MenuItem>
+				<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = channel)}>
+					{t("shell_room_delete")}
+				</MenuItem>
+			{/if}
+		</ContextMenu>
+		<!-- Who's in the voice room, under its row, each with their member menu on a right-click -->
+		{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
+			{@const people = channel.voiceUsers}
+			<ContextMenu label={t("shell_member_menu")}>
+				{#snippet target(props)}
+					<div
+						{...withoutLongPress(props)}
+						class="flex flex-col pb-0.5 pl-[30px]"
+						oncontextmenu={(e) => {
+							if (pickVoiceUser(e, people)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
+						}}
+					>
+						{@render voicePeople(people)}
+					</div>
+				{/snippet}
+				{#if voiceMenuFor}
+					{@const { user, row } = voiceMenuFor}
+					{@const member = space ? spaceMember(space, user.id) : null}
+					<MemberMenu
+						person={voicePerson(user)}
+						space={space ?? null}
+						onProfile={member ? () => (voiceProfile = { member, anchor: row }) : undefined}
+					/>
+				{/if}
+			</ContextMenu>
+		{/if}
+	</div>
+{/snippet}
+
 <!-- The rooms hang from the Space's row on a guide line, and the sidebar scrolls them. -->
-<div class="border-duvet-sb-edge text-duvet-ink mb-1 ml-[9px] flex flex-col border-l pb-1 pl-[3px]" role="list">
+<div class="border-duvet-sb-edge text-duvet-ink mb-1 ml-[9px] flex flex-col border-l pb-1 pl-[3px]" role="none">
 	{#if sidebarItems.length === 0}
-		<p class="text-duvet-ink2 px-3 py-1.5 text-[13px]">No rooms you can see yet</p>
+		<p class="text-duvet-ink2 px-3 py-1.5 text-[13px]">{t("shell_rooms_empty")}</p>
 	{/if}
-	{#each sidebarItems as item, itemIdx}
-		{#if item.kind === "category"}
-			{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
+	{#each rendered as row (row.kind === "category" ? `category:${row.channel.id}` : `channel:${row.channel.id}`)}
+		{#if row.kind === "category"}
+			{@const categoryId = row.channel.id}
+			{@const categoryRow = `category:${categoryId}`}
+			{@const categoryOpen = isCategoryOpen(spaceTree, categoryId) || forceExpand}
+			{@const news = newsByCategory.get(categoryId) ?? noNews}
+			{@const categoryRoom = space?.rooms.find((r) => r.id === categoryId)}
 			{@const canManageCategory =
 				space && categoryRoom ? hasPermission(space, categoryRoom, Permission.ManageChannels) : false}
 			<ContextMenu>
 				{#snippet target(props)}
-					<button
-						{...props}
-						type="button"
-						class="{OVERLINE} hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-[26px] w-full shrink-0 items-end gap-1 rounded-md border-0 bg-transparent pr-2 pl-3 text-left leading-[18px] focus-visible:outline-2 focus-visible:-outline-offset-2 {dropIndicatorClass(
-							itemIdx,
-						)}"
-						onclick={() => toggleCategory(item.channel.id)}
-						aria-expanded={expanded[item.channel.id]}
-						draggable={canManageCategory}
-						ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
-						ondragover={(e) => handleDragOver(e, itemIdx)}
-						ondrop={(e) => handleDrop(e, itemIdx)}
-						ondragend={handleDragEnd}
-					>
-						<span class="truncate">{item.channel.name}</span>
-						<ChevronDownIcon
-							class="mb-1 size-2.5 shrink-0 transition-transform duration-150 motion-reduce:transition-none {expanded[
-								item.channel.id
-							]
-								? ''
-								: '-rotate-90'}"
-							aria-hidden="true"
-						/>
-					</button>
+					<div {...props} class="rounded-md {dropIndicatorClass(row.idx)}">
+						<Disclosure
+							id={`category-${categoryId}`}
+							level={2}
+							rowId={categoryRow}
+							open={categoryOpen}
+							forceOpen={forceExpand}
+							onOpenChange={(open) => expandCategory(categoryId, open)}
+							chevron="start"
+							tabindex={treeFocus.id === categoryRow ? 0 : -1}
+							onfocus={() => (treeFocus.id = categoryRow)}
+							class="{OVERLINE} hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-9 w-full shrink-0 items-center gap-1 rounded-md border-0 bg-transparent pr-2 pl-3 text-left leading-[18px] focus-visible:outline-2 focus-visible:-outline-offset-2"
+							draggable={canManageCategory}
+							ondragstart={(e) => handleDragStartReorder(e, categoryId)}
+							ondragover={(e) => handleDragOver(e, row.idx)}
+							ondrop={(e) => handleDrop(e, row.idx)}
+							ondragend={handleDragEnd}
+						>
+							{#snippet header()}
+								<span class="min-w-0 flex-1 truncate">{row.channel.name}</span>
+								{#if news.mentions && !categoryOpen}
+									<span class="{countBadgeClass()} ml-1" role="img" aria-label={mentionsLabel(news.mentions)}
+										>{chipCount(news.mentions)}</span
+									>
+								{:else if news.unread && !categoryOpen}
+									<span
+										class="bg-duvet-ink ml-1 size-[6px] shrink-0 rounded-full"
+										role="img"
+										aria-label={t("shell_unread")}
+									></span>
+								{/if}
+							{/snippet}
+							{#snippet children()}
+								{#each row.rooms as room (room.channel.id)}
+									{@render channelRow(room.channel, room.idx)}
+								{/each}
+							{/snippet}
+						</Disclosure>
+					</div>
 				{/snippet}
-				<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(item.channel.id)}>
-					Copy room ID
+				<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(row.channel.id)}>
+					{t("shell_room_copy_id")}
 				</MenuItem>
 				{#if canManageCategory}
-					<MenuItem icon={PencilIcon} onSelect={() => openChannelSettings(item.channel)}>Edit category</MenuItem>
+					<MenuItem icon={PencilIcon} onSelect={() => openChannelSettings(row.channel)}
+						>{t("shell_category_edit")}</MenuItem
+					>
 					<MenuSeparator />
-					<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = item.channel)}>
-						Delete category
+					<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = row.channel)}>
+						{t("shell_category_delete")}
 					</MenuItem>
 				{/if}
 			</ContextMenu>
 		{:else}
-			{@const channel = item.channel}
-			{@const buttonIndex = clickableChannels.findIndex((c) => c.id === channel.id)}
-			{@const room = space?.rooms.find((r) => r.id === channel.id)}
-			{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
-			{@const canJoin = channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
-			{@const isUnread =
-				channel.type === "text" && ($shownUnreadRooms.has(channel.id) || !!$shownMentionCounts[channel.id])}
-			{@const voiceCount = channel.voiceUsers?.length ?? 0}
-			{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
-			{@const typing = typingSentence(typers)}
-			{@const isActive = channel.id === activeChannelId}
-			<!-- The voice room the user is in reads as live. -->
-			{@const connected = channel.type === "voice" && $activeVoiceRoomId === channel.id}
-			<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
-				<ContextMenu>
-					{#snippet target(props)}
-						<button
-							{...props}
-							class="focus-visible:outline-duvet-accent rounded-tile flex h-[30px] w-full items-center gap-[7px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
-							{isActive ? 'bg-duvet-accent-tint text-duvet-ink' : 'hover:bg-duvet-sb-hover'}
-							{connected
-								? 'text-duvet-alive-text font-semibold'
-								: isUnread
-									? 'text-duvet-ink font-semibold'
-									: isActive
-										? 'font-medium'
-										: 'text-duvet-ink2 hover:text-duvet-ink font-medium'}
-							{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
-							aria-pressed={isActive}
-							title={typing ? `${channel.name} · ${typing}` : channel.name}
-							draggable="true"
-							ondragstart={(e) => {
-								// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
-								// which the API checks.
-								if (canManage) handleDragStartReorder(e, channel.id);
-								e.dataTransfer!.effectAllowed = "move";
-								e.dataTransfer!.setData(
-									"text/plain",
-									JSON.stringify({
-										type: "channel",
-										channelId: channel.id,
-										channelName: channel.name,
-										channelType: channel.type,
-										spaceId: guild.id,
-									}),
-								);
-							}}
-							ondragover={(e) => handleDragOver(e, itemIdx)}
-							ondrop={(e) => handleDrop(e, itemIdx)}
-							ondragend={handleDragEnd}
-							data-jump
-							onclick={(e) => canJoin && selectChannel(channel, openHow(e, mac))}
-							onauxclick={(e) => e.button === 1 && canJoin && selectChannel(channel, "tab")}
-							ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
-							onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
-							use:register={buttonIndex}
-						>
-							<span
-								class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
-									? 'text-duvet-alive-text'
-									: isUnread || isActive || connected
-										? ''
-										: 'opacity-75'}"
-							>
-								{#if typers}
-									<TypingMark users={typers} />
-								{:else if channel.type === "text"}
-									<HashIcon class="size-[15px]" />
-								{:else if channel.type === "voice"}
-									<SpeakerSimpleHighIcon class="size-[15px]" />
-									{#if !canJoin}
-										<LockSimpleIcon
-											class="bg-duvet-sb-ring text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
-										/>
-									{/if}
-								{/if}
-							</span>
-							<span class="min-w-0 flex-1 truncate">{channel.name}</span>
-							{#if typing}<span class="sr-only">{typing}</span>{/if}
-							{#if channel.type === "text" && $shownMentionCounts[channel.id]}
-								<span
-									class="{countBadgeClass()} ml-1"
-									role="img"
-									aria-label={mentionsLabel($shownMentionCounts[channel.id] ?? 0)}
-									>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
-								>
-							{:else if voiceCount > 0}
-								<span class="text-duvet-ink2 ml-1 shrink-0 text-[11.5px] font-normal">{voiceCount} in voice</span>
-							{/if}
-						</button>
-					{/snippet}
-					<MenuItem
-						icon={AppWindowIcon}
-						keys={keysFor(mac, SHELL_KEYS.openInTab)}
-						disabled={!canJoin}
-						onSelect={() => selectChannel(channel, "tab")}>Open in new tab</MenuItem
-					>
-					<MenuItem
-						icon={ColumnsIcon}
-						keys={keysFor(mac, SHELL_KEYS.openBeside)}
-						disabled={!canJoin}
-						onSelect={() => selectChannel(channel, "beside")}>Open beside</MenuItem
-					>
-					<MenuSeparator />
-					<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(channel.id)}>
-						Copy room ID
-					</MenuItem>
-					<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
-					{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
-						<MenuItem icon={LinkSimpleIcon} onSelect={() => openInviteModal(channel)}>Invite people</MenuItem>
-					{/if}
-					<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
-					{#if channel.type === "text"}
-						<NotificationSubmenu
-							targetId={channel.id}
-							target={1}
-							inherited={spaceLevel($notificationLevels, guild.id, space?.default_notifications)}
-							itemClass={menuItemClass()}
-							contentClass={MENU_PANEL}
-						/>
-					{/if}
-					{#if canManage}
-						<MenuSeparator />
-						<MenuItem icon={GearSixIcon} onSelect={() => openChannelSettings(channel)}>Room settings</MenuItem>
-						<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = channel)}>
-							Delete room
-						</MenuItem>
-					{/if}
-				</ContextMenu>
-				<!-- Who's in the voice room, under its row, each with their member menu on a right-click -->
-				{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
-					{@const people = channel.voiceUsers}
-					<ContextMenu label="Member">
-						{#snippet target(props)}
-							<div
-								{...withoutLongPress(props)}
-								class="flex flex-col pb-0.5 pl-[30px]"
-								oncontextmenu={(e) => {
-									if (pickVoiceUser(e, people)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
-								}}
-							>
-								{@render voicePeople(people)}
-							</div>
-						{/snippet}
-						{#if voiceMenuFor}
-							{@const { user, row } = voiceMenuFor}
-							{@const member = space ? spaceMember(space, user.id) : null}
-							<MemberMenu
-								person={voicePerson(user)}
-								space={space ?? null}
-								onProfile={member ? () => (voiceProfile = { member, anchor: row }) : undefined}
-							/>
-						{/if}
-					</ContextMenu>
-				{/if}
-			</div>
+			{@render channelRow(row.channel, row.idx)}
 		{/if}
 	{/each}
 	<!-- Drop zone at the end -->
@@ -654,17 +671,17 @@
 					<span
 						class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
 						role="img"
-						aria-label="Sharing their screen">Live</span
+						aria-label={t("shell_voice_sharing_screen")}>{t("shell_voice_live")}</span
 					>
 				{/if}
 				{#if user.camera}
-					<VideoIcon class="size-3" role="img" aria-label="Camera on" />
+					<VideoIcon class="size-3" role="img" aria-label={t("shell_voice_camera_on")} />
 				{/if}
 				{#if user.muted}
-					<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
+					<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label={t("shell_voice_muted")} />
 				{/if}
 				{#if user.deafened}
-					<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
+					<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label={t("shell_voice_deafened")} />
 				{/if}
 			</div>
 		</div>
@@ -691,7 +708,7 @@
 <!-- Create room: its kind, its category (a category has none) and its name. Enter in the name creates it. -->
 <Sheet
 	bind:open={showCreateModal}
-	title="Create room"
+	title={t("shell_room_create")}
 	class="max-w-[400px]"
 	onOpenAutoFocus={(e) => {
 		e.preventDefault();
@@ -699,19 +716,19 @@
 	}}
 >
 	<div class="flex flex-col gap-1.5">
-		<label for="channelType" class={FIELD_LABEL}>Room type</label>
+		<label for="channelType" class={FIELD_LABEL}>{t("shell_room_type")}</label>
 		<select id="channelType" bind:value={newChannelType} class="{SELECT} h-[38px]! w-full max-w-none!">
-			<option value={1}>Text room</option>
-			<option value={2}>Voice room</option>
-			<option value={3}>Category</option>
+			<option value={1}>{t("shell_room_type_text")}</option>
+			<option value={2}>{t("shell_room_type_voice")}</option>
+			<option value={3}>{t("shell_room_type_category")}</option>
 		</select>
 	</div>
 
 	{#if newChannelType !== 3}
 		<div class="flex flex-col gap-1.5">
-			<label for="channelCategory" class={FIELD_LABEL}>Category</label>
+			<label for="channelCategory" class={FIELD_LABEL}>{t("shell_room_category")}</label>
 			<select id="channelCategory" bind:value={newChannelCategory} class="{SELECT} h-[38px]! w-full max-w-none!">
-				<option value={null}>None</option>
+				<option value={null}>{t("shell_room_category_none")}</option>
 				{#each categories as category}
 					<option value={category.id}>{category.name}</option>
 				{/each}
@@ -720,7 +737,7 @@
 	{/if}
 
 	<div class="flex flex-col gap-1.5">
-		<label for="channelName" class={FIELD_LABEL}>Room name</label>
+		<label for="channelName" class={FIELD_LABEL}>{t("shell_room_name")}</label>
 		<div class="relative">
 			<span
 				class="text-duvet-ink2 pointer-events-none absolute top-1/2 left-3 grid -translate-y-1/2"
@@ -738,7 +755,7 @@
 				bind:this={roomNameField}
 				bind:value={newChannelName}
 				class="{fieldClass()} pl-9"
-				placeholder="new-room"
+				placeholder={t("shell_room_name_placeholder")}
 				maxlength={64}
 				onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
 			/>
@@ -747,10 +764,15 @@
 
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" onclick={() => (showCreateModal = false)}>Cancel</Button>
-		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}>Create room</Button>
+		<Button variant="quiet" onclick={() => (showCreateModal = false)}>{t("shell_cancel")}</Button>
+		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}
+			>{t("shell_room_create")}</Button
+		>
 	{/snippet}
 </Sheet>
+
+<!-- The room's name in the question, after its #. -->
+{#snippet roomName(text: string)}<span class="text-duvet-ink font-semibold">{text}</span>{/snippet}
 
 <!-- Delete room: asked first. While it's being deleted the question stays, and can't be dismissed. -->
 <Dialog
@@ -760,13 +782,15 @@
 			if (!v && !isDeletingChannel) confirmDeleteChannel = null;
 		}
 	}
-	title="Delete room"
+	title={t("shell_room_delete")}
 	escapeKeydownBehavior={isDeletingChannel ? "ignore" : "close"}
 >
-	Delete <span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This can't be undone.
+	<Rich key="shell_room_delete_question" values={{ name: confirmDeleteChannel?.name ?? "" }} tags={{ b: roomName }} />
 	{#snippet actions()}
-		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}>Cancel</Button>
-		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>Delete</Button>
+		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}
+			>{t("shell_cancel")}</Button
+		>
+		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>{t("shell_delete")}</Button>
 	{/snippet}
 </Dialog>
 

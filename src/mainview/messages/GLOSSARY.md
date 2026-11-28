@@ -25,17 +25,18 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 | de | du | Lower-case *du* in UI text. Quotes „…“. |
 | pt-BR | você | Brazilian spelling and words (*arquivo*, *tela*, *celular*). Quotes “…”. |
 | it | tu | Quotes «…». |
+| fi | sinä | Informal *sinä* (2nd person singular). Quotes ”…”. |
 
 ## Terms
 
-| English | es | fr | de | pt-BR | it |
-|---|---|---|---|---|---|
-| Space | Espacio | Espace | Space | Espaço | Spazio |
-| room | sala | salon | Raum | sala | stanza |
-| voice room | sala de voz | salon vocal | Sprachraum | sala de voz | stanza vocale |
-| direct message | mensaje directo | message privé | Direktnachricht | mensagem direta | messaggio diretto |
-| group | grupo | groupe | Gruppe | grupo | gruppo |
-| Do not disturb | No molestar | Ne pas déranger | Nicht stören | Não perturbe | Non disturbare |
+| English | es | fr | de | pt-BR | it | fi |
+|---|---|---|---|---|---|---|
+| Space | Espacio | Espace | Space | Espaço | Spazio | Space |
+| room | sala | salon | Raum | sala | stanza | huone |
+| voice room | sala de voz | salon vocal | Sprachraum | sala de voz | stanza vocale | puhehuone |
+| direct message | mensaje directo | message privé | Direktnachricht | mensagem direta | messaggio diretto | yksityisviesti |
+| group | grupo | groupe | Gruppe | grupo | gruppo | ryhmä |
+| Do not disturb | No molestar | Ne pas déranger | Nicht stören | Não perturbe | Non disturbare | Älä häiritse |
 
 Space is a name, so it keeps its capital as in English. Duvet and Duvet Premium are never translated.
 
@@ -43,8 +44,8 @@ Space is a name, so it keeps its capital as in English. Duvet and Duvet Premium 
 
 Duvet says Space and room, never server and channel (#57). The same goes for each language:
 
-| es | fr | de | pt-BR | it |
-|---|---|---|---|---|
-| servidor, canal | serveur, canal | Server, Kanal | servidor, canal | server, canale |
+| es | fr | de | pt-BR | it | fi |
+|---|---|---|---|---|---|
+| servidor, canal | serveur, canal | Server, Kanal | servidor, canal | server, canale | palvelin, kanava |
 
 The only exceptions are the strings that mean the API itself (`ABOUT_THE_API` in `lib/wording.test.ts`).

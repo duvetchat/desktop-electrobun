@@ -111,8 +111,9 @@ describe("modalAnswers", () => {
 		expect("problems" in modalAnswers(m, { name: "" })).toBe(false); // optional: empty is fine
 		expect("problems" in modalAnswers(m, { name: "😀😀😀😀😀" })).toBe(false); // five characters, ten UTF-16 units
 		const long = modal(label({ type: T.TextInput, custom_id: "text", style: 2 }));
+		// The number is written as the app's language writes it (#464): 4,000 in English.
 		expect(modalAnswers(long, { text: "x".repeat(4001) })).toEqual({
-			problems: { text: "Must be at most 4000 characters" },
+			problems: { text: "Must be at most 4,000 characters" },
 		});
 	});
 

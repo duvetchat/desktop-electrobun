@@ -23,7 +23,7 @@ const nav = readFileSync(join(import.meta.dir, "SpaceNav.svelte"), "utf8");
 // never float under a short list of rows: the rows' scroller grows into the room the column has left.
 test("the rows' scroller grows, so the Now section sits at the column's foot", () => {
 	const scroller =
-		/<div class="([^"]*\boverflow-y-auto\b[^"]*)">\s*<div class="[^"]*" bind:offsetHeight=\{rowsHeight\}>/.exec(
+		/<div class="([^"]*\boverflow-y-auto\b[^"]*)"[^>]*>\s*<div class="[^"]*" bind:offsetHeight=\{rowsHeight\}>/.exec(
 			nav,
 		)?.[1];
 	expect(scroller?.split(/\s+/)).toContain("flex-1");
@@ -93,7 +93,7 @@ describe("the quiet Spaces' row", () => {
 		const body = html(null, true);
 		expect(at(body, "Quiet · 3")).toBeGreaterThan(at(body, "Alpha"));
 		for (const quiet of ["Charlie", "Delta", "Echo"]) expect(body).not.toContain(quiet);
-		expect(body).toMatch(/<button[^>]*aria-expanded="false"[^>]*>\s*<span[^>]*>Quiet · 3<\/span>/);
+		expect(body).toMatch(/<button[^>]*aria-expanded="false"[^>]*>(?:<!--[\s\S]*?-->|\s)*<span[^>]*>Quiet · 3<\/span>/);
 	});
 
 	test("shows the quiet Space picked while they're folded under it, and still counts them all", () => {
@@ -107,5 +107,43 @@ describe("the quiet Spaces' row", () => {
 
 	test("reads the same whichever Space is open", () => {
 		for (const open of [null, "a", "c", "d"]) expect(html(open)).toContain("Quiet · 3");
+	});
+});
+
+// Each category is a disclosure of its own, and the rooms it folds must live inside the panel it names: neither a
+// separate list after it nor an empty group.
+describe("a Space's categories", () => {
+	const CATEGORY = "cat-1";
+	const SPACE = "tree-space";
+	const guild: Guild = {
+		id: SPACE,
+		name: "Tree",
+		icon_url: "",
+		banner_url: "",
+		channels: [
+			{ id: CATEGORY, name: "Project", type: "category", position: 0 },
+			{ id: "general", name: "general", type: "text", position: 0, categoryId: CATEGORY },
+		],
+	};
+
+	test("put their rooms inside the group their header controls", () => {
+		const body = render(SpaceNav, {
+			props: {
+				guilds: [guild],
+				selectedSpaceId: SPACE,
+				onSpaceSelect: () => {},
+				onRoomSelect: () => {},
+				onFriendsSelect: () => {},
+				onConversationSelect: () => {},
+				onNewGroup: () => {},
+				onOpenSwitcher: () => {},
+				onFriend: () => {},
+			},
+		}).body;
+		const panel = /aria-controls="(category-[^"]+-panel)"/.exec(body)?.[1];
+		expect(typeof panel).toBe("string");
+		const group = body.indexOf(`id="${panel}"`);
+		expect(group).toBeGreaterThan(body.indexOf("Project"));
+		expect(body.indexOf(">general<")).toBeGreaterThan(group);
 	});
 });

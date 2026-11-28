@@ -6,6 +6,7 @@
 	import { getInvite, joinInvite, type InviteInfo } from "$lib/api/invites";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { route } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 
 	let {
 		open = $bindable(false),
@@ -19,14 +20,16 @@
 	let loading = $state(false);
 	let joining = $state(false);
 	let joined = $state(false);
+	// The API's error on joining, or its fallback. An invite that didn't load is a flag, drawn in the app's language of
+	// the moment.
 	let error = $state("");
-
-	const numberFormatter = new Intl.NumberFormat(typeof navigator !== "undefined" ? navigator.language : "en-US");
+	let notFound = $state(false);
 
 	$effect(() => {
 		if (open && inviteCode) {
 			loading = true;
 			error = "";
+			notFound = false;
 			invite = null;
 			joined = false;
 			getInvite(inviteCode)
@@ -34,7 +37,7 @@
 					invite = data;
 				})
 				.catch(() => {
-					error = "Invite not found or has expired.";
+					notFound = true;
 				})
 				.finally(() => {
 					loading = false;
@@ -48,22 +51,22 @@
 		try {
 			await joinInvite(inviteCode);
 			joined = true;
-			toast("Joined", "success");
+			toast(t("people_space_invite_joined"), "success");
 		} catch (err) {
-			error = getApiError(err, "Couldn't join the Space.");
+			error = getApiError(err, t("people_join_failed"));
 		} finally {
 			joining = false;
 		}
 	}
 </script>
 
-<Sheet bind:open title="Space invite" class="max-w-[420px]">
+<Sheet bind:open title={t("people_space_invite_title")} class="max-w-[420px]">
 	{#if loading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-8">
-			<div class={spinnerClass("lg")} role="status" aria-label="Loading the invite"></div>
+			<div class={spinnerClass("lg")} role="status" aria-label={t("people_invite_loading")}></div>
 		</div>
-	{:else if error && !invite}
-		<p class="text-duvet-danger py-4 text-center text-[13px]">{error}</p>
+	{:else if notFound}
+		<p class="text-duvet-danger py-4 text-center text-[13px]">{t("people_invite_not_found")}</p>
 	{:else if invite}
 		<div class="bg-duvet-card shadow-duvet-raised flex items-center gap-3.5 rounded-2xl p-3">
 			<div
@@ -79,8 +82,7 @@
 				<div class="mt-0.5 flex items-center gap-1.5">
 					<span class="bg-duvet-alive inline-block size-2 shrink-0 rounded-full"></span>
 					<span class="text-duvet-ink2 text-xs">
-						{numberFormatter.format(invite.member_count)}
-						{invite.member_count === 1 ? "Member" : "Members"}
+						{t("people_space_invite_member_count", { count: invite.member_count })}
 					</span>
 				</div>
 			</div>
@@ -94,11 +96,11 @@
 			<div
 				class="bg-duvet-chosen text-duvet-chosen-ink rounded-control flex h-[34px] w-full items-center justify-center text-[13px] font-medium"
 			>
-				You're in.
+				{t("people_space_invite_in")}
 			</div>
 		{:else}
 			<Button class="w-full" onclick={handleJoin} disabled={joining}>
-				{joining ? "Joining…" : "Join Space"}
+				{joining ? t("people_join_joining") : t("people_space_invite_join")}
 			</Button>
 		{/if}
 	{/if}

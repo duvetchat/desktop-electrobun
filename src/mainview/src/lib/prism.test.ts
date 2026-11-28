@@ -4,6 +4,7 @@ import {
 	PRISM_BUBBLE,
 	PRISM_RIM,
 	PRISM_WASH,
+	PRISM_WASH_RUN,
 	placePrismsIn,
 	prismScale,
 	prismSides,
@@ -57,7 +58,7 @@ describe("Prism's classes", () => {
 	});
 
 	test("a lit bubble and a lit row write their mentions in the violet that holds on the light", () => {
-		for (const classes of [PRISM_BUBBLE, PRISM_WASH])
+		for (const classes of [PRISM_BUBBLE, PRISM_WASH, PRISM_WASH_RUN])
 			expect(classes).toContain("[--mention-ink:var(--duvet-mention-lit)]");
 		// The bubble itself stays the card: the light is the layer under its text, not its fill.
 		expect(PRISM_BUBBLE.split(" ")).toContain("bg-duvet-card");

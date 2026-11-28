@@ -12,6 +12,9 @@
 		cyclePlaybackRate,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
+	import { authorLabel } from "$lib/types";
 	import VolumeControl from "$lib/components/VolumeControl.svelte";
 
 	let rate = $state(1);
@@ -44,13 +47,16 @@
 	}
 
 	const progress = $derived($voiceNote && $voiceNote.duration > 0 ? $voiceNote.currentTime / $voiceNote.duration : 0);
+	// The store keeps the names as the app has them; the words for an author or a room the app doesn't know are put in
+	// here, in the language of the moment.
+	const place = $derived($voiceNote ? ($voiceNote.channelName ?? t("chat_search_room_unknown")) : "");
 </script>
 
 {#if $voiceNote}
 	<!-- Mobile's playback bar (widgets/playback_bar.dart): a line of progress on top, what plays and how far, play or
 	     pause, and Stop; with the app's speed and volume. A press on the line seeks. -->
 	<section
-		aria-label="Now playing"
+		aria-label={t("media_now_playing")}
 		class="bg-duvet-sb-card shadow-duvet-raised mx-2.5 mb-2 shrink-0 rounded-[14px] select-none"
 		in:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
 		out:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
@@ -60,7 +66,7 @@
 			class="group relative h-2 cursor-pointer overflow-hidden rounded-t-[14px] -outline-offset-2"
 			role="slider"
 			tabindex="0"
-			aria-label="Seek"
+			aria-label={t("media_seek")}
 			aria-valuemin={0}
 			aria-valuemax={Math.round($voiceNote.duration)}
 			aria-valuenow={Math.round($voiceNote.currentTime)}
@@ -73,7 +79,7 @@
 		<div class="flex items-center gap-1.5 pr-1.5 pb-2 pl-2">
 			<button
 				type="button"
-				aria-label={$voiceNote.playing ? "Pause" : "Play"}
+				aria-label={$voiceNote.playing ? t("media_pause") : t("media_play")}
 				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-[10px] transition-[filter] hover:brightness-[1.06] motion-reduce:transition-none"
 				onclick={toggleVoiceNote}
 			>
@@ -86,10 +92,10 @@
 
 			<div class="flex min-w-0 flex-1 flex-col gap-px">
 				<span class="text-duvet-ink truncate text-[13px] leading-[1.25] font-semibold"
-					>{$voiceNote.filename ?? $voiceNote.authorName}</span
+					>{$voiceNote.filename ?? authorLabel({ author_name: $voiceNote.authorName })}</span
 				>
 				<span class="text-duvet-ink2 truncate text-[11.5px] leading-[1.25] tabular-nums">
-					{#if $voiceNote.channelName}{$voiceNote.channelName} ·
+					{#if place}{place} ·
 					{/if}{formatDuration(
 						$voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration,
 					)} / {formatDuration($voiceNote.duration)}
@@ -98,16 +104,16 @@
 
 			<button
 				type="button"
-				aria-label="Playback speed: {rate}x"
+				aria-label={t("media_playback_speed", { rate: formatNumber(rate) })}
 				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink rounded-chip h-[22px] shrink-0 cursor-pointer px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
-				onclick={handleCycleRate}>{rate}x</button
+				onclick={handleCycleRate}>{t("media_playback_rate", { rate: formatNumber(rate) })}</button
 			>
 			<VolumeControl height="h-20" />
 
 			<button
 				type="button"
 				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-lg transition-colors motion-reduce:transition-none"
-				aria-label="Stop"
+				aria-label={t("media_stop")}
 				onclick={stopVoiceNote}
 			>
 				<X size={14} />

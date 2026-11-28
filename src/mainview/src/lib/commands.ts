@@ -1,4 +1,6 @@
 import type { CommandUse } from "$lib/api/interactions";
+import { t } from "$lib/i18n";
+import { formatNumber } from "$lib/i18n/format";
 import { CommandOptionType, type ApplicationCommand, type CommandOption, type SpaceCommands } from "$lib/types";
 
 /**
@@ -90,29 +92,41 @@ export interface UsedOption {
 // The number in an integer or number option's text, within what the API takes (an integer within
 // ±(2^53 - 1), a number within ±2^53), or null.
 function parseNumber(o: CommandOption, text: string): number | null {
-	const t = text.trim();
-	const n = t === "" ? NaN : Number(t);
-	if (o.type === CommandOptionType.Integer) return /^-?\d+$/.test(t) && Number.isSafeInteger(n) ? n : null;
+	const trimmed = text.trim();
+	const n = trimmed === "" ? NaN : Number(trimmed);
+	if (o.type === CommandOptionType.Integer) return /^-?\d+$/.test(trimmed) && Number.isSafeInteger(n) ? n : null;
 	return Number.isFinite(n) && Math.abs(n) <= 2 ** 53 ? n : null;
 }
 
-// What o's field sends, or why it can't be sent. A choice's value is the command's own.
+// A bound of a number option, in the locale's digits, as the bot gave it: every decimal it has.
+const bound = (n: number) => formatNumber(n, { maximumFractionDigits: 20 });
+
+// What o's field sends, or why it can't be sent, as a whole sentence that names it. A choice's value is the command's
+// own.
 function check(o: CommandOption, v: FieldValue): { value: FieldValue } | { problem: string } {
+	const option = o.name;
 	if (typeof v !== "string" || o.choices?.length) return { value: v };
 	if (o.type === CommandOptionType.Integer || o.type === CommandOptionType.Number) {
 		const n = parseNumber(o, v);
 		if (n === null)
-			return { problem: o.type === CommandOptionType.Integer ? "must be an integer" : "must be a number" };
-		if (o.min_value !== undefined && n < o.min_value) return { problem: `must be at least ${o.min_value}` };
-		if (o.max_value !== undefined && n > o.max_value) return { problem: `must be at most ${o.max_value}` };
+			return {
+				problem:
+					o.type === CommandOptionType.Integer
+						? t("chat_command_option_integer", { option })
+						: t("chat_command_option_number", { option }),
+			};
+		if (o.min_value !== undefined && n < o.min_value)
+			return { problem: t("chat_command_option_min", { option, min: bound(o.min_value) }) };
+		if (o.max_value !== undefined && n > o.max_value)
+			return { problem: t("chat_command_option_max", { option, max: bound(o.max_value) }) };
 		return { value: n };
 	}
 	if (o.type === CommandOptionType.String) {
 		const length = [...v].length;
 		const max = o.max_length ?? 6000;
 		if (o.min_length !== undefined && length < o.min_length)
-			return { problem: `takes ${o.min_length} characters at least` };
-		if (length > max) return { problem: `takes ${max} characters at most` };
+			return { problem: t("chat_command_option_min_length", { option, count: o.min_length }) };
+		if (length > max) return { problem: t("chat_command_option_max_length", { option, count: max }) };
 	}
 	return { value: v };
 }
@@ -132,11 +146,11 @@ export function usedOptions(
 		const v = fields.get(o.name) ?? (o.type === CommandOptionType.Boolean && o.required ? false : undefined);
 		// An empty text field gives nothing, but a choice whose value is "" was picked.
 		if (v === undefined || (v === "" && !o.choices?.length)) {
-			if (o.required) return { problem: `${o.name} is required` };
+			if (o.required) return { problem: t("chat_command_option_required", { option: o.name }) };
 			continue;
 		}
 		const checked = check(o, v);
-		if ("problem" in checked) return { problem: `${o.name} ${checked.problem}` };
+		if ("problem" in checked) return checked;
 		options.push({ name: o.name, type: o.type, value: checked.value });
 	}
 	return { options };

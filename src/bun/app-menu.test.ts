@@ -6,6 +6,7 @@ import { roleLabelMap } from "../../node_modules/electrobun/dist/api/bun/core/me
 import { shortcutCommand } from "../mainview/src/lib/keyboard";
 import { voiceKey } from "../mainview/src/lib/voice-keys";
 import { appMenu, DOCS_URL, menuAction, runMenuAction } from "./app-menu";
+import { setLanguage } from "./i18n";
 
 // macOS's menu bar (#372): a WKWebView does ⌘C, ⌘V, ⌘Z and the other editing keys only through the menu's items, and
 // the app had none, so they did nothing.
@@ -68,6 +69,57 @@ describe("the menu bar", () => {
 		]);
 		expect(menuNamed("Help").map(actionOf)).toEqual(["docs"]);
 		expect(DOCS_URL).toBe("https://docs.duvet.chat");
+	});
+
+	// #464: an item without a label of its own shows Electrobun's English name for its role (roleLabelMap), whatever
+	// language the app is in.
+	test("every item has a label of its own: none is Electrobun's English", () => {
+		for (const item of everyItem(menu)) expect(item.label ?? "").not.toBe("");
+	});
+
+	// In English, a role's item says what Electrobun named it before it had a label of its own, but for the five whose
+	// words were the app's own already (About, Hide and Quit with the app's name, Close Window, Bring All to Front).
+	test("in English, has the words it had: Electrobun's for a role, the app's own for the rest", () => {
+		const own = new Set(["about", "hide", "quit", "close", "bringAllToFront"]);
+		const named = everyItem(menu).filter((item) => {
+			const role = roleOf(item);
+			return role !== undefined && !own.has(role);
+		});
+		expect(named).toHaveLength(12);
+		for (const item of named) {
+			const role = roleOf(item) ?? "";
+			expect([role, item.label]).toEqual([role, roleLabelMap[role]]);
+		}
+		expect(menuNamed("Edit").map((item) => item.label)).toEqual([
+			"Undo",
+			"Redo",
+			"Cut",
+			"Copy",
+			"Paste",
+			"Paste and Match Style",
+			"Select All",
+		]);
+		expect(menuNamed("View").map((item) => item.label)).toEqual(["Toggle Full Screen"]);
+		expect(menuNamed("Window").map((item) => item.label)).toEqual([
+			"Minimize",
+			"Zoom",
+			"Close Window",
+			"Bring All to Front",
+		]);
+		expect(menuNamed("Help").map((item) => item.label)).toEqual(["Duvet Documentation"]);
+	});
+
+	test("is in the language Bun speaks, each item's words but the app's name", () => {
+		try {
+			setLanguage("en-XA");
+			const items = everyItem(appMenu("Duvet")).slice(1);
+			expect(items.length).toBeGreaterThan(20);
+			for (const item of items) expect(item.label ?? "").toMatch(/^⟦.*⟧$/);
+			const named = items.filter((item) => item.label?.includes("Duvet")).map((item) => roleOf(item) ?? actionOf(item));
+			expect(named).toEqual(["about", "hide", "quit", "docs"]);
+		} finally {
+			setLanguage("en");
+		}
 	});
 
 	// A role Electrobun doesn't know leaves its item without a selector: it shows, and does nothing.
@@ -152,17 +204,36 @@ describe("the app", () => {
 	const main = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
 
 	test("sets the menu bar on macOS only", () => {
-		expect(main).toMatch(
-			/if \(currentOS === "darwin"\) \{\s*ApplicationMenu\.setApplicationMenu\(appMenu\("Duvet"\)\);/,
-		);
+		expect(main).toMatch(/function setAppMenu\(\) \{\s*ApplicationMenu\.setApplicationMenu\(appMenu\("Duvet"\)\);/);
 		expect(main.match(/setApplicationMenu\(/g)).toHaveLength(1);
+		expect(main).toMatch(/if \(currentOS === "darwin"\) \{\s*setAppMenu\(\);/);
+		expect(main.match(/setAppMenu\(\);/g)).toHaveLength(2);
 	});
 
 	// Electrobun 1.15.1 reads the menu on macOS's main thread later, from memory nothing keeps (2.0 copies it first):
 	// making the window waits on that thread, behind the menu.
 	test("sets it before it makes the main window", () => {
-		expect(main.indexOf("setApplicationMenu(")).toBeGreaterThan(-1);
-		expect(main.indexOf("setApplicationMenu(")).toBeLessThan(main.indexOf("new BrowserWindow("));
+		expect(main.indexOf("\tsetAppMenu();")).toBeGreaterThan(-1);
+		expect(main.indexOf("\tsetAppMenu();")).toBeLessThan(main.indexOf("new BrowserWindow("));
+	});
+
+	// #464: the page says the app's language as it starts and as it changes. The menu is made again in it, and the
+	// thread waits on the main thread behind the menu's read, as at the start.
+	// It's kept for the next start, whose menu is set before any page can say, and the windows Bun titles take it: the
+	// function ends with them.
+	test("makes it again, in the language the main window's page says, and waits for it to be read", () => {
+		expect(main).toContain("appLanguage: ({ locale }) => speak(locale)");
+		expect(main).toMatch(
+			/function speak\(locale: unknown\) \{\s*if \(!setLanguage\(locale\)\) return;[\s\S]*?writeFileSync\(languageFile, keptLanguage\(language\(\)\)\);[\s\S]*?if \(currentOS === "darwin"\) \{\s*setAppMenu\(\);\s*(\/\/[^\n]*\n\s*)*win\.isMinimized\(\);\s*\}\s*settingsWindows\.retitle\(\);\s*mediaWindows\.retitle\(\);\s*\}/,
+		);
+		expect(main).toContain('const languageFile = join(Utils.paths.userData, "language.json");');
+		expect(main).toContain("setLanguage(startingLanguage(readText(languageFile),");
+	});
+
+	test("is in the language of the last start, or the system's, from its first frame", () => {
+		const start = main.indexOf("setLanguage(startingLanguage(");
+		expect(start).toBeGreaterThan(-1);
+		expect(start).toBeLessThan(main.indexOf("\tsetAppMenu();"));
 	});
 
 	test("does what Settings… and Help ask", () => {

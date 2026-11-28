@@ -21,6 +21,7 @@
 	import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
 	import { getApiError } from "$lib/api/api";
 	import { friendUser } from "$lib/friends";
+	import { t, type MessageKey } from "$lib/i18n";
 	import { conversationTitle } from "$lib/pane";
 	import {
 		conversations,
@@ -83,28 +84,26 @@
 	// from, and Enter searches.
 	const uid = $props.id();
 
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
 	const today = isoDay(new Date());
 	// What has: takes: a conversation's messages have no previews, and the device can't search their links.
 	const hasValues = $derived(conversationId ? CONVERSATION_HAS : SEARCH_HAS);
 
-	type Filter = { key: string; description: string };
+	// The filters, typed as they are in any language, and what each finds: its message.
+	type Filter = { key: string; description: MessageKey };
 	const filters = $derived<Filter[]>([
 		...(everywhere
 			? []
 			: [
-					{ key: "from", description: "Messages by a member" },
-					{ key: "mentions", description: "Messages that mention a member" },
+					{ key: "from", description: "chat_search_filter_from" as const },
+					{ key: "mentions", description: "chat_search_filter_mentions" as const },
 				]),
-		...(space ? [{ key: "in", description: "Messages in a room" }] : []),
-		{
-			key: "has",
-			description: conversationId ? CONVERSATION_HAS.join(", ") : "link, embed, file, image, video, sound or sticker",
-		},
-		{ key: "pinned", description: "true or false: pinned messages, or the others" },
-		{ key: "before", description: `Messages before a date, like ${today}` },
-		{ key: "after", description: "Messages after a date" },
-		{ key: "during", description: "Messages on a date" },
+		...(space ? [{ key: "in", description: "chat_search_filter_in" as const }] : []),
+		// A conversation's has: takes fewer (hasValues).
+		{ key: "has", description: conversationId ? "chat_search_filter_has_conversation" : "chat_search_filter_has" },
+		{ key: "pinned", description: "chat_search_filter_pinned" },
+		{ key: "before", description: "chat_search_filter_before" },
+		{ key: "after", description: "chat_search_filter_after" },
+		{ key: "during", description: "chat_search_filter_during" },
 	]);
 
 	const rooms = $derived.by(() => {
@@ -162,7 +161,12 @@
 			const typed = token.value.toLowerCase();
 			return filters
 				.filter((f) => f.key.startsWith(typed))
-				.map((f) => ({ key: f.key, label: `${f.key}:`, detail: f.description, insert: `${f.key}:` }));
+				.map((f) => ({
+					key: f.key,
+					label: `${f.key}:`,
+					detail: t(f.description, { date: today }),
+					insert: `${f.key}:`,
+				}));
 		}
 		const key = m[1]!.toLowerCase();
 		const value = m[2]!.toLowerCase();
@@ -193,7 +197,7 @@
 			return hasValues.filter((v) => v.startsWith(value)).map((v) => ({ key: v, label: v, insert: `has:${v} ` }));
 		}
 		if ((key === "before" || key === "after" || key === "during") && today.startsWith(value)) {
-			return [{ key: today, label: today, detail: "Today", insert: `${key}:${today} ` }];
+			return [{ key: today, label: today, detail: t("chat_search_today"), insert: `${key}:${today} ` }];
 		}
 		return [];
 	});
@@ -265,23 +269,57 @@
 	let hidden = $state(false);
 	let panel = $state<HTMLElement | null>(null);
 	let loading = $state(false);
+	// The API's answer to a search that failed, in its words (getApiError).
 	let failure = $state<string | null>(null);
+	// A search that couldn't be read keeps what it was read with, not its sentence, which is said as the panel draws, in
+	// the language of the moment: Settings, its own window, can switch it while the panel is open.
+	let unparsed = $state.raw<{ text: string; members: MemberOnSidebar[]; rooms: typeof rooms } | null>(null);
+	const parseError = $derived.by(() => {
+		if (!unparsed) return null;
+		const parsed = readSearch(unparsed.text, unparsed.members, unparsed.rooms);
+		return "error" in parsed ? parsed.error : null;
+	});
+	const shownFailure = $derived(parseError ?? failure);
 	let results = $state.raw<Result[]>([]);
 	let total = $state(0);
 	// Where a conversation's next page starts, or null past its last.
 	let next = $state<SearchPage | null>(null);
+	// What the results' head says: how many were found, 1,000 and more as 1,000+, and how many of them show (some: the
+	// search everywhere shows the newest only).
+	const resultsKey = (some: boolean, over: boolean): MessageKey =>
+		some
+			? over
+				? "chat_search_results_some_over"
+				: "chat_search_results_some"
+			: over
+				? "chat_search_results_over"
+				: "chat_search_results";
+	const resultsHead = $derived.by(() => {
+		const some = everywhere && results.length < total;
+		const over = total >= 1000;
+		return t(resultsKey(some, over), { shown: results.length, count: Math.min(total, 1000) });
+	});
 	// The search the panel shows, and its words for the highlights.
 	let shown: MessageSearch | null = null;
 	let hitWords = $state<string[]>([]);
 	let controller: AbortController | null = null;
 
+	/** A search's text read with these members and rooms, or why it can't be. */
+	function readSearch(
+		query: string,
+		people: MemberOnSidebar[],
+		places: { id: string; name: string }[],
+	): ReturnType<typeof parseSearch> {
+		return everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(query)
+			? { error: t("chat_search_everywhere_filters") }
+			: parseSearch(query, people, places, new Date(), hasValues);
+	}
+
 	async function run(more = false) {
+		unparsed = null;
 		if (!more) {
 			if (!text.trim()) return close();
-			const parsed =
-				everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(text)
-					? { error: "from:, mentions: and in: search a Space or a chat" }
-					: parseSearch(text, members, rooms, new Date(), hasValues);
+			const parsed = readSearch(text, members, rooms);
 			open = true;
 			hidden = false;
 			results = [];
@@ -290,7 +328,8 @@
 			if ("error" in parsed) {
 				controller?.abort();
 				loading = false;
-				failure = parsed.error;
+				failure = null;
+				unparsed = { text, members, rooms };
 				return;
 			}
 			shown = parsed.search;
@@ -326,7 +365,7 @@
 			results = more ? [...results, ...page] : page;
 		} catch (err) {
 			if (ctl.signal.aborted) return;
-			failure = getApiError(err, "The search failed");
+			failure = getApiError(err, t("chat_search_failed"));
 		} finally {
 			if (controller === ctl) loading = false;
 		}
@@ -338,6 +377,7 @@
 		hidden = false;
 		loading = false;
 		failure = null;
+		unparsed = null;
 		results = [];
 		total = 0;
 		next = null;
@@ -396,16 +436,19 @@
 		);
 	}
 
-	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "unknown-room";
+	// A result's room's name; "" for a room the app doesn't know, which MessagePreview names, and the voice note bar too,
+	// in the language of the moment.
+	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "";
 
 	// Where a result found everywhere is: its room and Space, or its conversation.
 	function whereOf(r: Result): string {
 		if (r.conversationId) {
 			const conversation = $conversations.find((c) => c.id === r.conversationId);
-			return conversation ? conversationTitle(conversation, $currentUser?.id) : "Direct message";
+			return conversation ? conversationTitle(conversation, $currentUser?.id) : t("chat_search_direct_message");
 		}
 		const found = $gatewaySpaces.find((s) => s.id === r.spaceId);
-		return `${found?.rooms.find((room) => room.id === r.roomId)?.name ?? "unknown-room"} · ${found?.name ?? "Space"}`;
+		const room = found?.rooms.find((candidate) => candidate.id === r.roomId)?.name ?? t("chat_search_room_unknown");
+		return `${room} · ${found?.name ?? t("chat_search_space_unknown")}`;
 	}
 	// The names of the people results found everywhere mention, as the app knows them, and every custom emoji it has.
 	const everyone = $derived(
@@ -501,8 +544,8 @@
 	<input
 		bind:this={input}
 		bind:value={text}
-		placeholder={everywhere ? "Search everywhere" : "Search"}
-		aria-label={everywhere ? "Search messages everywhere" : "Search messages"}
+		placeholder={everywhere ? t("chat_search_everywhere_placeholder") : t("chat_search_placeholder")}
+		aria-label={everywhere ? t("chat_search_everywhere_label") : t("chat_search_label")}
 		aria-autocomplete="list"
 		aria-controls={suggestions.length > 0 ? `${uid}-suggestions` : undefined}
 		aria-activedescendant={suggestions.length > 0 && selected >= 0 ? `${uid}-suggestion-${selected}` : undefined}
@@ -530,7 +573,7 @@
 	{#if text}
 		<button
 			class="text-duvet-ink2 hover:text-duvet-ink absolute right-1.5 z-10 flex size-5 items-center justify-center rounded-md"
-			aria-label="Clear the search"
+			aria-label={t("chat_search_clear")}
 			onclick={clear}
 		>
 			<XIcon size={14} />
@@ -572,7 +615,7 @@
 						else if (panel?.contains(document.activeElement)) close();
 					}}
 					role="dialog"
-					aria-label={open && !hidden ? "Search results" : "Search suggestions"}
+					aria-label={open && !hidden ? t("chat_search_results_label") : t("chat_search_suggestions")}
 					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(420px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[18px] font-normal outline-none"
 				>
 					<div bind:this={panel} class="contents">
@@ -582,7 +625,7 @@
 								id="{uid}-suggestions"
 								role="listbox"
 								tabindex="-1"
-								aria-label="Search suggestions"
+								aria-label={t("chat_search_suggestions")}
 								class="flex shrink-0 flex-col gap-0.5 p-1.5 {open && !hidden ? 'border-duvet-line border-b' : ''}"
 								onmousedown={(e) => e.preventDefault()}
 							>
@@ -611,18 +654,16 @@
 						{#if open && !hidden}
 							<div class="flex shrink-0 items-center justify-between pt-2.5 pr-2 pb-1 pl-3.5">
 								<span class="text-duvet-ink2 text-xs font-medium">
-									{#if failure}
-										Search
+									{#if shownFailure}
+										{t("chat_search_title")}
 									{:else if loading && results.length === 0}
-										Searching…
+										{t("chat_search_searching")}
 									{:else}
-										<!-- Everywhere, the newest found of them all -->
-										{#if everywhere && results.length < total}{results.length} of{/if}
-										{total >= 1000 ? "1,000+" : total.toLocaleString(locale)}
-										{total === 1 ? "result" : "results"}
+										<!-- Everywhere, the newest found of them all; 1,000 and more as 1,000+ -->
+										{resultsHead}
 									{/if}
 								</span>
-								<button class={iconButtonClass("sm")} aria-label="Close the search" onclick={close}>
+								<button class={iconButtonClass("sm")} aria-label={t("chat_search_close")} onclick={close}>
 									<XIcon size={14} />
 								</button>
 							</div>
@@ -631,10 +672,10 @@
 								class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2"
 								onclickcapture={(e) => mentionProfile.open(e)}
 							>
-								{#if failure}
-									<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
+								{#if shownFailure}
+									<p class="text-duvet-danger px-2 py-8 text-center text-xs">{shownFailure}</p>
 								{:else if !loading && results.length === 0}
-									<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">No messages match this search</p>
+									<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">{t("chat_search_no_results")}</p>
 								{/if}
 								{#each results as r (r.message.id)}
 									<div
@@ -669,13 +710,13 @@
 										/>
 									</div>
 								{/each}
-								{#if !everywhere && !failure && results.length > 0 && (space ? results.length < total : !!next)}
+								{#if !everywhere && !shownFailure && results.length > 0 && (space ? results.length < total : !!next)}
 									<button
 										class="text-duvet-accent-text hover:bg-duvet-hover shrink-0 rounded-xl py-2 text-xs font-medium disabled:opacity-45"
 										disabled={loading}
 										onclick={() => run(true)}
 									>
-										{loading ? "Loading…" : "More results"}
+										{loading ? t("chat_search_loading") : t("chat_search_more")}
 									</button>
 								{/if}
 							</div>

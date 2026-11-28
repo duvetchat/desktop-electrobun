@@ -11,6 +11,8 @@
 	import { personOf } from "$lib/member-menu";
 	import { CARD, FIELD_SM, NOTE, SELECT } from "$lib/components/settings/recipes";
 	import { getAvatarURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 	import {
 		findMembers,
 		joinedOn,
@@ -60,11 +62,10 @@
 		if (role && role !== NO_ROLE && !roles.some((r) => r.id === role)) role = "";
 	});
 
-	const counts = new Intl.NumberFormat();
 	const countLabel = $derived(
 		shown.length === members.length
-			? `${counts.format(members.length)} ${members.length === 1 ? "member" : "members"}`
-			: `${counts.format(shown.length)} of ${counts.format(members.length)} members`,
+			? t("space_members_count", { count: members.length })
+			: t("space_members_count_found", { shown: shown.length, total: members.length }),
 	);
 	// The pages stopped at their limit with members left: the list says so.
 	const capped = $derived(paging && moreMembers(space.id) && space.users.length >= LISTED_MEMBERS_MAX);
@@ -147,7 +148,12 @@
 		if (pickedId && !picked) void back();
 	});
 
-	const rolesOf = (roleNames: { name: string }[]) => roleNames.map((r) => r.name).join(", ");
+	// The role names one after another, as the locale lists them: "Mods, Helpers" in English.
+	const rolesOf = (roleNames: { name: string }[]) =>
+		formatList(
+			roleNames.map((r) => r.name),
+			{ type: "unit", style: "short" },
+		);
 
 	// ── A member's menu (#423) ───────────────────────────────────────────────
 	// One for the list, as the members list has one: a right-click on a row opens it for that member. Its Profile is
@@ -173,27 +179,27 @@
 			<input
 				type="search"
 				bind:value={query}
-				placeholder="Search by name or ID"
-				aria-label="Search members"
+				placeholder={t("space_members_search_placeholder")}
+				aria-label={t("space_members_search")}
 				autocomplete="off"
 				spellcheck="false"
 				class="{FIELD_SM} min-w-48 flex-1"
 			/>
-			<select bind:value={role} aria-label="Filter by role" class={SELECT}>
-				<option value="">All roles</option>
+			<select bind:value={role} aria-label={t("space_members_role_filter")} class={SELECT}>
+				<option value="">{t("space_members_role_all")}</option>
 				{#each roles as r (r.id)}
 					<option value={r.id}>{r.name}</option>
 				{/each}
-				<option value={NO_ROLE}>No roles</option>
+				<option value={NO_ROLE}>{t("space_members_role_none")}</option>
 			</select>
-			<select bind:value={sort} aria-label="Sort members" class={SELECT}>
-				<option value="name">By name</option>
-				<option value="newest">Newest first</option>
-				<option value="oldest">Oldest first</option>
+			<select bind:value={sort} aria-label={t("space_members_sort")} class={SELECT}>
+				<option value="name">{t("space_members_sort_name")}</option>
+				<option value="newest">{t("space_members_sort_newest")}</option>
+				<option value="oldest">{t("space_members_sort_oldest")}</option>
 			</select>
 		</div>
 
-		<ContextMenu label="Member">
+		<ContextMenu label={t("space_members_menu")}>
 			{#snippet target(props)}
 				<div
 					{...withoutLongPress(props)}
@@ -222,7 +228,7 @@
 		{#snippet rows()}
 			<div class="{OVERLINE} flex h-9 items-end gap-3 px-3.5 pb-1.5 select-none">
 				<span class="min-w-0 flex-1 truncate">{countLabel}</span>
-				<span class="shrink-0">Joined</span>
+				<span class="shrink-0">{t("space_member_joined")}</span>
 			</div>
 			{#if start > 0}
 				<div style="height: {start * MANAGED_MEMBER_ROW}px"></div>
@@ -241,7 +247,7 @@
 							{#if member.isBot}
 								<span
 									class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em]"
-									>BOT</span
+									>{t("space_members_bot")}</span
 								>
 							{/if}
 							{#if member.isOwner}
@@ -259,7 +265,7 @@
 				<div style="height: {(shown.length - end) * MANAGED_MEMBER_ROW}px"></div>
 			{/if}
 			{#if shown.length === 0}
-				<p class="text-duvet-ink2 px-3.5 py-6 text-center text-[13px]">No one matches</p>
+				<p class="text-duvet-ink2 px-3.5 py-6 text-center text-[13px]">{t("space_members_no_match")}</p>
 			{/if}
 		{/snippet}
 
@@ -267,7 +273,7 @@
 			<MemberPagesStatus spaceId={space.id} />
 		{/if}
 		{#if capped}
-			<p class={NOTE}>The first {counts.format(LISTED_MEMBERS_MAX)} members are listed.</p>
+			<p class={NOTE}>{t("space_members_capped", { count: LISTED_MEMBERS_MAX })}</p>
 		{/if}
 	</div>
 {/if}

@@ -28,6 +28,13 @@ test("the profile popover's status dot is a StatusDot of the member's status, at
 	);
 });
 
+// A bot or an app is nobody to befriend: its card has no friend request action at all.
+test("a bot's card has no friend request action, and sending one is refused", () => {
+	expect(popover).toContain("!member.is_bot");
+	expect(popover).toMatch(/\{#if \$currentUser && member\.id !== \$currentUser\.id && !member\.is_bot\}/);
+	expect(popover).toMatch(/function handleSendFriendRequest\(userId: string\) \{\s*if \(member\.is_bot\) return;/);
+});
+
 // For a member connected only from the mobile app, a phone takes the dot's place, as wide and in the same ring (#82).
 test("the profile popover draws a phone for a member only on mobile", async () => {
 	const dot = /<StatusDot\s[^>]*\/>/.exec(popover)?.[0] ?? "";
@@ -59,14 +66,28 @@ test("the profile offers Send direct message to whom the user can chat with", ()
 	expect(popover).toMatch(
 		/const canMessage = \$derived\(\s*!!\$currentUser &&\s*canChatWith\(\s*\$currentUser\.id,\s*\{ id: member\.id, isBot: member\.is_bot \},\s*tiesOf\(member\.id, \$currentUser\.id, \{/,
 	);
-	expect(sendMessage).toContain("Send direct message");
+	expect(sendMessage).toContain('{t("people_profile_message")}');
 	// Under their details, before what removes them.
 	expect(popover.indexOf("{#if canMessage}")).toBeGreaterThan(popover.indexOf("{#if showPermissions}"));
 	expect(popover.indexOf("{#if canMessage}")).toBeLessThan(popover.indexOf("{#if moderation}"));
 });
 
 test("Send direct message closes the profile and opens their direct conversation", () => {
-	expect(sendMessage).toMatch(/onclick=\{\(\) => \{\s*onOpenChange\(false\);\s*chatWith\(member\.id\);\s*\}\}/);
+	expect(sendMessage).toMatch(
+		/onclick=\{\(\) => \{\s*const \{ id \} = member;\s*onOpenChange\(false\);\s*chatWith\(id\);\s*\}\}/,
+	);
+});
+
+// What opens the card for one person (a message's author, a mention, someone in a voice room) lets go of them as it
+// closes, and member (and what's derived from it) goes with them: Send direct message read member.id after closing,
+// which threw there, and opened nothing. Whatever a button does once the card closes, it read before.
+test("no button reads the member after it closes the card", () => {
+	const handlers = [...popover.matchAll(/onclick=\{\(\) => \{([^]*?)\}\}/g)].map((m) => m[1]!);
+	const closing = handlers.filter((body) => body.includes("onOpenChange(false);"));
+	expect(closing.length).toBeGreaterThanOrEqual(3);
+	for (const body of closing) {
+		expect(body.slice(body.indexOf("onOpenChange(false);"))).not.toMatch(/\b(?:member|moderation|canMessage)\b/);
+	}
 });
 
 // A tall profile stays in the window: its details scroll in what the window leaves, less what's drawn under them,

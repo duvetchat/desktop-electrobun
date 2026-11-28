@@ -112,8 +112,8 @@ const rich = message({
 describe("a message's preview", () => {
 	test("links its bare links, each opening apart from the app", async () => {
 		const links = named(await drawn(rich), "a").filter((a) => a.attributes.href === "https://example.org/page");
-		// The text's, and the link preview's title.
-		expect(links).toHaveLength(2);
+		// The text's, the link preview's title, and the open action floating on it.
+		expect(links).toHaveLength(3);
 		for (const link of links) expect(link.attributes).toMatchObject({ target: "_blank", rel: "noopener noreferrer" });
 	});
 
@@ -188,7 +188,8 @@ describe("a message's preview", () => {
 				},
 			}),
 		);
-		expect(used).toMatch(/used <span[^>]*>\/ping<\/span>/);
+		// One sentence (chat_interaction_used), drawn by Rich: its pieces come with the server render's markers.
+		expect(used.replace(/<!--[^>]*-->/g, "")).toMatch(/>me<\/span> used <span[^>]*>\/ping<\/span>/);
 		expect(used).toContain(">BOT</span>");
 		expect(html(message({ content: "Hi", webhook_id: "w" }))).toContain(">WEBHOOK</span>");
 	});

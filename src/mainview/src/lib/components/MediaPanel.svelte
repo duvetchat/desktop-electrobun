@@ -20,6 +20,7 @@
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import { t } from "$lib/i18n";
 	import {
 		isMicInUse,
 		micName,
@@ -61,17 +62,17 @@
 		micsLoaded = true;
 	}
 
-	const micLabel = $derived(media.muted ? "Unmute" : "Mute");
-	const micTip = $derived(media.canSpeak ? micLabel : "You can't speak in this room");
+	const micLabel = $derived(media.muted ? t("call_unmute") : t("call_mute"));
+	const micTip = $derived(media.canSpeak ? micLabel : t("call_cannot_speak"));
 	const blocked = $derived(videoBlockLabel(media.video, media.place?.kind));
 	const inVoice = $derived(media.place !== null);
 </script>
 
 {#snippet micList()}
-	<div class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">Microphone</div>
+	<div class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">{t("call_microphone")}</div>
 	{#if mics.length === 0}
 		{#if micsLoaded}
-			<div class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No microphones found</div>
+			<div class="text-duvet-ink2 px-2 py-1.5 text-[13px]">{t("call_no_microphones")}</div>
 		{/if}
 	{:else}
 		{#each mics as mic, index (mic.id || index)}
@@ -85,7 +86,7 @@
 <!-- The microphone: a press mutes; a right-click, or the chevron beside it, opens the picker. -->
 {#snippet mic()}
 	<div class="flex min-w-0 gap-px">
-		<ContextMenu label="Microphone" onOpenChange={loadMics}>
+		<ContextMenu label={t("call_microphone")} onOpenChange={loadMics}>
 			{#snippet target(props)}
 				<MediaButton
 					label={micLabel}
@@ -104,14 +105,14 @@
 			{/snippet}
 			{@render micList()}
 		</ContextMenu>
-		<Menu side="top" align="start" label="Microphone" onOpenChange={loadMics}>
+		<Menu side="top" align="start" label={t("call_microphone")} onOpenChange={loadMics}>
 			{#snippet trigger(menuProps)}
-				<Tooltip text="Choose a microphone" side="top">
+				<Tooltip text={t("call_choose_microphone")} side="top">
 					{#snippet trigger(props)}
 						<button
 							{...mergeProps(menuProps, props)}
 							type="button"
-							aria-label="Choose a microphone"
+							aria-label={t("call_choose_microphone")}
 							class="bg-duvet-secondary-fill text-duvet-ink grid h-[30px] w-[18px] shrink-0 place-items-center rounded-l-[3px] rounded-r-[10px] transition-[box-shadow,color] duration-[120ms] hover:shadow-[inset_0_0_0_100px_var(--duvet-hover)] motion-reduce:transition-none"
 						>
 							<ChevronDown size={12} strokeWidth={2.5} />
@@ -126,7 +127,7 @@
 
 {#snippet deafen()}
 	<MediaButton
-		label={media.deafened ? "Undeafen" : "Deafen"}
+		label={media.deafened ? t("call_undeafen") : t("call_deafen")}
 		keys={keys.deafen}
 		pressed={media.deafened}
 		pressedTone="danger"
@@ -139,8 +140,8 @@
 
 {#snippet noise()}
 	<MediaButton
-		label="Noise suppression"
-		tip={media.noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
+		label={t("call_noise_suppression")}
+		tip={media.noiseSuppression ? t("call_noise_suppression_on") : t("call_noise_suppression_off")}
 		pressed={media.noiseSuppression}
 		onclick={actions.toggleNoiseSuppression}
 	>
@@ -150,7 +151,7 @@
 
 {#if inVoice}
 	<section
-		aria-label={media.place?.kind === "call" ? "Your call" : "Your voice"}
+		aria-label={media.place?.kind === "call" ? t("call_panel_call_label") : t("call_panel_voice_label")}
 		class="@container flex flex-col gap-2 {framed ? 'bg-duvet-sb-card shadow-duvet-raised rounded-[14px] p-2' : ''}"
 	>
 		<VoiceStatus state={media} {actions} trailing={popOut} />
@@ -159,8 +160,8 @@
 			{@render deafen()}
 			{@render noise()}
 			<MediaButton
-				label={media.camera ? "Turn off camera" : "Turn on camera"}
-				tip={blocked ?? (media.camera ? "Turn off camera" : "Turn on camera")}
+				label={media.camera ? t("call_camera_turn_off") : t("call_camera_turn_on")}
+				tip={blocked ?? (media.camera ? t("call_camera_turn_off") : t("call_camera_turn_on"))}
 				pressed={media.camera}
 				stateInName
 				disabled={blocked !== null}
@@ -169,16 +170,16 @@
 				{#if media.camera}<Video size={16} />{:else}<VideoOff size={16} />{/if}
 			</MediaButton>
 			{#if media.sharing}
-				<MediaButton label="Stop sharing" pressed stateInName onclick={actions.stopSharing}>
+				<MediaButton label={t("call_stop_sharing")} pressed stateInName onclick={actions.stopSharing}>
 					<ScreenShareOff size={16} />
 				</MediaButton>
 			{:else}
 				<!-- The system's (or the browser's) own picker follows: Duvet draws none. -->
-				<Menu side="top" align="end" label="Share screen">
+				<Menu side="top" align="end" label={t("call_share_screen")}>
 					{#snippet trigger(props)}
 						<MediaButton
-							label="Share screen"
-							tip={blocked ?? "Share screen"}
+							label={t("call_share_screen")}
+							tip={blocked ?? t("call_share_screen")}
 							pressed={false}
 							stateInName
 							disabled={blocked !== null}
@@ -187,8 +188,12 @@
 							<ScreenShare size={16} />
 						</MediaButton>
 					{/snippet}
-					<MenuItem icon={ScreenShare} onSelect={() => actions.shareScreen(false)}>Screen only</MenuItem>
-					<MenuItem icon={Volume2} onSelect={() => actions.shareScreen(true)}>Screen and audio</MenuItem>
+					<MenuItem icon={ScreenShare} onSelect={() => actions.shareScreen(false)}
+						>{t("call_share_screen_only")}</MenuItem
+					>
+					<MenuItem icon={Volume2} onSelect={() => actions.shareScreen(true)}
+						>{t("call_share_screen_with_audio")}</MenuItem
+					>
 				</Menu>
 			{/if}
 		</div>

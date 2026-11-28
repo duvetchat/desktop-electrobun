@@ -4,9 +4,7 @@
 		Check as CheckIcon,
 		ChevronDown as ChevronDownIcon,
 		ChevronUp as ChevronUpIcon,
-		Gamepad2 as GameIcon,
 		MonitorUp as ScreenIcon,
-		Music as MusicIcon,
 		Phone as PhoneIcon,
 		Users as TeamIcon,
 		Video as CameraIcon,
@@ -21,25 +19,25 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { friendUser } from "$lib/friends";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { liveLabel } from "$lib/media-state";
 	import {
 		capFaces,
 		callName,
 		fitFaces,
-		friendsNow,
 		joinableCalls,
 		liveIn,
 		NOW_FRIENDS,
 		NOW_ROOMS,
 		NOW_ROOM_FACES,
 		busiestRooms,
-		peopleCount,
 		voiceRoomLabel,
 		type Face,
 	} from "$lib/now";
 	import { navPrefs, toggleNow } from "$lib/nav-prefs.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { isTransferActive, transferProgress } from "$lib/storage-transfers";
+	import { isTransferActive, storageCase, transferProgress } from "$lib/storage-transfers";
 	import {
 		activeCall,
 		activeVoiceRoomId,
@@ -60,12 +58,12 @@
 	import { userStatusToString, type Guild } from "$lib/types";
 	import { joinConversationCall } from "$lib/voice";
 	import FaceStack from "$lib/components/FaceStack.svelte";
+	import OnlineFriendFaces from "$lib/components/OnlineFriendFaces.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
-	import { FOCUS_RING, FOCUS_RING_INSET } from "$lib/components/ui/recipes";
+	import { FOCUS_RING_INSET } from "$lib/components/ui/recipes";
 
 	// What's going on now, in the sidebar between its rows and its bottom block (#357): what asks the user something
 	// (a call they can join, a friend request, a team invite), the files they're moving, the voice rooms with people in
@@ -130,7 +128,10 @@
 		try {
 			await (accept ? acceptRequest(request) : declineRequest(request));
 		} catch (err) {
-			toast(getApiError(err, accept ? "Couldn't accept the request" : "Couldn't decline the request"), "error");
+			toast(
+				getApiError(err, accept ? t("shell_now_accept_request_failed") : t("shell_now_decline_request_failed")),
+				"error",
+			);
 		} finally {
 			answering.delete(request.id);
 		}
@@ -141,25 +142,37 @@
 		answering.add(inviteId);
 		try {
 			await answerTeamInvite(inviteId, accept);
-			if (accept) toast("Invite accepted", "success");
+			if (accept) toast(t("shell_now_invite_accepted"), "success");
 		} catch (err) {
-			toast(getApiError(err, accept ? "Failed to accept invite" : "Failed to decline invite"), "error");
+			toast(
+				getApiError(err, accept ? t("shell_now_accept_invite_failed") : t("shell_now_decline_invite_failed")),
+				"error",
+			);
 		} finally {
 			answering.delete(inviteId);
 		}
 	}
 
 	// ── The files being moved between storages, the user's own or a space's they started ──
+	// Whose they are, as the heading's message tells them apart: the user's own, a Space's by its name, or a Space whose
+	// name isn't known here.
 	const transfers = $derived(
 		Object.values(storageTransfers.byId)
 			.filter(isTransferActive)
-			.map((t) => ({
-				t,
-				target: storageTransfers.storageName(t.target_bucket_id),
-				owner:
-					t.owner_id === t.started_by ? null : ($gatewaySpaces.find((s) => s.id === t.owner_id)?.name ?? "A Space"),
-				progress: transferProgress(t),
-			})),
+			.map((transfer) => {
+				const space =
+					transfer.owner_id === transfer.started_by ? null : $gatewaySpaces.find((s) => s.id === transfer.owner_id);
+				const whose = transfer.owner_id === transfer.started_by ? "own" : space ? "space" : "unknown";
+				const target = storageTransfers.storageName(transfer.target_bucket_id);
+				return {
+					t: transfer,
+					// Where to: the default storage in the sentence's own words, a bucket by its name.
+					to: storageCase(transfer.target_bucket_id, target),
+					target,
+					moving: t("shell_now_moving", { whose, owner: space?.name ?? "" }),
+					progress: transferProgress(transfer),
+				};
+			}),
 	);
 
 	// ── The voice rooms of the user's spaces with people in them, those they can join, besides the one they're in ──
@@ -198,19 +211,21 @@
 			];
 		}),
 	);
-	const friendsSplit = $derived(
-		friendsNow(onlineFriends, (f) => {
-			const activity = shownActivities($userActivities[f.id])[0];
-			return activity ? activityLine(activity) : null;
-		}),
+	// Every online friend is a face. What they're doing rides in their bubble, so a song no longer takes a full row.
+	const friendFaces = $derived(
+		fitFaces(
+			onlineFriends.map((friend) => {
+				const activity = shownActivities($userActivities[friend.id])[0];
+				return activity ? { ...friend, activity: activityLine(activity) } : friend;
+			}),
+			NOW_FRIENDS,
+		),
 	);
-	const friendFaces = $derived(fitFaces(friendsSplit.rest, NOW_FRIENDS));
 
 	const asks = $derived(calls.length + requests.length + $pendingTeamInvites.length + transfers.length);
 	const anything = $derived(asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
 
 	const rowFocus = FOCUS_RING_INSET;
-	const roundFocus = FOCUS_RING;
 	// The sidebar's recipes (SpaceNav.svelte, DMSidebar.svelte; DESIGN-MAP.md S-05 to S-07): a row lights on hover, a
 	// card is the call panel's, and an icon that isn't a person sits on a rounded square.
 	const row = `hover:bg-duvet-sb-hover flex w-full items-center rounded-[10px] text-left transition-colors duration-[120ms] motion-reduce:transition-none ${rowFocus}`;
@@ -242,7 +257,7 @@
 			onclick={onToggle}
 		>
 			<span class="min-w-0 truncate">{title}</span>
-			{#if folded}<span class="tabular-nums">{count}</span>{/if}
+			{#if folded}<span class="tabular-nums">{formatNumber(count)}</span>{/if}
 			<span class="flex-1"></span>
 			<ChevronDownIcon
 				class="mb-px size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {folded
@@ -254,27 +269,33 @@
 	</h3>
 {/snippet}
 
-{#snippet answer(id: string, what: string, onAnswer: (accept: boolean) => void)}
-	<IconButton label="Accept {what}" title="Accept" disabled={answering.has(id)} onclick={() => onAnswer(true)}>
+<!-- Accept and decline, each named in full for a screen reader (`accept`, `decline`). -->
+{#snippet answer(id: string, accept: string, decline: string, onAnswer: (accept: boolean) => void)}
+	<IconButton label={accept} title={t("shell_now_accept")} disabled={answering.has(id)} onclick={() => onAnswer(true)}>
 		<CheckIcon size={16} />
 	</IconButton>
-	<IconButton label="Decline {what}" title="Decline" disabled={answering.has(id)} onclick={() => onAnswer(false)}>
+	<IconButton
+		label={decline}
+		title={t("shell_now_decline")}
+		disabled={answering.has(id)}
+		onclick={() => onAnswer(false)}
+	>
 		<XIcon size={16} />
 	</IconButton>
 {/snippet}
 
 {#if anything}
 	<!-- Between the sidebar's rows and its bottom block, under a hairline. What doesn't fit scrolls in it. -->
-	<section class="flex min-h-0 flex-col shadow-[0_-1px_0_var(--duvet-sb-edge)]" aria-label="Now">
+	<section class="flex min-h-0 flex-col shadow-[0_-1px_0_var(--duvet-sb-edge)]" aria-label={t("shell_now")}>
 		<div class="flex min-h-0 flex-col overflow-y-auto px-2 pb-2">
 			{#if asks > 0}
-				<ul class="flex flex-col gap-1.5 px-0.5 pt-2" aria-label="Asking you">
+				<ul class="flex flex-col gap-1.5 px-0.5 pt-2" aria-label={t("shell_now_asking")}>
 					{#each calls as call (call.conv.id)}
 						<li class="{card} animate-fade-in motion-reduce:animate-none">
 							<button
 								type="button"
 								class="{row} min-w-0 flex-1 gap-2.5 p-0.5"
-								aria-label="Open {call.name}"
+								aria-label={t("shell_now_open_call", { name: call.name })}
 								data-jump
 								onclick={() => onConversationSelect(call.conv.id)}
 							>
@@ -285,23 +306,25 @@
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class={cardName}>{call.name}</span>
-									<span class={cardNote}>{call.waits ? "Calling from another device" : "Call going on"}</span>
+									<span class={cardNote}
+										>{call.waits ? t("shell_now_call_elsewhere") : t("shell_now_call_going_on")}</span
+									>
 								</span>
 								<FaceStack
 									faces={call.faces.faces}
 									more={call.faces.more}
 									size={18}
 									ring="ring-duvet-sb-ring"
-									label="{peopleCount(call.faces.faces.length + call.faces.more)} in the call"
+									label={t("shell_now_call_people", { count: call.faces.faces.length + call.faces.more })}
 								/>
 							</button>
 							{#if !call.waits}
 								<Button
 									size="sm"
-									aria-label="Join the call in {call.name}"
+									aria-label={t("shell_now_join_call", { name: call.name })}
 									onclick={() => joinConversationCall(call.conv)}
 								>
-									Join
+									{t("shell_now_join")}
 								</Button>
 							{/if}
 						</li>
@@ -315,10 +338,15 @@
 								<UserAvatar src={getAvatarURL(other.id, other.avatar)} {name} size={32} />
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class={cardName}>{name}</span>
-									<span class={cardNote}>Wants to be friends</span>
+									<span class={cardNote}>{t("shell_now_wants_friends")}</span>
 								</span>
 							</div>
-							{@render answer(request.id, `${name}'s friend request`, (accept) => answerRequest(request, accept))}
+							{@render answer(
+								request.id,
+								t("shell_now_accept_request", { name }),
+								t("shell_now_decline_request", { name }),
+								(accept) => answerRequest(request, accept),
+							)}
 						</li>
 					{/each}
 
@@ -330,33 +358,45 @@
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class={cardName}>{invite.team_name}</span>
-									<span class={cardNote}>Team invite from {invite.invited_by_username}</span>
+									<span class={cardNote}>{t("shell_now_team_invite", { name: invite.invited_by_username })}</span>
 								</span>
 							</div>
-							{@render answer(invite.id, `the invite to ${invite.team_name}`, (accept) =>
-								answerInvite(invite.id, accept),
+							{@render answer(
+								invite.id,
+								t("shell_now_accept_invite", { team: invite.team_name }),
+								t("shell_now_decline_invite", { team: invite.team_name }),
+								(accept) => answerInvite(invite.id, accept),
 							)}
 						</li>
 					{/each}
 
-					{#each transfers as { t, target, owner, progress } (t.id)}
+					{#each transfers as { t: transfer, to, target, moving, progress } (transfer.id)}
 						<li class="bg-duvet-sb-card shadow-duvet-raised flex flex-col gap-2 rounded-[14px] p-2">
 							<div class="flex min-w-0 items-center gap-2.5">
 								<span class={tile}>
 									<TransferIcon class="size-4" />
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col">
-									<span class={cardName}>Moving {owner ? `${owner}'s files` : "your files"}</span>
-									<span class={cardNote}>{target ? `To ${target}, ` : ""}{progress.done} of {progress.total}</span>
+									<span class={cardName}>{moving}</span>
+									<span class={cardNote}
+										>{to !== "unknown"
+											? t("shell_now_moving_to", {
+													to,
+													target: target ?? "",
+													done: progress.done,
+													total: progress.total,
+												})
+											: t("shell_now_moving_count", { done: progress.done, total: progress.total })}</span
+									>
 								</span>
 								<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-semibold tabular-nums"
-									>{progress.percent}%</span
+									>{t("shell_now_moving_percent", { percent: progress.percent })}</span
 								>
 							</div>
 							<div
 								class="bg-duvet-secondary-fill h-1.5 overflow-hidden rounded-full"
 								role="progressbar"
-								aria-label="Moving {owner ? `${owner}'s files` : 'your files'}"
+								aria-label={moving}
 								aria-valuemin={0}
 								aria-valuemax={100}
 								aria-valuenow={progress.percent}
@@ -372,7 +412,7 @@
 			{/if}
 
 			{#if liveRooms.length > 0}
-				{@render groupHeading("In voice now", liveRooms.length, navPrefs.now.roomsFolded, () =>
+				{@render groupHeading(t("shell_now_in_voice"), liveRooms.length, navPrefs.now.roomsFolded, () =>
 					toggleNow("roomsFolded"),
 				)}
 			{/if}
@@ -384,10 +424,8 @@
 							<button
 								type="button"
 								class="{row} h-[34px] gap-[7px] pr-2 pl-1.5"
-								aria-label="{voiceRoomLabel(channel.name, guild.name, people.length)}{live
-									? `, ${liveLabel(live).toLowerCase()}`
-									: ''}"
-								title="{channel.name} in {guild.name}"
+								aria-label={voiceRoomLabel(channel.name, guild.name, people.length, live)}
+								title={t("shell_now_room_in_space", { room: channel.name, space: guild.name })}
 								data-jump
 								onclick={() => onRoomSelect(guild.id, channel.id)}
 							>
@@ -418,82 +456,27 @@
 								class="size-[13px] shrink-0"
 								aria-hidden="true"
 							/>{:else}<ChevronDownIcon class="size-[13px] shrink-0" aria-hidden="true" />{/if}
-						{navPrefs.now.allRooms
-							? "Show the busiest only"
-							: `${moreRooms} more ${moreRooms === 1 ? "room" : "rooms"}`}
+						{navPrefs.now.allRooms ? t("shell_now_busiest_only") : t("shell_now_more_rooms", { count: moreRooms })}
 					</button>
 				{/if}
 			{/if}
 
 			{#if onlineFriends.length > 0}
-				{@render groupHeading("Online friends", onlineFriends.length, navPrefs.now.friendsFolded, () =>
+				{@render groupHeading(t("shell_now_online_friends"), onlineFriends.length, navPrefs.now.friendsFolded, () =>
 					toggleNow("friendsFolded"),
 				)}
 			{/if}
 			{#if onlineFriends.length > 0 && !navPrefs.now.friendsFolded}
-				{#if friendsSplit.busy.length > 0}
-					<ul class="flex flex-col">
-						{#each friendsSplit.busy as { friend, activity } (friend.id)}
-							<li>
-								<button
-									type="button"
-									class="{row} h-11 gap-2.5 pr-2.5 pl-2"
-									aria-label="Message {friend.name}, {activity.kind === 'playing'
-										? 'playing'
-										: 'listening to'} {activity.text}"
-									data-jump
-									onclick={() => onFriend(friend.id)}
-								>
-									<Avatar size={32} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
-										<UserAvatar src={friend.src} name={friend.name} size={32} />
-									</Avatar>
-									<span class="flex min-w-0 flex-1 flex-col gap-px">
-										<span class="text-duvet-ink truncate text-[13.5px] leading-tight font-medium">{friend.name}</span>
-										<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3]">
-											{#if activity.kind === "playing"}<GameIcon
-													class="size-3 shrink-0"
-													aria-hidden="true"
-												/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
-											<span class="truncate" title={activity.text}>{activity.text}</span>
-										</span>
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
 				{#if friendFaces.faces.length > 0 || friendFaces.more > 0}
-					<ul class="flex shrink-0 items-center gap-1.5 px-2 pt-1 pb-0.5">
-						{#each friendFaces.faces as friend (friend.id)}
-							<li class="flex shrink-0">
-								<button
-									type="button"
-									class="flex rounded-full {roundFocus}"
-									aria-label="Message {friend.name}"
-									title={friend.name}
-									data-jump
-									onclick={() => onFriend(friend.id)}
-								>
-									<Avatar size={26} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
-										<UserAvatar src={friend.src} name={friend.name} size={26} />
-									</Avatar>
-								</button>
-							</li>
-						{/each}
-						{#if friendFaces.more > 0}
-							<li class="flex shrink-0">
-								<button
-									type="button"
-									class="bg-duvet-secondary-fill text-duvet-ink2 hover:text-duvet-ink flex size-[26px] items-center justify-center rounded-full text-[10.5px] font-bold tabular-nums transition-colors duration-[120ms] motion-reduce:transition-none {roundFocus}"
-									aria-label="{friendFaces.more} more online friends"
-									title="{friendFaces.more} more online"
-									onclick={onFriendsSelect}
-								>
-									+{friendFaces.more}
-								</button>
-							</li>
-						{/if}
-					</ul>
+					<OnlineFriendFaces
+						friends={friendFaces.faces}
+						more={friendFaces.more}
+						size={26}
+						ring="var(--duvet-sb-ring)"
+						class="px-2 pt-1 pb-0.5"
+						{onFriend}
+						onMore={onFriendsSelect}
+					/>
 				{/if}
 			{/if}
 		</div>

@@ -10,7 +10,10 @@
 //   - No item takes a key the page uses for something else: the menu acts on it whenever the page lets it through, over
 //     a dialog or while signing in. ⌘W closes a tab, so Close Window is ⇧⌘W, as in macOS's tabbed apps: on ⌘W, the ⌘W
 //     of someone in Settings would close the main window, and the app with it.
+//   - Every item is in the app's language (#464, i18n.ts), a role's too: without a label of its own, Electrobun gives a
+//     role item its English name (menuRoles.ts: roleLabelMap). The menu is made again when the language changes.
 import type { ApplicationMenuItemConfig } from "electrobun/bun";
+import { t } from "./i18n";
 
 /** Where Help sends the user: Duvet's documentation, in the browser. */
 export const DOCS_URL = "https://docs.duvet.chat";
@@ -20,55 +23,56 @@ export type MenuAction = "settings" | "docs";
 
 const ACTIONS: readonly MenuAction[] = ["settings", "docs"];
 
-/** The menu bar of the app called `name`. Keys are Electrobun's accelerators; an editing role without one has its own. */
+/** The menu bar of the app called `name`, in the language Bun speaks now. Keys are Electrobun's accelerators; an
+ * editing role without one has its own. */
 export function appMenu(name: string): ApplicationMenuItemConfig[] {
 	return [
 		{
 			// macOS titles the first menu with the app's own name, whatever its label says.
 			label: name,
 			submenu: [
-				{ role: "about", label: `About ${name}` },
+				{ role: "about", label: t("menu_about", { name }) },
 				{ type: "separator" },
-				{ label: "Settings…", action: "settings", accelerator: "Command+," },
+				{ label: t("menu_settings"), action: "settings", accelerator: "Command+," },
 				{ type: "separator" },
-				{ role: "hide", label: `Hide ${name}`, accelerator: "Command+H" },
-				{ role: "hideOthers", accelerator: "Option+Command+H" },
-				{ role: "showAll" },
+				{ role: "hide", label: t("menu_hide", { name }), accelerator: "Command+H" },
+				{ role: "hideOthers", label: t("menu_hide_others"), accelerator: "Option+Command+H" },
+				{ role: "showAll", label: t("menu_show_all") },
 				{ type: "separator" },
-				{ role: "quit", label: `Quit ${name}`, accelerator: "Command+Q" },
+				{ role: "quit", label: t("menu_quit", { name }), accelerator: "Command+Q" },
 			],
 		},
 		{
-			label: "Edit",
+			label: t("menu_edit"),
 			submenu: [
-				{ role: "undo" },
-				{ role: "redo" },
+				{ role: "undo", label: t("menu_undo") },
+				{ role: "redo", label: t("menu_redo") },
 				{ type: "separator" },
-				{ role: "cut" },
-				{ role: "copy" },
-				{ role: "paste" },
-				{ role: "pasteAndMatchStyle" },
-				{ role: "selectAll" },
+				{ role: "cut", label: t("menu_cut") },
+				{ role: "copy", label: t("menu_copy") },
+				{ role: "paste", label: t("menu_paste") },
+				{ role: "pasteAndMatchStyle", label: t("menu_paste_and_match_style") },
+				{ role: "selectAll", label: t("menu_select_all") },
 			],
 		},
 		{
-			label: "View",
-			submenu: [{ role: "toggleFullScreen", accelerator: "Control+Command+F" }],
+			label: t("menu_view"),
+			submenu: [{ role: "toggleFullScreen", label: t("menu_toggle_full_screen"), accelerator: "Control+Command+F" }],
 		},
 		{
-			label: "Window",
+			label: t("menu_window"),
 			submenu: [
-				{ role: "minimize", accelerator: "Command+M" },
-				{ role: "zoom" },
+				{ role: "minimize", label: t("menu_minimize"), accelerator: "Command+M" },
+				{ role: "zoom", label: t("menu_zoom") },
 				{ type: "separator" },
-				{ role: "close", label: "Close Window", accelerator: "Shift+Command+W" },
+				{ role: "close", label: t("menu_close_window"), accelerator: "Shift+Command+W" },
 				{ type: "separator" },
-				{ role: "bringAllToFront", label: "Bring All to Front" },
+				{ role: "bringAllToFront", label: t("menu_bring_all_to_front") },
 			],
 		},
 		{
-			label: "Help",
-			submenu: [{ label: `${name} Documentation`, action: "docs" }],
+			label: t("menu_help"),
+			submenu: [{ label: t("menu_docs", { name }), action: "docs" }],
 		},
 	];
 }

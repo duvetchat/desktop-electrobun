@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+	LOCALE_FLAGS,
 	LOCALE_NAMES,
 	LOCALES,
+	flagEmoji,
 	PSEUDO,
 	SHIPPED,
 	formatLocale,
@@ -71,4 +73,15 @@ test("every language has its name in itself, for the picker", () => {
 	for (const locale of all) expect(LOCALE_NAMES[locale]).toBeTruthy();
 	expect(LOCALE_NAMES.es).toBe("Español");
 	expect(LOCALE_NAMES["pt-BR"]).toBe("Português (Brasil)");
+});
+
+test("every language has a country's flag for the picker, and the pseudo-language none", () => {
+	for (const locale of LOCALES) expect(LOCALE_FLAGS[locale]).toMatch(/^[A-Z]{2}$/);
+	expect(LOCALE_FLAGS[PSEUDO]).toBeNull();
+	expect(LOCALE_FLAGS["pt-BR"]).toBe("BR");
+});
+
+test("a region's flag is its letters as regional indicators", () => {
+	expect(flagEmoji("FR")).toBe("🇫🇷");
+	expect(flagEmoji("mx")).toBe("🇲🇽");
 });

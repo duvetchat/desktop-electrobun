@@ -2,12 +2,15 @@
 	import type { Snippet } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
 	import Notice from "$lib/components/Notice.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { t } from "$lib/i18n";
 	import { renderMarkdownLine } from "$lib/markdown";
 	import { dismissMentionNotice, mentionNotices, type MentionNotice } from "$lib/mention-notices";
 	import { placeStyle, underCall } from "$lib/notice-place";
 	import { noticeArea, watchNoticePlace } from "$lib/stores/notice-place.svelte";
 	import { roomNames } from "$lib/stores.svelte";
+	import { authorLabel } from "$lib/types";
 	import type { MessageLink } from "$lib/urls";
 
 	// The notices of mentions in rooms and conversations that aren't on screen (lib/mention-notices.ts), at the top
@@ -39,7 +42,7 @@
 	class="pointer-events-none fixed inset-x-0 top-[62px] z-9990 mx-auto flex w-[min(420px,calc(100vw-32px))] flex-col gap-2"
 	style={place}
 	role="region"
-	aria-label="Notifications"
+	aria-label={t("chat_mention_notices_label")}
 	aria-live="polite"
 >
 	{#if showing}
@@ -59,12 +62,25 @@
 								onclick={() => open(notice)}
 							>
 								<span class="shrink-0">
-									<UserAvatar src={notice.authorAvatar} name={notice.authorName} size={36} />
+									<!-- The author and a group with no name are said as they draw, so a language switched
+									     while the notice shows reaches them. -->
+									<UserAvatar
+										src={notice.authorAvatar}
+										name={authorLabel({ author_name: notice.authorName })}
+										size={36}
+									/>
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="flex min-w-0 items-baseline gap-1 text-xs">
-										<span class="text-duvet-ink shrink-0 font-semibold">{notice.authorName}</span>
-										<span class="text-duvet-ink2 truncate">{notice.where}</span>
+										<Rich
+											key="chat_mention_notice_head"
+											values={{
+												author: authorLabel({ author_name: notice.authorName }),
+												place: notice.place,
+												name: notice.placeName || t("shell_chat_group_untitled"),
+											}}
+											tags={{ who, where }}
+										/>
 									</span>
 									{#if notice.text}
 										<span
@@ -78,7 +94,9 @@
 										>
 									{:else}
 										<!-- No text to show: only files, a sticker or components -->
-										<span class="text-duvet-ink2 text-[13.5px] leading-[1.35] italic">Click to see message</span>
+										<span class="text-duvet-ink2 text-[13.5px] leading-[1.35] italic"
+											>{t("chat_quote_without_text")}</span
+										>
 									{/if}
 								</span>
 							</button>
@@ -86,7 +104,7 @@
 							<button
 								type="button"
 								class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink m-2.5 grid size-6 shrink-0 place-items-center rounded-lg opacity-0 transition-opacity group-hover/notice:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-								aria-label="Dismiss"
+								aria-label={t("chat_mention_notice_dismiss")}
 								onclick={() => dismissMentionNotice(notice.id)}
 							>
 								<XIcon size={13} />
@@ -98,3 +116,7 @@
 		{/if}
 	{/if}
 </div>
+
+<!-- The notice's head, one sentence (chat_mention_notice_head): the author whole, the place cut short when it's long. -->
+{#snippet who(text: string)}<span class="text-duvet-ink shrink-0 font-semibold">{text}</span>{/snippet}
+{#snippet where(text: string)}<span class="text-duvet-ink2 truncate">{text}</span>{/snippet}

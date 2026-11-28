@@ -1,8 +1,10 @@
 import api, { markSessionRefreshed, requestLimits } from "$lib/api/api";
+import { getHostURL } from "$lib/common/common";
 import { route } from "$lib/common/common";
 import { accessToken } from "$lib/stores/auth";
 import { inAppWords } from "$lib/api/error-wording";
 import { forgetUser } from "$lib/e2e/client";
+import { t } from "$lib/i18n";
 
 /** Why the API refused, in the app's words (error-wording.ts), or the page's own message when it didn't say: the
  * sign-in pages show it as it comes. */
@@ -14,8 +16,6 @@ function reason(err: any, fallback: string): string {
 // The routes that send an email answer once it's sent, which the API gives 40 s at most (#217).
 const sendsEmail = { answerMs: requestLimits.slowAnswerMs };
 
-const SIGN_UP_FAILED = "Couldn't create your account";
-
 export async function signIn(options: { username: string; alias: string | null; password: string; email: string }) {
 	try {
 		await api.post("/api/auth/signin", options, sendsEmail);
@@ -23,7 +23,9 @@ export async function signIn(options: { username: string; alias: string | null; 
 		// The API's reason stands alone ("That username is taken"); without one, what was tried and what went wrong.
 		const said: unknown = err.response?.data?.error;
 		const why =
-			typeof said === "string" && said ? inAppWords(said, SIGN_UP_FAILED) : `${SIGN_UP_FAILED}: ${err.message}`;
+			typeof said === "string" && said
+				? inAppWords(said, t("error_sign_up_failed"))
+				: t("error_sign_up_failed_because", { reason: err.message });
 		throw new Error(why, { cause: err });
 	}
 }
@@ -32,7 +34,7 @@ export async function verifyEmail(token: string) {
 	try {
 		await api.post("/api/auth/verify", { token });
 	} catch (err: any) {
-		throw new Error(reason(err, "Verification failed"), { cause: err });
+		throw new Error(reason(err, t("error_email_verification_failed")), { cause: err });
 	}
 }
 
@@ -40,7 +42,7 @@ export async function sendVerificationEmail() {
 	try {
 		await api.post("/api/auth/verify/send", undefined, sendsEmail);
 	} catch (err: any) {
-		throw new Error(reason(err, "Failed to send verification email"), { cause: err });
+		throw new Error(reason(err, t("error_verification_email_not_sent")), { cause: err });
 	}
 }
 
@@ -49,7 +51,7 @@ export async function resetPassword(token: string, password: string, removeDevic
 	try {
 		await api.post("/api/auth/reset-password", { token, password, ...(removeDevices ? { remove_devices: true } : {}) });
 	} catch (err: any) {
-		throw new Error(reason(err, "Password reset failed"), { cause: err });
+		throw new Error(reason(err, t("error_password_reset_failed")), { cause: err });
 	}
 }
 
@@ -57,7 +59,7 @@ export async function forgotPassword(email: string) {
 	try {
 		await api.post("/api/auth/forgot-password", { email }, sendsEmail);
 	} catch (err: any) {
-		throw new Error(reason(err, "Failed to send reset email"), { cause: err });
+		throw new Error(reason(err, t("error_reset_email_not_sent")), { cause: err });
 	}
 }
 
@@ -65,7 +67,7 @@ export async function sendResetPasswordEmail() {
 	try {
 		await api.post("/api/auth/reset-password/send", undefined, sendsEmail);
 	} catch (err: any) {
-		throw new Error(reason(err, "Failed to send reset password email"), { cause: err });
+		throw new Error(reason(err, t("error_reset_password_email_not_sent")), { cause: err });
 	}
 }
 
@@ -73,7 +75,7 @@ export async function changeEmail(token: string, email: string) {
 	try {
 		await api.post("/api/auth/change-email", { token, email });
 	} catch (err: any) {
-		throw new Error(reason(err, "Email change failed"), { cause: err });
+		throw new Error(reason(err, t("error_email_change_failed")), { cause: err });
 	}
 }
 
@@ -81,7 +83,7 @@ export async function sendChangeEmail(email: string) {
 	try {
 		await api.post("/api/auth/change-email/send", { email }, sendsEmail);
 	} catch (err: any) {
-		throw new Error(reason(err, "Failed to send email change request"), { cause: err });
+		throw new Error(reason(err, t("error_email_change_not_sent")), { cause: err });
 	}
 }
 
@@ -117,28 +119,69 @@ export async function logout() {
 	}
 }
 
-export async function logIn(options: { password: string; email: string }) {
+/** The API's tokens for an email and password, without changing the session this page has. */
+async function logInRequest(options: { password: string; email: string }): Promise<any> {
 	try {
 		const res = await api.post("/api/auth/login", options);
-
-		if (res.data && res.data.token) {
-			const token = res.data.token;
-
-			accessToken.set(token);
-			localStorage.setItem("duvet_session_token", token);
-			if (res.data.session_token) {
-				localStorage.setItem("duvet_refresh_token", res.data.session_token);
-			}
-			markSessionRefreshed();
-			// Maybe another account's session: its first identify names none of the device of whoever was here before.
-			forgetUser();
-
-			return res.data;
-		} else {
-			throw new Error("Server did not return a valid token");
-		}
+		if (res.data && res.data.token) return res.data;
+		// For the log alone: the catch below shows the page's own message.
+		throw new Error("Server did not return a valid token");
 	} catch (err: any) {
 		console.log(err);
-		throw new Error(reason(err, "Couldn't sign you in. Try again."), { cause: err });
+		throw new Error(reason(err, t("error_sign_in_failed")), { cause: err });
+	}
+}
+
+export async function logIn(options: { password: string; email: string }) {
+	const data = await logInRequest(options);
+	const token = data.token;
+
+	accessToken.set(token);
+	localStorage.setItem("duvet_session_token", token);
+	if (data.session_token) {
+		localStorage.setItem("duvet_refresh_token", data.session_token);
+	}
+	markSessionRefreshed();
+	// Maybe another account's session: its first identify names none of the device of whoever was here before.
+	forgetUser();
+
+	return data;
+}
+
+/** Who an account is, from /users/@me: only what the account list shows. */
+export interface AccountProfile {
+	id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+}
+
+function profileOf(value: unknown): AccountProfile | null {
+	if (typeof value !== "object" || value === null) return null;
+	const fields: Record<string, unknown> = { ...value };
+	const { id, username, alias, avatar } = fields;
+	if (typeof id !== "string" || typeof username !== "string") return null;
+	if (!(alias === undefined || alias === null || typeof alias === "string")) return null;
+	if (!(avatar === undefined || avatar === null || typeof avatar === "string")) return null;
+	return { id, username, alias: alias ?? null, avatar: avatar ?? null };
+}
+
+/** An account's session for the multi-account list: its tokens and who they are, without replacing the one in use. */
+export async function logInForAccount(options: {
+	password: string;
+	email: string;
+}): Promise<{ token: string; sessionToken: string | null; user: AccountProfile }> {
+	const data = await logInRequest(options);
+	const token: string = data.token;
+	try {
+		const res = await fetch(`${getHostURL()}/api/users/@me`, {
+			headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+		});
+		if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+		const user = profileOf(await res.json());
+		if (!user) throw new Error("The API returned no user");
+		return { token, sessionToken: data.session_token ?? null, user };
+	} catch (err) {
+		throw new Error(reason(err, t("error_sign_in_failed")), { cause: err });
 	}
 }

@@ -1,3 +1,4 @@
+import { t } from "$lib/i18n";
 import type { VoiceVideoRefusedEvent } from "$lib/types";
 
 // What the camera sends. The gateway forwards a single encoding to everyone (no simulcast), so this is what
@@ -42,14 +43,14 @@ export function cameraErrorMessage(err: unknown): string {
 	switch (name) {
 		case "NotAllowedError":
 		case "SecurityError":
-			return "Duvet isn't allowed to use your camera. Allow it in your system's privacy settings.";
+			return t("call_camera_not_allowed");
 		case "NotReadableError":
-			return "Your camera is being used by another app";
+			return t("call_camera_in_use");
 		case "NotFoundError":
 		case "OverconstrainedError":
-			return "No camera found";
+			return t("call_camera_not_found");
 		default:
-			return "Couldn't turn on your camera";
+			return t("call_camera_failed");
 	}
 }
 
@@ -58,15 +59,15 @@ export function videoRefusedMessage(event: VoiceVideoRefusedEvent, place: "room"
 	switch (event.reason) {
 		case "limit":
 			// The gateway can be set to allow no cameras at all (VOICE_MAX_CAMERAS=0).
-			if (event.limit === 0) return `Cameras are turned off in this ${place}`;
+			if (event.limit === 0) return t("call_video_cameras_off", { place });
 			return event.limit === undefined
-				? `This ${place} already has as many cameras on as it can`
-				: `This ${place} already has ${event.limit} camera${event.limit === 1 ? "" : "s"} on`;
+				? t("call_video_camera_limit_reached", { place })
+				: t("call_video_camera_limit", { place, limit: event.limit });
 		case "permission":
-			return `You can't use video in this ${place}`;
+			return t("call_video_not_allowed", { place });
 		case "bitrate":
-			return `Your camera was turned off: it was sending more video than this ${place} allows`;
+			return t("call_video_bitrate", { place });
 		default:
-			return "Your camera was turned off";
+			return t("call_camera_turned_off");
 	}
 }

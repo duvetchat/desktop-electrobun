@@ -62,6 +62,9 @@
 	import { friendMember, friendUser } from "$lib/friends";
 	import { newConversation } from "$lib/groups";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
+	import Rich from "$lib/components/Rich.svelte";
+	import { t, type MessageKey } from "$lib/i18n";
+	import { formatDate, formatNumber } from "$lib/i18n/format";
 
 	let {
 		activeConversationId = $bindable<string | null>(null),
@@ -88,9 +91,9 @@
 	// are counted in the accent. The call history, a list here until the redesign (#357), opens from the sidebar's
 	// header.
 	const tabs = $derived<{ id: Tab; label: string; count: number; alert?: boolean }[]>([
-		{ id: "friends", label: "All", count: $friends.length },
-		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
-		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
+		{ id: "friends", label: t("people_friends_tab_all"), count: $friends.length },
+		{ id: "pending", label: t("people_friends_tab_pending"), count: $pendingFriendRequests.length, alert: true },
+		{ id: "sent", label: t("people_friends_tab_sent"), count: $sentFriendRequests.length },
 	]);
 	const focusRing = FOCUS_RING;
 
@@ -118,8 +121,12 @@
 				return { friend, member, activity: activity ? activityLine(activity) : null };
 			});
 		const groups = [
-			{ title: "Online", friends: rows.filter((r) => r.member.status !== "offline") },
-			{ title: "Offline", friends: rows.filter((r) => r.member.status === "offline") },
+			{ id: "online", title: t("people_presence_online"), friends: rows.filter((r) => r.member.status !== "offline") },
+			{
+				id: "offline",
+				title: t("people_presence_offline"),
+				friends: rows.filter((r) => r.member.status === "offline"),
+			},
 		];
 		return groups.some((g) => g.friends.length > 0) ? groups : [];
 	});
@@ -133,14 +140,18 @@
 	});
 
 	let addUserId = $state("");
+	// The API's error, or its fallback. The form's own notices are flags, drawn in the app's language of the moment.
 	let addError = $state("");
-	let addSuccess = $state("");
+	let addMissingId = $state(false);
+	let addSent = $state(false);
 	let loading = $state(false);
 
 	// Group creation state
 	let groupName = $state("");
 	let selectedFriendIds = $state(new Set<string>());
+	// The API's error, or the dialog's own refusal as a key, drawn in the app's language of the moment.
 	let groupError = $state("");
+	let groupRefusal = $state<MessageKey | null>(null);
 
 	function toggleFriend(uid: string) {
 		const next = new Set(selectedFriendIds);
@@ -148,6 +159,7 @@
 		else next.add(uid);
 		selectedFriendIds = next;
 		groupError = "";
+		groupRefusal = null;
 	}
 
 	function closeGroupModal() {
@@ -155,6 +167,7 @@
 		groupName = "";
 		selectedFriendIds = new Set();
 		groupError = "";
+		groupRefusal = null;
 	}
 
 	onMount(async () => {
@@ -187,20 +200,21 @@
 
 	async function handleSendRequest() {
 		addError = "";
-		addSuccess = "";
+		addMissingId = false;
+		addSent = false;
 		if (!addUserId.trim()) {
-			addError = "Enter a user ID";
+			addMissingId = true;
 			return;
 		}
 		loading = true;
 		try {
 			await sendFriendRequest(addUserId.trim());
-			addSuccess = "Friend request sent";
+			addSent = true;
 			addUserId = "";
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);
 		} catch (err) {
-			addError = getApiError(err, "Failed to send request");
+			addError = getApiError(err, t("people_friends_send_failed"));
 		} finally {
 			loading = false;
 		}
@@ -234,8 +248,11 @@
 	// Removing a friend can't be undone from here: it asks first.
 	function confirmUnfriend(friend: Friend) {
 		const other = friendUser(friend, get(currentUser)?.id);
-		void confirmAction(`Remove ${other.alias ?? other.username} from your friends?`, "Remove", () =>
-			handleUnfriend(friend),
+		void confirmAction(
+			t("people_friend_remove_confirm", { name: other.alias ?? other.username }),
+			t("people_remove_action"),
+			() => handleUnfriend(friend),
+			t("people_remove_busy"),
 		);
 	}
 
@@ -307,9 +324,10 @@
 
 	async function handleCreateGroup() {
 		groupError = "";
+		groupRefusal = null;
 		const plan = newConversation(selectedFriendIds, groupName);
 		if (plan.kind === "refused") {
-			groupError = plan.why;
+			groupRefusal = plan.why;
 			return;
 		}
 		try {
@@ -321,7 +339,7 @@
 			closeGroupModal();
 			openConversation(conv.id);
 		} catch (err) {
-			groupError = getApiError(err, plan.kind === "dm" ? "Couldn't open the chat" : "Failed to create group");
+			groupError = getApiError(err, plan.kind === "dm" ? t("people_new_chat_failed") : t("people_new_group_failed"));
 		}
 	}
 </script>
@@ -349,6 +367,8 @@
 	</div>
 {/snippet}
 
+{#snippet tabular(text: string)}<span class="tabular-nums">{text}</span>{/snippet}
+
 {#snippet person(id: string, avatar: string | null, name: string, username: string, status?: MemberOnSidebar["status"])}
 	<div class="relative shrink-0">
 		<UserAvatar src={getAvatarURL(id, avatar)} {name} size={40} />
@@ -373,7 +393,7 @@
 					}}
 				>
 					<ChevronLeft class="size-3.5" />
-					Friends
+					{t("people_friends_back")}
 				</button>
 			</div>
 			{#key activeConversationId}
@@ -403,16 +423,18 @@
 					<Users class="size-4" />
 				</span>
 				<div class="flex flex-col">
-					<h2 class="text-duvet-ink font-serif text-[16.5px] leading-[1.15] font-medium tracking-[-0.012em]">
-						Friends
+					<h2 class="text-duvet-ink text-[16.5px] leading-[1.15] font-semibold tracking-[-0.012em]">
+						{t("people_friends_title")}
 					</h2>
-					<span class="text-duvet-ink2 text-[11.5px] leading-[1.3]">{onlineFriends} online</span>
+					<span class="text-duvet-ink2 text-[11.5px] leading-[1.3]"
+						>{t("people_friends_online", { count: onlineFriends })}</span
+					>
 				</div>
 			</div>
 			<div
 				class="bg-duvet-seg-track rounded-control flex shrink-0 items-center p-[3px]"
 				role="tablist"
-				aria-label="Friends"
+				aria-label={t("people_friends_title")}
 			>
 				{#each tabs as tab (tab.id)}
 					{@const chosen = activeTab === tab.id}
@@ -430,7 +452,7 @@
 							<span
 								class="{countBadgeClass('sm', false)} {tab.alert
 									? 'bg-duvet-accent text-duvet-on-accent'
-									: 'bg-duvet-secondary-fill text-duvet-ink2'}">{tab.count}</span
+									: 'bg-duvet-secondary-fill text-duvet-ink2'}">{formatNumber(tab.count)}</span
 							>
 						{/if}
 					</button>
@@ -445,7 +467,7 @@
 				onclick={() => (activeTab = "add")}
 			>
 				<UserPlus class="size-4" />
-				Add friend
+				{t("people_friends_add")}
 			</button>
 		</div>
 
@@ -453,15 +475,10 @@
 			<div class="mx-auto w-full max-w-3xl px-4 py-4">
 				{#if activeTab === "friends"}
 					{#if $friends.length === 0}
-						{@render empty(
-							"awake",
-							"No friends yet",
-							"Add someone with their user ID, and they'll show here once they accept.",
-							{
-								label: "Add a friend",
-								run: () => (activeTab = "add"),
-							},
-						)}
+						{@render empty("awake", t("people_friends_empty_title"), t("people_friends_empty_line"), {
+							label: t("people_friends_empty_action"),
+							run: () => (activeTab = "add"),
+						})}
 					{:else}
 						<label
 							class="bg-duvet-sunk shadow-duvet-press text-duvet-ink2 focus-within:outline-duvet-accent mb-4 flex h-10 items-center gap-2.5 rounded-xl px-3 focus-within:outline-2"
@@ -470,15 +487,19 @@
 							<input
 								type="text"
 								class="focus-override text-duvet-ink placeholder:text-duvet-ink2 min-w-0 flex-1 bg-transparent text-sm outline-none"
-								placeholder="Search your friends"
-								aria-label="Search your friends"
+								placeholder={t("people_friends_search")}
+								aria-label={t("people_friends_search")}
 								bind:value={query}
 							/>
 						</label>
-						{#each friendGroups as group (group.title)}
+						{#each friendGroups as group (group.id)}
 							{#if group.friends.length > 0}
 								<h3 class="text-duvet-ink2 mx-2 mt-2 mb-1 text-[13px] font-bold">
-									{group.title} <span class="tabular-nums">{group.friends.length}</span>
+									<Rich
+										key="people_friends_group_heading"
+										values={{ group: group.title, count: group.friends.length }}
+										tags={{ num: tabular }}
+									/>
 								</h3>
 								<ul class="mb-3 flex flex-col gap-px">
 									{#each group.friends as { friend, member, activity } (friend.id)}
@@ -528,8 +549,8 @@
 											<button
 												type="button"
 												class={cardIconButtonClass()}
-												aria-label="Message {member.username}"
-												title="Message"
+												aria-label={t("people_friends_message_label", { name: member.username })}
+												title={t("people_friends_message")}
 												onclick={() => handleOpenDM(friend)}
 											>
 												<MessageSquare class="size-4" />
@@ -537,8 +558,8 @@
 											<button
 												type="button"
 												class={cardIconButtonClass(true)}
-												aria-label="Remove {member.username} from your friends"
-												title="Remove friend"
+												aria-label={t("people_friends_remove_label", { name: member.username })}
+												title={t("people_friends_remove")}
 												onclick={() => confirmUnfriend(friend)}
 											>
 												<UserX class="size-4" />
@@ -548,12 +569,12 @@
 								</ul>
 							{/if}
 						{:else}
-							<p class="text-duvet-ink2 px-2 py-8 text-center text-sm">No friend matches “{query}”.</p>
+							<p class="text-duvet-ink2 px-2 py-8 text-center text-sm">{t("people_friends_no_match", { query })}</p>
 						{/each}
 					{/if}
 				{:else if activeTab === "pending"}
 					{#if $pendingFriendRequests.length === 0}
-						{@render empty("shy", "No requests waiting", "When someone asks to be your friend, it shows here.")}
+						{@render empty("shy", t("people_requests_empty_title"), t("people_requests_empty_line"))}
 					{:else}
 						<ul class="flex flex-col gap-2">
 							{#each $pendingFriendRequests as req (req.id)}
@@ -577,9 +598,7 @@
 										{/snippet}
 									</MemberProfilePopover>
 									{#if !Number.isNaN(Date.parse(req.created_at))}
-										<span class="text-duvet-ink2 hidden text-xs sm:block"
-											>{new Date(req.created_at).toLocaleDateString()}</span
-										>
+										<span class="text-duvet-ink2 hidden text-xs sm:block">{formatDate(new Date(req.created_at))}</span>
 									{/if}
 									<button
 										type="button"
@@ -587,13 +606,13 @@
 										onclick={() => handleAccept(req)}
 									>
 										<UserCheck class="size-4" />
-										Accept
+										{t("people_requests_accept")}
 									</button>
 									<button
 										type="button"
 										class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-danger flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
-										aria-label="Decline {other.alias ?? other.username}'s request"
-										title="Decline"
+										aria-label={t("people_requests_decline_label", { name: other.alias ?? other.username })}
+										title={t("people_requests_decline")}
 										onclick={() => handleReject(req)}
 									>
 										<XIcon class="size-4" />
@@ -604,8 +623,8 @@
 					{/if}
 				{:else if activeTab === "sent"}
 					{#if $sentFriendRequests.length === 0}
-						{@render empty("peek", "Nothing sent", "The requests you send wait here until they're answered.", {
-							label: "Add a friend",
+						{@render empty("peek", t("people_sent_empty_title"), t("people_sent_empty_line"), {
+							label: t("people_friends_empty_action"),
 							run: () => (activeTab = "add"),
 						})}
 					{:else}
@@ -615,14 +634,14 @@
 								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
 									{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}
 									<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs"
-										><Clock class="size-3.5" />Waiting</span
+										><Clock class="size-3.5" />{t("people_sent_waiting")}</span
 									>
 									<button
 										type="button"
 										class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-danger flex h-9 items-center rounded-xl px-3 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing}"
 										onclick={() => handleCancelSent(req)}
 									>
-										Cancel
+										{t("dialog_cancel")}
 									</button>
 								</li>
 							{/each}
@@ -635,8 +654,8 @@
 							mood={addUserId ? "awake" : "peek"}
 							look={0}
 						/>
-						<h3 class="text-center text-lg font-bold">Add a friend</h3>
-						<p class="text-duvet-ink2 mt-1 text-center text-sm">Send a request with their user ID.</p>
+						<h3 class="text-center text-lg font-bold">{t("people_friends_add_title")}</h3>
+						<p class="text-duvet-ink2 mt-1 text-center text-sm">{t("people_friends_add_line")}</p>
 						<form
 							class="mt-5 flex gap-2"
 							onsubmit={(e) => {
@@ -647,8 +666,8 @@
 							<input
 								class="{fieldClass()} min-w-0 flex-1"
 								type="text"
-								placeholder="User ID"
-								aria-label="User ID"
+								placeholder={t("people_friends_user_id")}
+								aria-label={t("people_friends_user_id")}
 								bind:value={addUserId}
 							/>
 							<button
@@ -657,18 +676,22 @@
 								disabled={loading}
 							>
 								{#if loading}
-									Sending…
+									{t("people_friends_sending")}
 								{:else}
 									<Send class="size-4" />
-									Send request
+									{t("people_friends_send_request")}
 								{/if}
 							</button>
 						</form>
-						{#if addError}
-							<p class="text-duvet-danger mt-3 text-sm" role="alert">{addError}</p>
+						{#if addMissingId || addError}
+							<p class="text-duvet-danger mt-3 text-sm" role="alert">
+								{addMissingId ? t("people_friends_enter_id") : addError}
+							</p>
 						{/if}
-						{#if addSuccess}
-							<p class="text-duvet-alive-text mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
+						{#if addSent}
+							<p class="text-duvet-alive-text mt-3 text-sm font-semibold" role="status">
+								{t("people_friend_request_sent")}
+							</p>
 						{/if}
 					</div>
 				{/if}
@@ -686,19 +709,20 @@
 			if (!v) closeGroupModal();
 		}
 	}
-	title={selectedFriendIds.size === 1 ? "New chat" : "Create a group"}
+	title={selectedFriendIds.size === 1 ? t("people_new_chat_title") : t("people_new_group_title")}
 	class="max-w-[420px]"
 >
 	<div class="flex min-h-0 flex-col gap-1.5">
 		<p class={FIELD_LABEL}>
-			Friends
+			{t("people_new_chat_friends")}
 			{#if selectedFriendIds.size > 0}
-				<span class="text-duvet-accent-text ml-1">{selectedFriendIds.size} chosen</span>
+				<span class="text-duvet-accent-text ml-1">{t("people_new_chat_chosen", { count: selectedFriendIds.size })}</span
+				>
 			{/if}
 		</p>
 		<div class="bg-duvet-card shadow-duvet-well max-h-60 overflow-y-auto rounded-[11px] p-1">
 			{#if $friends.length === 0}
-				<p class="text-duvet-ink2 p-4 text-center text-[13px]">No friends to add yet</p>
+				<p class="text-duvet-ink2 p-4 text-center text-[13px]">{t("people_new_chat_no_friends")}</p>
 			{:else}
 				{#each $friends as f (f.id)}
 					{@const uid = getFriendUserId(f)}
@@ -725,24 +749,24 @@
 	<!-- A name only for a group: one friend picked opens the DM with them. Its place is kept while it's hidden, so that
 	     it showing doesn't move the row the pointer is about to click. -->
 	<div class="flex flex-col gap-1.5 {selectedFriendIds.size > 1 ? '' : 'invisible'}">
-		<label for="group-name" class={FIELD_LABEL}>Name</label>
+		<label for="group-name" class={FIELD_LABEL}>{t("people_new_group_name")}</label>
 		<input
 			id="group-name"
 			class={fieldClass()}
 			type="text"
-			placeholder="Best friends"
+			placeholder={t("people_new_group_name_placeholder")}
 			disabled={selectedFriendIds.size <= 1}
 			bind:value={groupName}
 		/>
 	</div>
-	{#if groupError}
-		<p class={ERROR_NOTE} role="alert">{groupError}</p>
+	{#if groupRefusal || groupError}
+		<p class={ERROR_NOTE} role="alert">{groupRefusal ? t(groupRefusal) : groupError}</p>
 	{/if}
 	{#snippet foot()}
 		<span></span>
-		<button type="button" class={buttonClass("quiet")} onclick={closeGroupModal}>Cancel</button>
+		<button type="button" class={buttonClass("quiet")} onclick={closeGroupModal}>{t("dialog_cancel")}</button>
 		<button type="button" class={buttonClass("primary")} onclick={handleCreateGroup}>
-			{selectedFriendIds.size === 1 ? "Start chat" : "Create group"}
+			{selectedFriendIds.size === 1 ? t("people_new_chat_start") : t("people_new_group_create")}
 		</button>
 	{/snippet}
 </Sheet>

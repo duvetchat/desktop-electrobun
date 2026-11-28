@@ -117,7 +117,7 @@ export function messageTooLarge(
 ): string | null {
 	if (files.length === 0) return null;
 	const over = sealed && fileLimit !== null ? files.find((f) => sealedSize(f.size) > fileLimit) : undefined;
-	if (over && fileLimit !== null) return new TooLargeError(sealedSize(over.size), "File", fileLimit).message;
+	if (over && fileLimit !== null) return new TooLargeError(sealedSize(over.size), "file", fileLimit).message;
 	const form = new FormData();
 	if (!sealed) form.append("content", content);
 	for (const f of files) form.append("files", f);
@@ -126,7 +126,7 @@ export function messageTooLarge(
 		bytes += CIPHERTEXT_BYTES;
 		for (const f of files) bytes += sealedSize(f.size) - f.size + FILE_ID_BYTES;
 	}
-	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "Message").message : null;
+	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "message").message : null;
 }
 
 /** Sends a message to a room: with files, as a form, its text and files together, which upload follows. */

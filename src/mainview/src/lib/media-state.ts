@@ -2,6 +2,12 @@
 // (MediaControls.svelte, from the stores) and for the pop-out window (routes/voice-controls, mirrored from the main
 // window through lib/window-link.ts). Nothing here reads a store or the gateway: the pop-out's page imports it, and
 // that page must never reach lib/api/ws/connection.ts (module-graph.test.ts).
+//
+// The words are the app's language's (#464), asked for when they're drawn: the state carries what they say (who
+// speaks, not "Ana speaking"), so a language change redraws them in both windows. place.where crosses as it is: a
+// room's and its Space's names, or a chat's.
+import { t } from "$lib/i18n";
+import { formatList } from "$lib/i18n/format";
 
 /** Someone in the voice the user is in, as the call panel's faces show them. */
 export interface MediaFace {
@@ -45,8 +51,8 @@ export interface MediaState {
 	faces: MediaFace[];
 	/** How many more people are there than the faces show. */
 	more: number;
-	/** The faces, for a screen reader: "3 people in voice, Ana speaking". */
-	facesLabel: string;
+	/** The names of whoever speaks now, unmuted, for a screen reader (facesLabel). */
+	speakers: string[];
 	/** What the voice shows live: someone's screen, else someone's camera (the user's own count). */
 	live: MediaLive;
 }
@@ -69,7 +75,7 @@ export const IDLE_MEDIA: MediaState = {
 	micId: "",
 	faces: [],
 	more: 0,
-	facesLabel: "",
+	speakers: [],
 	live: null,
 };
 
@@ -124,17 +130,17 @@ export function phaseOf(connection: RTCPeerConnectionState): MediaPhase {
 export function mediaTitle(state: Pick<MediaState, "place" | "phase">): string {
 	switch (state.phase) {
 		case "calling":
-			return "Calling…";
+			return t("call_calling");
 		case "connected":
-			return state.place?.kind === "call" ? "In a call" : "Voice connected";
+			return state.place?.kind === "call" ? t("call_status_in_call") : t("call_status_voice_connected");
 		case "reconnecting":
-			return "Reconnecting…";
+			return t("call_status_reconnecting");
 		case "failed":
-			return "Couldn't connect";
+			return t("call_status_failed");
 		case "closed":
-			return "Disconnected";
+			return t("call_status_disconnected");
 		default:
-			return "Connecting…";
+			return t("call_status_connecting");
 	}
 }
 
@@ -154,20 +160,36 @@ export function pingLevel(ms: number | null): PingLevel {
 
 /** The signal tile's tooltip: the ping in words, or that the user is in a call. */
 export function pingLabel(state: Pick<MediaState, "place" | "phase" | "ping">): string {
-	if (state.phase === "calling") return "Calling…";
-	if (state.place?.kind === "call") return "In a call";
-	return state.ping === null ? "Measuring the ping…" : `Ping: ${state.ping} ms`;
+	if (state.phase === "calling") return t("call_calling");
+	if (state.place?.kind === "call") return t("call_status_in_call");
+	return state.ping === null ? t("call_ping_measuring") : t("call_ping", { ping: state.ping });
 }
 
 /** What Disconnect is called where the user is: a call is left, a voice room disconnected from. */
 export function leaveLabel(state: Pick<MediaState, "place" | "phase">): string {
-	if (state.phase === "calling") return "Cancel call";
-	return state.place?.kind === "call" ? "Leave call" : "Disconnect";
+	if (state.phase === "calling") return t("call_cancel_call");
+	return state.place?.kind === "call" ? t("call_leave_call") : t("call_disconnect");
+}
+
+/** The faces, for a screen reader: "3 people in voice, Ana speaking"; nothing when nobody is there (a call being
+ * placed, or out of voice). */
+export function facesLabel(state: Pick<MediaState, "faces" | "more" | "speakers">): string {
+	const count = state.faces.length + state.more;
+	if (count === 0) return "";
+	if (state.speakers.length === 0) return t("call_people_in_voice", { count });
+	return t("call_people_in_voice_speaking", {
+		count,
+		speakerCount: state.speakers.length,
+		// Commas alone, as the label already has its own: "3 people in voice, Ana, Ben speaking".
+		speakers: formatList(state.speakers, { type: "unit", style: "short" }),
+	});
 }
 
 /** What the control that opens the voice the user is in is called: where it goes, and who is there. */
-export function openPlaceLabel(state: Pick<MediaState, "place" | "facesLabel">): string {
-	return `Open ${state.place?.where ?? ""}${state.facesLabel ? `, ${state.facesLabel}` : ""}`;
+export function openPlaceLabel(state: Pick<MediaState, "place" | "faces" | "more" | "speakers">): string {
+	const place = state.place?.where ?? "";
+	const people = facesLabel(state);
+	return people ? t("call_open_place_with_people", { place, people }) : t("call_open_place", { place });
 }
 
 /** The folded edge's one line for the voice the user is in, as a tooltip: how the connection is, where, and what is
@@ -180,24 +202,24 @@ export function placeTip(state: Pick<MediaState, "place" | "phase" | "live">): s
 
 /** The live mark's words, its tooltip and what a screen reader hears. */
 export function liveLabel(live: "screen" | "camera"): string {
-	return live === "screen" ? "Sharing their screen" : "Camera on";
+	return live === "screen" ? t("call_live_screen") : t("call_live_camera");
 }
 
 /** The camera's and the screen share's tooltip when they can't be used. */
 export function videoBlockLabel(block: VideoBlock, kind: "room" | "call" | undefined): string | null {
-	if (block === "not-connected") return "You're not connected to voice";
-	if (block === "no-permission") return `You can't use video in this ${kind === "call" ? "call" : "room"}`;
+	if (block === "not-connected") return t("call_video_not_connected");
+	if (block === "no-permission") return t("call_video_not_allowed", { place: kind === "call" ? "call" : "room" });
 	return null;
 }
 
 /** The picker's name for a microphone: its own, or its place in the list. */
 export function micName(mic: MicChoice, index: number): string {
-	return mic.label || `Microphone ${index + 1}`;
+	return mic.label || t("call_microphone_numbered", { number: index + 1 });
 }
 
 /** The picker's name for a camera: its own, or its place in the list. */
 export function cameraName(camera: CameraChoice, index: number): string {
-	return camera.label || `Camera ${index + 1}`;
+	return camera.label || t("call_camera_numbered", { number: index + 1 });
 }
 
 /** Whether a microphone is the one in use: the one picked, or the system's default when none was. */
@@ -268,7 +290,7 @@ export function mediaStateOf(inputs: MediaInputs): MediaState {
 			video: "not-connected",
 			faces: [],
 			more: 0,
-			facesLabel: "",
+			speakers: [],
 			live: null,
 		};
 	}
@@ -277,8 +299,6 @@ export function mediaStateOf(inputs: MediaInputs): MediaState {
 	const people = me && !listed.some((person) => person.id === me.id) ? [...listed, me] : listed;
 	const speaks = (person: MediaPerson) => inputs.speaking.has(person.id) && !person.muted;
 	const shown = people.slice(0, MEDIA_FACES);
-	const speakers = people.filter(speaks).map((person) => person.name);
-	const count = `${people.length === 1 ? "1 person" : `${people.length} people`} in voice`;
 	return {
 		...flags,
 		place: {
@@ -290,7 +310,7 @@ export function mediaStateOf(inputs: MediaInputs): MediaState {
 		video: inputs.canVideo ? null : "no-permission",
 		faces: shown.map((person) => ({ id: person.id, name: person.name, src: person.src, speaking: speaks(person) })),
 		more: people.length - shown.length,
-		facesLabel: speakers.length ? `${count}, ${speakers.join(", ")} speaking` : count,
+		speakers: people.filter(speaks).map((person) => person.name),
 		live: place.live,
 	};
 }
@@ -390,7 +410,7 @@ export function parseMediaState(value: unknown): MediaState | null {
 	if (!phase) return null;
 	if (v.ping !== null && typeof v.ping !== "number") return null;
 	if (v.video !== null && v.video !== "not-connected" && v.video !== "no-permission") return null;
-	if (typeof v.micId !== "string" || typeof v.more !== "number" || typeof v.facesLabel !== "string") return null;
+	if (typeof v.micId !== "string" || typeof v.more !== "number" || !Array.isArray(v.speakers)) return null;
 	if (v.live !== null && v.live !== "screen" && v.live !== "camera") return null;
 	const place = parsePlace(v.place);
 	if (place === undefined || !Array.isArray(v.faces)) return null;
@@ -414,7 +434,7 @@ export function parseMediaState(value: unknown): MediaState | null {
 		micId: v.micId,
 		faces,
 		more: v.more,
-		facesLabel: v.facesLabel,
+		speakers: v.speakers.filter((name: unknown): name is string => typeof name === "string"),
 		live: v.live,
 	};
 }

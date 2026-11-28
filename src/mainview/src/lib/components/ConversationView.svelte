@@ -94,9 +94,10 @@
 	import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 	import { voiceNoteFacts } from "$lib/audio/waveform";
 	import { putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
-	import { CANCELLED, SENT_BEFORE_CANCEL, sendFollowed, withoutSending } from "$lib/uploads";
+	import { CANCELLED, sendFollowed, sentBeforeCancel, withoutSending } from "$lib/uploads";
 	import { contentOf, dropTyped, keepTyped, letGo, moveTyped, want } from "$lib/e2e/conversation-content.svelte";
 	import { t } from "$lib/i18n";
+	import { formatList, formatNumber } from "$lib/i18n/format";
 	import { groupActions } from "$lib/groups";
 	import { withSentMessage } from "$lib/arrivals";
 	import {
@@ -136,7 +137,6 @@
 	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
 	import { safetyNumberRequest } from "$lib/e2e/encryption.svelte";
 	import { changedIn, waitingForYes, type KeyChange } from "$lib/e2e/engine/contacts";
-	import { formatList } from "$lib/i18n/format";
 	import {
 		acceptMembers,
 		addMember,
@@ -357,7 +357,7 @@
 			onMemberAdded?.(newMember);
 			showAddMemberModal = false;
 		} catch (err) {
-			addMemberError = refusalWords(err, "Failed to add member");
+			addMemberError = refusalWords(err, t("people_group_add_member_failed"));
 		} finally {
 			addMemberLoading = false;
 		}
@@ -386,7 +386,11 @@
 	async function renameGroup() {
 		const convId = conversation.id;
 		const current = conversation.name ?? "";
-		const name = await promptDialog("Rename group", "Group name", current);
+		const name = await promptDialog(
+			() => t("people_group_rename_prompt"),
+			() => t("people_group_name_placeholder"),
+			current,
+		);
 		if (!name || name === current) return;
 		try {
 			const updated = await updateConversation(convId, name);
@@ -395,7 +399,7 @@
 				list.map((c) => (c.id === convId ? { ...c, name: updated.name, owner_id: updated.owner_id } : c)),
 			);
 		} catch (err) {
-			toast(getApiError(err, "Couldn't rename the group"), "error");
+			toast(getApiError(err, t("people_group_rename_failed")), "error");
 		}
 	}
 
@@ -403,12 +407,17 @@
 	// the gateway has said.
 	function leaveGroup() {
 		const convId = conversation.id;
-		void confirmAction("Leave the group?", "Leave group", async () => {
-			await leaveConversation(convId).catch((err: unknown) => {
-				throw new Error(refusalWords(err, t("e2e_leave_failed")), { cause: err });
-			});
-			conversationLeft(convId);
-		});
+		void confirmAction(
+			t("people_group_leave_confirm"),
+			t("people_group_leave_action"),
+			async () => {
+				await leaveConversation(convId).catch((err: unknown) => {
+					throw new Error(refusalWords(err, t("e2e_leave_failed")), { cause: err });
+				});
+				conversationLeft(convId);
+			},
+			t("people_group_leave_busy"),
+		);
 	}
 
 	// What this device holds of the conversation's messages, the person's typed text of their own, and how far its queue
@@ -512,9 +521,9 @@
 	});
 
 	function conversationTitle(): string {
-		if (conversation.type === 2) return conversation.name ?? "Group";
+		if (conversation.type === 2) return conversation.name ?? t("people_conversation_group_fallback");
 		const other = conversation.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
+		return other?.user?.alias ?? other?.user?.username ?? t("people_conversation_dm_fallback");
 	}
 
 	// What comes after an await is read with the conversation's ID taken before it: once the view is gone (another tab
@@ -807,7 +816,7 @@
 		if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);
 		if (err instanceof CoreError && err.code === "other_members") return t("e2e_members_changed");
 		if (err instanceof CoreError && err.code === "other_tab") return t("e2e_other_tab");
-		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
+		return err instanceof FetchError ? getApiError(err, t("people_dm_send_failed")) : t("people_dm_send_failed");
 	}
 
 	// A message of the person's, through the encryption engine (PLAN-E2E-CLIENTES.md, «Enviar»): encrypted, sent after
@@ -853,7 +862,7 @@
 			return null;
 		});
 		if (went) {
-			toast(SENT_BEFORE_CANCEL, "info");
+			toast(sentBeforeCancel(), "info");
 			const real = await getDirectMessageById(convId, went).catch(() => null);
 			if (real) showSent(convId, nonce, real);
 			return;
@@ -976,7 +985,7 @@
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
 		sendHere(convId, nonce, message.content ?? "", fromDraft).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send message"), "error");
+			toast(getApiError(err, t("people_dm_send_failed")), "error");
 		});
 	}
 
@@ -1025,7 +1034,7 @@
 		}
 		sendHere(convId, nonce, "").catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send voice note"), "error");
+			toast(getApiError(err, t("people_dm_voice_note_failed")), "error");
 		});
 	}
 
@@ -1336,28 +1345,20 @@
 					<span class="flex items-center gap-1.5">
 						<!-- Online's dot, or the phone for someone only on mobile: no ring, its screen the pane's colour -->
 						{#if status === "online"}<StatusDot {status} {mobileOnly} class="text-duvet-bg w-2" />{/if}
-						{status === "online"
-							? "Online"
-							: status === "dnd"
-								? "Do not disturb"
-								: status === "idle"
-									? "Away"
-									: "Offline"}
+						{t("people_conversation_status", { status })}
 					</span>
 				{/if}
 				{#if activity}
 					{@const line = activityLine(activity)}
-					<span>{line.kind === "listening" ? "Listening to" : "Playing"} {line.text}</span>
+					<span>{t("people_conversation_activity", { kind: line.kind, text: line.text })}</span>
 				{/if}
 			</p>
-			<p>This is the start of your conversation with {conversationTitle()}.</p>
+			<p>{t("people_conversation_start_dm", { name: conversationTitle() })}</p>
 		{:else}
 			<p>
-				{new Intl.ListFormat("en", { type: "conjunction" }).format(
-					convMembers.filter((m) => m.id !== me?.id).map((m) => m.username),
-				)}
+				{formatList(convMembers.filter((m) => m.id !== me?.id).map((m) => m.username))}
 			</p>
-			<p>This is the start of the group.</p>
+			<p>{t("people_conversation_start_group")}</p>
 		{/if}
 		<div class="mt-2 flex flex-wrap items-center justify-center gap-2">
 			{#each shared as space (space.id)}
@@ -1369,14 +1370,14 @@
 			{#if conversation.type === 2 && isOwner}
 				<button type="button" class={buttonClass("secondary")} onclick={openAddMemberModal}>
 					<UserPlus class="size-4" />
-					Add people
+					{t("people_group_add_people")}
 				</button>
 			{/if}
 			<!-- A call going on has Join in its banner -->
 			{#if !hasOngoingCall}
 				<button type="button" class={buttonClass("primary")} onclick={startCall} disabled={!!$activeCall || joinWaits}>
 					<Phone class="size-4" />
-					Call
+					{t("people_conversation_call")}
 				</button>
 			{/if}
 		</div>
@@ -1386,9 +1387,9 @@
 <!-- What the user can do to a group: in the pane's own More, after the pane's splits, or else in a menu of its own -->
 {#snippet groupMenu()}
 	{#if actionsOnGroup.rename}
-		<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
+		<MenuItem icon={Pencil} onSelect={renameGroup}>{t("people_group_rename_menu")}</MenuItem>
 	{/if}
-	<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+	<MenuItem icon={LogOut} danger onSelect={leaveGroup}>{t("people_group_leave_menu")}</MenuItem>
 {/snippet}
 
 <!-- The call, the group's members and its pins and search: in the pane's bar, or else in a header of its own -->
@@ -1407,32 +1408,38 @@
 			class="{buttonClass} rounded-r-[3px]"
 			onclick={startCall}
 			disabled={!!$activeCall || joinWaits}
-			title="Start call"
-			aria-label="Start call"
+			title={t("people_conversation_start_call")}
+			aria-label={t("people_conversation_start_call")}
 		>
 			<Phone class="size-4" />
 		</button>
-		<Menu align="end" label="Start a call">
+		<Menu align="end" label={t("people_conversation_call_menu")}>
 			{#snippet trigger(props)}
 				<button
 					{...props}
 					type="button"
 					class="{buttonClass} w-[18px] justify-center rounded-l-[3px] px-0"
 					disabled={!!$activeCall || joinWaits}
-					title="Voice or video call"
-					aria-label="Voice or video call"
+					title={t("people_conversation_call_options")}
+					aria-label={t("people_conversation_call_options")}
 				>
 					<ChevronDown size={12} strokeWidth={2.5} />
 				</button>
 			{/snippet}
-			<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>
-			<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>
+			<MenuItem icon={Phone} onSelect={startCall}>{t("people_conversation_voice_call")}</MenuItem>
+			<MenuItem icon={Video} onSelect={startVideoCall}>{t("people_conversation_video_call")}</MenuItem>
 		</Menu>
 	</div>
 	{#if conversation.type === 2 && isOwner}
-		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add people" aria-label="Add people">
+		<button
+			type="button"
+			class={buttonClass}
+			onclick={openAddMemberModal}
+			title={t("people_group_add_people")}
+			aria-label={t("people_group_add_people")}
+		>
 			<UserPlus class="size-4" />
-			Add
+			{t("people_group_bar_add")}
 		</button>
 	{/if}
 	<!-- The chat's members, from their faces, as a room's: a group's open and close its column beside the chat (#409), in
@@ -1451,14 +1458,14 @@
 	<!-- The group's own menu, only in the view's own header: a pane's bar has one More, the pane's, which holds these
 	     too (#368). -->
 	{#if actionsOnGroup.leave && !onBarActions}
-		<Menu align="end" label="More for this group">
+		<Menu align="end" label={t("people_group_more")}>
 			{#snippet trigger(props)}
 				<button
 					{...props}
 					type="button"
 					class={buttonClass}
-					title="More for this group"
-					aria-label="More for this group"
+					title={t("people_group_more")}
+					aria-label={t("people_group_more")}
 				>
 					<Ellipsis class="size-4" />
 				</button>
@@ -1482,13 +1489,19 @@
 	<!-- Call in progress banner (visible when not in the call), with who is in it -->
 	{#snippet inCallAvatars()}
 		{#if inCallNow.length > 0}
-			<span class="flex items-center -space-x-1.5" title={inCallNow.map((m) => m.username).join(", ")}>
+			<span
+				class="flex items-center -space-x-1.5"
+				title={formatList(
+					inCallNow.map((m) => m.username),
+					{ type: "unit" },
+				)}
+			>
 				{#each inCallNow.slice(0, 4) as member (member.id)}
 					<UserAvatar src={member.avatar_url} name={member.username} size={20} class="ring-duvet-line ring-2" />
 				{/each}
 			</span>
 			{#if inCallNow.length > 4}
-				<span class="text-duvet-alive-text text-xs">+{inCallNow.length - 4}</span>
+				<span class="text-duvet-alive-text text-xs">+{formatNumber(inCallNow.length - 4)}</span>
 			{/if}
 		{/if}
 	{/snippet}
@@ -1497,7 +1510,7 @@
 			class="bg-duvet-sunk text-duvet-alive-text mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px]"
 		>
 			<Phone class="size-4" />
-			<span class="font-medium">Calling from another device</span>
+			<span class="font-medium">{t("people_conversation_calling_elsewhere")}</span>
 			{@render inCallAvatars()}
 		</div>
 	{:else if canJoinCall}
@@ -1506,7 +1519,7 @@
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />
-			<span class="font-medium">Call in progress — Join</span>
+			<span class="font-medium">{t("people_conversation_join_call")}</span>
 			{@render inCallAvatars()}
 		</button>
 	{/if}
@@ -1538,7 +1551,7 @@
 				{messages}
 				channelId={conversation.id}
 				channelName={conversationTitle()}
-				placeholder={`Message ${conversationTitle()}`}
+				placeholder={t("people_conversation_placeholder", { name: conversationTitle() })}
 				isInitialLoading={isLoading}
 				retryFirstPage={loadFailed ? loadFirstPage : null}
 				{isLoadingMore}
@@ -1583,9 +1596,9 @@
 </div>
 
 <!-- Add people to the group: the friends who aren't in it yet, each a button that adds them. -->
-<Sheet bind:open={showAddMemberModal} title="Add people" class="max-w-[400px]">
+<Sheet bind:open={showAddMemberModal} title={t("people_group_add_people_title")} class="max-w-[400px]">
 	{#if eligibleFriends.length === 0}
-		<p class="text-duvet-ink2 py-4 text-center text-[13px]">No friends left to add</p>
+		<p class="text-duvet-ink2 py-4 text-center text-[13px]">{t("people_group_no_friends_left")}</p>
 	{:else}
 		<div class="-mx-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto px-1 py-1">
 			{#each eligibleFriends as friend (friend.id)}
@@ -1611,6 +1624,8 @@
 	{/if}
 	{#snippet foot()}
 		<span></span>
-		<button type="button" class={buttonClass("quiet")} onclick={() => (showAddMemberModal = false)}>Cancel</button>
+		<button type="button" class={buttonClass("quiet")} onclick={() => (showAddMemberModal = false)}
+			>{t("dialog_cancel")}</button
+		>
 	{/snippet}
 </Sheet>

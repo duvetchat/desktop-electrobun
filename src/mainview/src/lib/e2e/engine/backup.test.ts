@@ -651,9 +651,7 @@ describe.skipIf(!coreLibrary)("the encrypted backup", () => {
 			// aside, and nothing is confirmed.
 			await sent(fake, a, conversation, "more for the older day", 2 * DAY, [a, b]);
 			await sent(fake, a, conversation, "more for the newer day", DAY, [a, b]);
-			const put = spyOn(a.api, "putSegment").mockImplementationOnce(() =>
-				Promise.reject(new TooLargeError(33 << 20, "A day")),
-			);
+			const put = spyOn(a.api, "putSegment").mockImplementationOnce(() => Promise.reject(new TooLargeError(33 << 20)));
 			fake.refuse(SEGMENT_PUT, 413, { error: "the request body is over 32 MiB" });
 			timeline.length = 0;
 			a.clock.advance(MINUTE);

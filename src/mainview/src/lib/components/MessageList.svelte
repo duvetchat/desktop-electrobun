@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
@@ -51,14 +51,15 @@
 	} from "$lib/stores.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
-	import { callNoticeLine } from "$lib/call-notices";
+	import { callNotice } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
+	import { t } from "$lib/i18n";
+	import { formatNumber, formatRelativeTime } from "$lib/i18n/format";
 	import { belowIndicator } from "$lib/jumps";
 	import { threadNow, withHeld } from "$lib/threads";
 	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
 	import { sharedLine } from "$lib/e2e/sharing";
 	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
-	import { t } from "$lib/i18n";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis, renderEmoji } from "$lib/emoji";
 	import { mentionMapOf, sameNames } from "$lib/markdown";
@@ -67,7 +68,15 @@
 	import { nameColors } from "$lib/name-colors";
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
-	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
+	import {
+		PRISM_BUBBLE,
+		PRISM_LIGHT,
+		PRISM_RIM,
+		PRISM_WASH,
+		PRISM_WASH_RUN,
+		placePrismsIn,
+		slidePrismsIn,
+	} from "$lib/prism";
 	import {
 		MESSAGE_BODY,
 		MESSAGE_CARD,
@@ -90,7 +99,14 @@
 		messageText,
 		previewReplacesText,
 	} from "$lib/types";
-	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
+	import {
+		authorLabel,
+		MessageType,
+		type MemberOnSidebar,
+		type GatewaySpace,
+		type Message,
+		type SpaceEmoji,
+	} from "$lib/types";
 	import type { PickerGroup } from "$lib/space-emojis";
 	import { DUVET_DOMAIN } from "$lib/common/common";
 
@@ -104,6 +120,7 @@
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -305,10 +322,11 @@
 		const member = members.find((m) => m.id === userId);
 		if (member) return personOf(member, space);
 		const user = space?.users.find((u) => u.id === userId);
+		const written = messages.find((m) => m.author_id === userId);
 		return {
 			id: userId,
 			memberId: "",
-			name: messages.find((m) => m.author_id === userId)?.author_name ?? "",
+			name: written ? authorLabel(written) : "",
 			isBot: user?.is_bot ?? false,
 			flags: user ? { flags: user.flags ?? 0, badges: user.badges ?? 0 } : null,
 		};
@@ -368,12 +386,8 @@
 	// The room's name, for the players' "now playing" (none in a conversation).
 	const channelName = $derived(space?.rooms.find((r) => r.id === channelId)?.name ?? "");
 
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-	// Words are English, as next to them ("Today", "just now") and in the rest of the UI; clock times keep
-	// the system's format.
-	const relativeFormatter = new Intl.RelativeTimeFormat("en", {
-		numeric: "auto",
-	});
+	// How long ago a message was edited, in words ("yesterday" rather than "1 day ago"), in the app's language.
+	const RELATIVE: Intl.RelativeTimeFormatOptions = { numeric: "auto" };
 
 	// ── Load-more on scroll ───────────────────────────────────────────────────
 	// Blocked until the visit is placed (placeVisit): before that, a scroll event (the skeleton→messages
@@ -498,7 +512,7 @@
 	const callNoticeLines = $derived(
 		new Map(
 			messages.flatMap((m) => {
-				const line = callNoticeLine(m, $currentUser?.id, joined);
+				const line = callNotice(m, $currentUser?.id, joined);
 				return line ? [[m.id, line] as const] : [];
 			}),
 		),
@@ -529,7 +543,7 @@
 		return sendComponentInteraction(channelId, message.id, use, {
 			space,
 			members,
-			from: { name: message.author_name, avatarUrl: message.author_avatar_url },
+			from: { name: authorLabel(message), avatarUrl: message.author_avatar_url },
 		});
 	}
 
@@ -759,6 +773,40 @@
 	// Each message's place in its group and its day (lib/message-groups.ts), in the list's order.
 	const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));
 
+	// Mentions of the user that follow one another as one block: its outer corners stay round, their meeting edges square,
+	// and their washes meet without a gap. A day or the unread divider between them ends the block. The list's DOM is
+	// newest first and its flex column reverses it, so "top" is the older side of a pair: the highest index of a run.
+	type MentionRun = { mention: boolean; top: boolean; bottom: boolean; only: boolean; corners: string };
+	const NO_MENTION: MentionRun = { mention: false, top: false, bottom: false, only: false, corners: "rounded-xl" };
+	const mentionRuns = $derived.by(() => {
+		const user = $currentUser;
+		const mentioned = sortedMessages.map(
+			(message) =>
+				!!user &&
+				message.author_id !== user.id &&
+				(messageText(message).includes(`<@${user.id}>`) || mentionsByReply(message, user.id)),
+		);
+		const joins = (index: number) =>
+			index > 0 &&
+			index < mentioned.length &&
+			(unreadDividerIdx === null || unreadDividerIdx <= 0 || index !== unreadDividerIdx) &&
+			!shapes[index - 1]?.newDay;
+		return mentioned.map((mention, i) => {
+			const newer = joins(i) && mentioned[i - 1]!;
+			const older = joins(i + 1) && mentioned[i + 1]!;
+			const top = mention && !older;
+			const bottom = mention && !newer;
+			const only = top && bottom;
+			return {
+				mention,
+				top,
+				bottom,
+				only,
+				corners: mention ? (only ? "rounded-xl" : top ? "rounded-t-xl" : bottom ? "rounded-b-xl" : "") : "rounded-xl",
+			};
+		});
+	});
+
 	// ── Where a visit opens ────────────────────────────────────────────────────
 	// The list stays mounted across channels and while hidden (the friends view hides it), and a hidden
 	// list has no size: it can't be scrolled, and it loses its position. So each visit (another channel,
@@ -966,25 +1014,25 @@
 	function formatTimestamp(dateStr: string, _now: number) {
 		const then = new Date(dateStr).getTime();
 		if (Number.isNaN(then)) {
-			return "just now";
+			return t("chat_time_just_now");
 		}
 		const seconds = Math.round((then - _now) / 1000);
 		if (Math.abs(seconds) < 45) {
-			return "just now";
+			return t("chat_time_just_now");
 		}
 		const minutes = Math.round(seconds / 60);
 		if (Math.abs(minutes) < 60) {
-			return relativeFormatter.format(minutes, "minute");
+			return formatRelativeTime(minutes, "minute", RELATIVE);
 		}
 		const hours = Math.round(minutes / 60);
 		if (Math.abs(hours) < 24) {
-			return relativeFormatter.format(hours, "hour");
+			return formatRelativeTime(hours, "hour", RELATIVE);
 		}
 		const days = Math.round(hours / 24);
 		if (Math.abs(days) < 7) {
-			return relativeFormatter.format(days, "day");
+			return formatRelativeTime(days, "day", RELATIVE);
 		}
-		return relativeFormatter.format(Math.round(days / 7), "week");
+		return formatRelativeTime(Math.round(days / 7), "week", RELATIVE);
 	}
 
 	// ── Message actions ────────────────────────────────────────────────────────
@@ -1024,18 +1072,23 @@
 
 	// Asks first, as deleting a channel does: there's no undo. A failure shows in the dialog.
 	function handleDelete(messageId: string) {
-		return confirmAction("Delete this message? This can't be undone.", "Delete", async () => {
-			deletingMessageId = messageId;
-			try {
-				if (onDeleteMsg) {
-					await onDeleteMsg(messageId);
-				} else {
-					await deleteMessage(messageId, channelId);
+		return confirmAction(
+			t("chat_delete_confirm"),
+			t("chat_delete_confirm_button"),
+			async () => {
+				deletingMessageId = messageId;
+				try {
+					if (onDeleteMsg) {
+						await onDeleteMsg(messageId);
+					} else {
+						await deleteMessage(messageId, channelId);
+					}
+				} finally {
+					deletingMessageId = null;
 				}
-			} finally {
-				deletingMessageId = null;
-			}
-		});
+			},
+			t("chat_delete_busy"),
+		);
 	}
 
 	async function openThreadModal(message: Message) {
@@ -1052,7 +1105,7 @@
 				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 		} catch (e) {
-			threadError = getApiError(e, "Failed to load message thread.");
+			threadError = getApiError(e, t("chat_thread_load_failed"));
 		} finally {
 			threadLoading = false;
 		}
@@ -1093,7 +1146,7 @@
 			if (isConversation) await (pin ? pinConversationMessage : unpinConversationMessage)(channelId, message.id);
 			else await (pin ? pinRoomMessage : unpinRoomMessage)(channelId, message.id);
 		} catch (err) {
-			toast(getApiError(err, pin ? "Couldn't pin the message" : "Couldn't unpin the message"), "error");
+			toast(getApiError(err, pin ? t("chat_pin_failed") : t("chat_unpin_failed")), "error");
 		} finally {
 			pinningMessageId = null;
 		}
@@ -1120,7 +1173,10 @@
 <!-- Its mouse handlers only follow the pointer's row, for that row's hover bar (hoverRow), as :hover did, and its
      focus and key handlers the keyboard's (focusRow, rowKeys); its
      right-click opens the one menu of the list, for the message or the avatar under the pointer (pickMenu). -->
-<ContextMenu bind:open={menuOpen} label={menuTarget?.kind === "author" ? "Member" : "Message"}>
+<ContextMenu
+	bind:open={menuOpen}
+	label={menuTarget?.kind === "author" ? t("chat_member_menu") : t("chat_message_menu")}
+>
 	{#snippet target(props)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_mouse_events_have_key_events -->
@@ -1170,16 +1226,16 @@
 				{#if retryFirstPage}
 					<div class="my-auto flex flex-col items-center px-6 py-16 text-center" role="status">
 						<MascotPeek class="w-24" mood="shy" />
-						<p class="text-duvet-ink mt-4 font-serif text-[22px] leading-tight">Couldn't load messages</p>
+						<p class="text-duvet-ink mt-4 font-serif text-[22px] leading-tight">{t("chat_list_load_failed")}</p>
 						<button type="button" class="{buttonClass('secondary')} mt-5" onclick={() => retryFirstPage?.()}>
-							Try again
+							{t("chat_list_retry")}
 						</button>
 					</div>
 				{:else if intro}
 					{@render intro()}
 				{:else}
 					<div class="text-duvet-ink2 mb-5 py-4 text-center text-[12.5px]">
-						No messages yet. Send the first message.
+						{t("chat_list_empty")}
 					</div>
 				{/if}
 			{:else}
@@ -1196,7 +1252,7 @@
 						{#if isLoadingMoreBelow}
 							<SpinnerIcon class="text-duvet-ink2 size-5 animate-spin" />
 						{:else}
-							<span class="text-duvet-ink2 text-xs">Newer messages below</span>
+							<span class="text-duvet-ink2 text-xs">{t("chat_list_newer_below")}</span>
 						{/if}
 					</div>
 				{/if}
@@ -1208,10 +1264,8 @@
 					{@const ephemeral = isEphemeral(message)}
 					{@const isHighlighted = highlightedMessageId === message.id}
 					{@const mine = !!$currentUser && message.author_id === $currentUser.id}
-					{@const isMention =
-						!!$currentUser &&
-						!mine &&
-						(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
+					{@const mentionRun = mentionRuns[i] ?? NO_MENTION}
+					{@const isMention = mentionRun.mention}
 					{@const callLine = callNoticeLines.get(message.id)}
 					{@const barShown =
 						(hoveredMessageId === message.id ||
@@ -1248,27 +1302,25 @@
 							{:else}
 								<PinIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{/if}
+							<!-- The message a pin notice pinned, which its words link to. -->
+							{#snippet pinnedMessage(text: string)}<button
+									type="button"
+									class="text-duvet-ink font-medium hover:underline"
+									onclick={() => jumpToPinned(message)}>{text}</button
+								>{/snippet}
 							<p class="min-w-0 text-center">
 								{#if callLine}
-									{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
+									<Rich key={callLine.key} values={callLine.values} tags={{ b: noticeName }} />
 								{:else if shareLine}
 									{shareLine}
 								{:else}
-									<span class="text-duvet-ink font-medium">{message.author_name}</span>
-									pinned
-									<button
-										type="button"
-										class="text-duvet-ink font-medium hover:underline"
-										onclick={() => jumpToPinned(message)}>a message</button
-									>
-									to this {isConversation ? "chat" : "room"}. See all
-									<button
-										type="button"
-										class="text-duvet-accent-text font-medium hover:underline"
-										onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
-									>.
+									<Rich
+										key="chat_pin_notice"
+										values={{ name: authorLabel(message), place: isConversation ? "chat" : "room" }}
+										tags={{ b: noticeName, message: pinnedMessage, pins: pinsLink }}
+									/>
 								{/if}
-								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at, locale)}</span>
+								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at)}</span>
 							</p>
 							{#if canDeleteNotices && (hoveredMessageId === message.id || focusedMessageId === message.id)}
 								<div class="{GLASS} absolute top-1/2 right-1 z-10 flex -translate-y-1/2 rounded-xl p-[3px]">
@@ -1283,14 +1335,18 @@
 						<div
 							data-message-id={message.id}
 							tabindex={tabStopId === message.id ? 0 : -1}
-							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-2 py-[3px] {shape.first
-								? 'mt-3 pt-1.5'
+							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] px-2 py-[3px] {mentionRun.corners} {shape.first
+								? mentionRun.mention && !mentionRun.top
+									? 'pt-1.5'
+									: 'mt-3 pt-1.5'
 								: ''} {isFailed
 								? 'bg-duvet-danger/10'
 								: isHighlighted
 									? 'bg-duvet-accent-tint'
 									: isMention
-										? PRISM_WASH
+										? mentionRun.only
+											? PRISM_WASH
+											: PRISM_WASH_RUN
 										: 'hover:bg-duvet-hover-soft'} {isPending && !isFailed
 								? 'pointer-events-none opacity-50'
 								: ''} {cursorOn ? 'outline-duvet-accent outline-2 -outline-offset-2' : ''}"
@@ -1303,7 +1359,7 @@
 									<span
 										class="text-duvet-ink2 block pt-[5px] text-[10.5px] leading-none tabular-nums opacity-0 select-none group-hover/row:opacity-100"
 									>
-										{shortClockTime(message.created_at, locale)}
+										{shortClockTime(message.created_at)}
 									</span>
 								{/if}
 							</div>
@@ -1321,7 +1377,7 @@
 										{@render authorName(message, "var(--duvet-ink)")}
 										<AuthorTag {message} class="self-center" />
 										<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-normal tabular-nums"
-											>{headTime(message.created_at, now, locale)}</span
+											>{headTime(message.created_at, now)}</span
 										>
 									</div>
 								{/if}
@@ -1395,7 +1451,7 @@
 									{#if isFailed}
 										{@render failedBar(message, mine)}
 									{:else if barShown}
-										{@render hoverBar(message, mine, shape.last ? null : clockTime(message.created_at, locale))}
+										{@render hoverBar(message, mine, shape.last ? null : clockTime(message.created_at))}
 									{/if}
 								</div>
 							</div>
@@ -1418,7 +1474,7 @@
 									{/if}
 									{#if shape.last}
 										<span class="text-duvet-ink2 px-1 text-[11px] leading-[1.3] tabular-nums select-none"
-											>{clockTime(message.created_at, locale)}</span
+											>{clockTime(message.created_at)}</span
 										>
 									{/if}
 								</div>
@@ -1427,11 +1483,15 @@
 					{/if}
 
 					{#if shape.newDay}
-						<!-- In its place in the list: it doesn't stick to the top -->
+						<!-- In its place in the list: it doesn't stick to the top. In flat rows it sits between two
+						     hairlines, as the unread divider; bubbles, more minimal, show the day alone. -->
 						<div
-							class="text-duvet-ink2 pointer-events-none mt-[18px] mb-2 flex justify-center text-[11.5px] leading-none font-semibold tracking-[0.01em] select-none"
+							data-day-separator
+							class="text-duvet-ink2 pointer-events-none mt-[18px] mb-2 flex items-center justify-center gap-3 text-[11.5px] leading-none font-semibold tracking-[0.01em] select-none"
 						>
-							{dayLabel(message.created_at, now)}
+							{#if flat}<div data-day-rule class="bg-duvet-line h-px flex-1"></div>{/if}
+							<span class="shrink-0 whitespace-nowrap">{dayLabel(message.created_at, now)}</span>
+							{#if flat}<div data-day-rule class="bg-duvet-line h-px flex-1"></div>{/if}
 						</div>
 					{/if}
 
@@ -1442,7 +1502,7 @@
 						>
 							<div class="bg-duvet-line h-px flex-1"></div>
 							<span class="shrink-0 whitespace-nowrap">
-								{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
+								{t("chat_unread_divider", { count: unreadCount })}
 							</span>
 							<div class="bg-duvet-line h-px flex-1"></div>
 						</div>
@@ -1474,13 +1534,13 @@
 		type="button"
 		style:--composer-h={composerH}
 		class="{GLASS} animate-pop text-duvet-ink absolute right-[calc(var(--duvet-pad-x)+2px)] bottom-[calc(var(--composer-h,64px)+12px)] z-5 grid size-10 place-items-center rounded-full"
-		title="Jump to the newest"
-		aria-label={unreadCount > 0 ? `Jump to the newest, ${unreadCount} new` : "Jump to the newest"}
+		title={t("chat_jump_newest")}
+		aria-label={unreadCount > 0 ? t("chat_jump_newest_count", { count: unreadCount }) : t("chat_jump_newest")}
 		onclick={jumpToNewest}
 	>
 		<ArrowDownIcon size={16} />
 		{#if unreadCount > 0}
-			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{unreadCount}</span>
+			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{formatNumber(unreadCount)}</span>
 		{/if}
 	</button>
 {/if}
@@ -1494,10 +1554,10 @@
 			type="button"
 			class="block rounded-full {member ? 'cursor-pointer' : 'cursor-default'}"
 			data-author-menu={message.webhook_id ? "" : message.author_id}
-			aria-label={message.author_name}
+			aria-label={authorLabel(message)}
 			onclick={(e) => openProfile(member, e.currentTarget)}
 		>
-			<UserAvatar src={message.author_avatar_url} name={message.author_name} {size} />
+			<UserAvatar src={message.author_avatar_url} name={authorLabel(message)} {size} />
 		</button>
 	{/key}
 {/snippet}
@@ -1511,10 +1571,10 @@
 			type="button"
 			class="min-w-0 cursor-pointer truncate font-semibold hover:underline"
 			{style}
-			onclick={(e) => openProfile(member, e.currentTarget)}>{message.author_name}</button
+			onclick={(e) => openProfile(member, e.currentTarget)}>{authorLabel(message)}</button
 		>
 	{:else}
-		<span class="min-w-0 cursor-default truncate font-semibold" {style}>{message.author_name}</span>
+		<span class="min-w-0 cursor-default truncate font-semibold" {style}>{authorLabel(message)}</span>
 	{/if}
 {/snippet}
 
@@ -1557,6 +1617,12 @@
 				chat={channelId}
 				message={message.id}
 				content={message.content ?? ""}
+				{mentionMap}
+				{customEmojiMap}
+				{members}
+				rooms={space ? mentionableRooms(space) : []}
+				{emojiGroups}
+				spaceId={spaceId || null}
 				onSave={(text) => onSaveEdit?.(message.id, text)}
 				onCancel={() => (editingMessageId = null)}
 			/>
@@ -1594,7 +1660,7 @@
 					{customEmojiMap}
 					{own}
 					edited={message.updated_at !== message.created_at
-						? `edited ${formatTimestamp(message.updated_at, now)}`
+						? t("chat_message_edited_ago", { time: formatTimestamp(message.updated_at, now) })
 						: null}
 				/>
 			</div>
@@ -1629,12 +1695,12 @@
 {#snippet ephemeralNote(message: Message)}
 	<p class="text-duvet-ink2 flex items-center gap-1 px-1 text-xs">
 		<EyeIcon class="size-3.5 shrink-0" />
-		<span>Only you can see this</span>
+		<span>{t("chat_ephemeral_note")}</span>
 		<span aria-hidden="true">·</span>
 		<button
 			type="button"
 			class="text-duvet-ink cursor-pointer hover:underline"
-			onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+			onclick={() => dropEphemeral(channelId, message.id)}>{t("chat_ephemeral_dismiss")}</button
 		>
 	</p>
 {/snippet}
@@ -1646,9 +1712,9 @@
 			class="{GLASS} text-duvet-ink2 pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
 			aria-hidden="true"
 		>
-			<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
+			<span><Rich key="chat_cursor_reply" values={{ key: "r" }} tags={{ kbd: hintKey }} /></span>
 			{#if mine}
-				<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+				<span><Rich key="chat_cursor_edit" values={{ key: "e" }} tags={{ kbd: hintKey }} /></span>
 			{/if}
 		</span>
 	{/if}
@@ -1665,9 +1731,13 @@
 				: 'top-1/2 left-full ml-2 -translate-y-1/2 data-above:top-auto data-above:bottom-full data-above:left-0 data-above:-mb-1 data-above:ml-0 data-above:translate-y-0'}"
 	>
 		{#if !message.unsent_note}
-			<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}>Retry</button>
+			<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}
+				>{t("chat_message_retry")}</button
+			>
 		{/if}
-		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}>Dismiss</button>
+		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}
+			>{t("chat_message_dismiss")}</button
+		>
 	</div>
 {/snippet}
 
@@ -1696,8 +1766,8 @@
 			<button
 				type="button"
 				class="hover:bg-duvet-hover grid size-7 place-items-center rounded-lg text-[13px] transition-transform duration-[120ms] hover:scale-[1.12] motion-reduce:transition-none"
-				title="React {emoji}"
-				aria-label="React {emoji}"
+				title={t("chat_react_with", { emoji })}
+				aria-label={t("chat_react_with", { emoji })}
 				onclick={() => quickReact(message, emoji)}
 			>
 				{@html renderEmoji(emoji)}
@@ -1709,7 +1779,7 @@
 		>
 			<Popover.Trigger>
 				{#snippet child({ props })}
-					<IconButton {...props} label="Add reaction" title="Add reaction" size="sm">
+					<IconButton {...props} label={t("chat_reaction_add")} title={t("chat_reaction_add")} size="sm">
 						<SmilePlusIcon size={15} />
 					</IconButton>
 				{/snippet}
@@ -1724,18 +1794,23 @@
 						collisionPadding={10}
 						class="z-100"
 						role="dialog"
-						aria-label="Add reaction"
+						aria-label={t("chat_reaction_add")}
 					>
 						<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
 					</Popover.Content>
 				</Popover.Portal>
 			{/if}
 		</Popover.Root>
-		<IconButton label="Reply" title="Reply" size="sm" onclick={() => onReply?.(message)}>
+		<IconButton label={t("chat_reply")} title={t("chat_reply")} size="sm" onclick={() => onReply?.(message)}>
 			<ReplyIcon size={15} />
 		</IconButton>
 		{#if editable(message, mine)}
-			<IconButton label="Edit message" title="Edit message" size="sm" onclick={() => startEdit(message)}>
+			<IconButton
+				label={t("chat_edit_message")}
+				title={t("chat_edit_message")}
+				size="sm"
+				onclick={() => startEdit(message)}
+			>
 				<PencilIcon size={15} />
 			</IconButton>
 		{/if}
@@ -1744,7 +1819,13 @@
 		<DropdownMenu.Root bind:open={() => moreMenuFor === message.id, (v) => (moreMenuFor = v ? message.id : null)}>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
-					<IconButton {...props} label="More" title="More" size="sm" active={moreMenuFor === message.id}>
+					<IconButton
+						{...props}
+						label={t("chat_message_more")}
+						title={t("chat_message_more")}
+						size="sm"
+						active={moreMenuFor === message.id}
+					>
 						<EllipsisIcon size={15} />
 					</IconButton>
 				{/snippet}
@@ -1758,7 +1839,7 @@
 							align={mine ? "start" : "end"}
 							sideOffset={6}
 							collisionPadding={10}
-							aria-label="Message"
+							aria-label={t("chat_message_menu")}
 							class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
 						>
 							{@render messageItems(message)}
@@ -1776,13 +1857,15 @@
 {#snippet messageItems(message: Message)}
 	{@const mine = !!$currentUser && message.author_id === $currentUser.id}
 	{#if isNotice(message)}
-		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}
+			>{t("chat_delete_message")}</MenuItem
+		>
 	{:else}
 		<div class="border-duvet-line mb-1.5 flex items-center gap-0.5 border-b px-0.5 pt-0.5 pb-1.5">
 			{#each quickReactions(MENU_REACTIONS, recentEmoji()) as emoji (emoji)}
 				<DropdownMenu.Item
 					class="data-highlighted:bg-duvet-hover grid size-9 cursor-pointer place-items-center rounded-[10px] text-base transition-transform duration-[120ms] outline-none hover:scale-[1.15] motion-reduce:transition-none"
-					aria-label="React {emoji}"
+					aria-label={t("chat_react_with", { emoji })}
 					onSelect={() => quickReact(message, emoji)}
 				>
 					{@html renderEmoji(emoji)}
@@ -1790,22 +1873,22 @@
 			{/each}
 			<DropdownMenu.Item
 				class="text-duvet-ink2 data-highlighted:bg-duvet-hover data-highlighted:text-duvet-ink ml-auto grid size-9 cursor-pointer place-items-center rounded-[10px] outline-none"
-				aria-label="More reactions"
-				title="More reactions"
+				aria-label={t("chat_reactions_more")}
+				title={t("chat_reactions_more")}
 				onSelect={() => (reactingMessageId = message.id)}
 			>
 				<SmilePlusIcon size={18} />
 			</DropdownMenu.Item>
 		</div>
-		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>Reply</MenuItem>
-		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>View thread</MenuItem>
+		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>{t("chat_reply")}</MenuItem>
+		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>{t("chat_thread_view")}</MenuItem>
 		{#if messageText(message)}
-			<MenuItem icon={CopyIcon} onSelect={() => copyText(message)}>Copy text</MenuItem>
+			<MenuItem icon={CopyIcon} onSelect={() => copyText(message)}>{t("chat_copy_text")}</MenuItem>
 		{/if}
-		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>Copy message link</MenuItem>
+		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>{t("chat_copy_link")}</MenuItem>
 		{@render reactionsItem(message)}
 		{#if editable(message, mine)}
-			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>Edit message</MenuItem>
+			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>{t("chat_edit_message")}</MenuItem>
 		{/if}
 		{#if canPin}
 			<MenuItem
@@ -1813,17 +1896,19 @@
 				disabled={pinningMessageId === message.id}
 				onSelect={() => void togglePin(message)}
 			>
-				{message.pinned_at ? "Unpin message" : "Pin message"}
+				{message.pinned_at ? t("chat_unpin") : t("chat_pin")}
 			</MenuItem>
 		{/if}
 		{#if !message.webhook_id}
-			<MenuSub label={message.author_name} icon={UserIcon}>
+			<MenuSub label={authorLabel(message)} icon={UserIcon}>
 				{@render authorItems(message.author_id, null, message.id)}
 			</MenuSub>
 		{/if}
 		{#if mine || currentUserCan(Permission.ManageMessages)}
 			<MenuSeparator />
-			<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+			<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}
+				>{t("chat_delete_message")}</MenuItem
+			>
 		{/if}
 	{/if}
 {/snippet}
@@ -1831,7 +1916,7 @@
 <!-- Who reacted, in the menu of a message that has reactions -->
 {#snippet reactionsItem(message: Message)}
 	{#if message.reactions?.length}
-		<MenuItem icon={UsersIcon} onSelect={() => showReactors(message)}>Reactions</MenuItem>
+		<MenuItem icon={UsersIcon} onSelect={() => showReactors(message)}>{t("chat_reactions")}</MenuItem>
 	{/if}
 {/snippet}
 
@@ -1852,8 +1937,8 @@
 
 {#snippet deleteButton(message: Message)}
 	<IconButton
-		label="Delete message"
-		title="Delete message"
+		label={t("chat_delete_message")}
+		title={t("chat_delete_message")}
 		size="sm"
 		class="hover:text-duvet-danger"
 		disabled={deletingMessageId === message.id}
@@ -1870,8 +1955,8 @@
 <!-- A message's thread: its messages, each replied to from here, over the thread's own message box. -->
 <Sheet
 	bind:open={threadModalOpen}
-	title="Message thread"
-	description={threadRootMessage ? `From ${threadRootMessage.author_name}` : undefined}
+	title={t("chat_thread_title")}
+	description={threadRootMessage ? t("chat_thread_from", { name: authorLabel(threadRootMessage) }) : undefined}
 	class="min-w-[min(672px,calc(100%-48px))]"
 >
 	<div bind:this={threadScrollEl} class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
@@ -1882,13 +1967,13 @@
 		{:else if threadError}
 			<p class="text-duvet-danger text-sm">{threadError}</p>
 		{:else if threadShown.length === 0}
-			<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
+			<p class="text-duvet-ink2 text-sm">{t("chat_thread_empty")}</p>
 		{:else}
 			{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
 			<div class="flex flex-col gap-2" onclickcapture={openMention}>
 				{#each threadShown as threadMsg (threadMsg.id)}
 					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
-					{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
+					{@const parentCall = parentMsg ? callNotice(parentMsg, $currentUser?.id, joined) : null}
 					{@const root = threadRootMessage}
 					<div class="group {MESSAGE_CARD} relative px-3 py-2.5">
 						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
@@ -1907,8 +1992,8 @@
 						     message, nor one still being sent (its ID is its nonce) -->
 						{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
 							<IconButton
-								label="Reply to {threadMsg.author_name}"
-								title="Reply"
+								label={t("chat_thread_reply_to", { name: authorLabel(threadMsg) })}
+								title={t("chat_reply")}
 								size="sm"
 								class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 								onclick={() => onThreadReply(threadMsg, root)}
@@ -1947,3 +2032,14 @@
 		}}
 	/>
 {/if}
+
+<!-- A notice's name (who pinned, who called), and its link to the chat's pinned messages. -->
+{#snippet noticeName(text: string)}<span class="text-duvet-ink font-medium">{text}</span>{/snippet}
+{#snippet pinsLink(text: string)}<button
+		type="button"
+		class="text-duvet-accent-text font-medium hover:underline"
+		onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>{text}</button
+	>{/snippet}
+
+<!-- A key of the keyboard's cursor hint. -->
+{#snippet hintKey(text: string)}<kbd class="text-duvet-ink font-bold">{text}</kbd>{/snippet}

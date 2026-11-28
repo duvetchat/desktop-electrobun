@@ -1,6 +1,7 @@
 import { derived, get, readable, type Readable } from "svelte/store";
 import { cancelCall } from "$lib/api/ws/connection";
 import { getAvatarURL, getHostURL } from "$lib/common/common";
+import { appLocale } from "$lib/i18n";
 import { mediaStateOf, type MediaActions, type MediaState } from "$lib/media-state";
 import { listMicrophones } from "$lib/mic-devices";
 import { callName, liveIn } from "$lib/now";
@@ -120,8 +121,8 @@ const flags = derived(
 	}),
 );
 
-// The call the user places from here, which still rings the others.
-const calling = derived([activeCall, conversations, currentUser], ([$call, $conversations, $me]) =>
+// The call the user places from here, which still rings the others, named in the app's language (appLocale).
+const calling = derived([activeCall, conversations, currentUser, appLocale], ([$call, $conversations, $me]) =>
 	$call?.state === "calling"
 		? {
 				id: $call.conversationId,

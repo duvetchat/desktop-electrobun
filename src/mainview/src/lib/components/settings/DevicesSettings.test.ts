@@ -280,7 +280,7 @@ describe("Settings' devices", () => {
 
 	// Review I1: the API's refusal of a list naming a device this one approved that never finished, in words.
 	test("say in words why a removal failed", async () => {
-		const { FetchError } = await import("$lib/api/api");
+		const { FetchError, NetworkError } = await import("$lib/api/api");
 		const { CoreError } = await import("$lib/e2e/errors");
 		const refused = (error: string) =>
 			new FetchError(
@@ -295,7 +295,8 @@ describe("Settings' devices", () => {
 			removalProblem(refused("the list names device 0193a4b2-0000, which has no certificate of this identity")),
 		).toBe(en.e2e_device_unfinished);
 		expect(removalProblem(new CoreError("approval_waits", ""))).toBe(en.e2e_approval_waits);
-		expect(removalProblem(new TypeError("fetch failed"))).toBe("fetch failed");
+		// The network's failure in its own words, as the request made it (api.ts's NetworkError).
+		expect(removalProblem(new NetworkError(new TypeError("fetch failed")))).toBe("fetch failed");
 	});
 
 	test("say how the encrypted backup is on a ready device: up to date, going up, restoring, or paused and why", () => {

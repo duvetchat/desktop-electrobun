@@ -27,6 +27,17 @@ describe("embed videos", () => {
 		expect(readFileSync(join(import.meta.dir, "EmbedCard.svelte"), "utf8")).not.toContain("/api/proxy/video");
 	});
 
+	test("an embed's link can be copied or opened from its floating actions", () => {
+		const source = readFileSync(join(import.meta.dir, "EmbedCard.svelte"), "utf8");
+		expect(source).toContain("navigator.clipboard.writeText(card.url)");
+		expect(source).toContain('t("shell_menu_copy_link")');
+		expect(source).toContain('t("shell_menu_open_link")');
+		expect(source).toContain('target="_blank"');
+		expect(source).toContain("group/embed");
+		// Each of the card's shapes, media and components included, carries the same floating pair.
+		expect(source.match(/\{@render actions\(\)\}/g)).toHaveLength(5);
+	});
+
 	test("a component's video of another host preloads nothing", () => {
 		const tags = videos("MessageComponents.svelte");
 		expect(tags.length).toBeGreaterThan(0);

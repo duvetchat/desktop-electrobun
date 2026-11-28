@@ -2,14 +2,12 @@
 // with its own RPC (an RPC object has one transport), whose page is views://mainview/voice-controls.html. What decides
 // when it opens and closes, where, and what its commands do is media-window.ts, which this hands the window to.
 import { BrowserView, BrowserWindow } from "electrobun/bun";
-import { mediaWindowTitleBar, type MediaWindowHandle } from "./media-window";
+import { mediaWindowTitle, mediaWindowTitleBar, type MediaWindowHandle } from "./media-window";
 import { shellPreload } from "./shell";
+import { systemLanguages } from "./system-languages";
 import type { Rect } from "./window-frame";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
-
-/** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.2). */
-export const MEDIA_WINDOW_TITLE = "Voice controls";
 
 // What the pop-out's page and Bun say to each other: the part of the app's RPC (lib/electrobun-rpc.ts) its page uses.
 type MediaWindowRPC = {
@@ -18,6 +16,8 @@ type MediaWindowRPC = {
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
 			// What the shared layout asks of any window (lib/window-controls.ts): this one has none of it.
 			nativeWindowDrag: { params: void; response: boolean };
+			// The system's languages, for its page's "Match system" (system-languages.ts, #464).
+			systemLanguages: { params: void; response: string[] };
 		};
 		messages: {
 			closeWindow: void;
@@ -58,6 +58,7 @@ export function mediaWindowOpener(
 				requests: {
 					windowCommand: (command) => options.command(command),
 					nativeWindowDrag: () => false,
+					systemLanguages: () => systemLanguages(options.platform),
 				},
 				messages: {
 					closeWindow: () => window?.close(),
@@ -68,7 +69,7 @@ export function mediaWindowOpener(
 			},
 		});
 		const made = new BrowserWindow({
-			title: MEDIA_WINDOW_TITLE,
+			title: mediaWindowTitle(),
 			titleBarStyle,
 			renderer: options.renderer,
 			// Which window this is, for its page's platform switch (shell.ts), before any of its scripts run.
@@ -109,6 +110,7 @@ export function mediaWindowOpener(
 			close: () => made.close(),
 			getFrame: () => made.getFrame(),
 			setAlwaysOnTop: (on) => made.setAlwaysOnTop(on),
+			setTitle: (title) => made.setTitle(title),
 			send: (message) => rpc.send.windowState(message),
 			on: (event, handler) => {
 				if (event === "ready") made.webview.on("dom-ready", handler);

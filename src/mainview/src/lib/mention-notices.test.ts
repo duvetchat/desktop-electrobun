@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { get } from "svelte/store";
+import { richParts } from "$lib/i18n";
 import {
 	conversationPlace,
 	directMessageAuthor,
@@ -36,7 +37,8 @@ describe("where a mention is", () => {
 	test("a room's is its room and space, by the spaces the user is in", () => {
 		expect(roomPlace(spaces, ROOM, message(1))).toEqual({
 			link: { spaceId: SPACE, roomId: ROOM, messageId: message(1) },
-			where: "in #general · Alpha",
+			place: "named",
+			placeName: "#general · Alpha",
 			name: "#general · Alpha",
 		});
 		expect(roomPlace(spaces, "0190a3b2-0000-7000-8000-0000000005ff", message(1))).toBeNull();
@@ -50,18 +52,43 @@ describe("where a mention is", () => {
 			name: "Weekend",
 			members: [member(ME, null, "me"), member(ANA, "Ana", "ana")],
 		};
-		expect(conversationPlace(group, DM, message(1), ME)).toEqual({ link, where: "in Weekend", name: "Weekend" });
+		expect(conversationPlace(group, DM, message(1), ME)).toEqual({
+			link,
+			place: "named",
+			placeName: "Weekend",
+			name: "Weekend",
+		});
 		// A DM's system notification names no place: its author says who (DISENO-NOTIFICACIONES.md, objective 7).
 		expect(conversationPlace({ ...group, type: 1 }, DM, message(1), ME)).toEqual({
 			link,
-			where: "in a direct message",
+			place: "dm",
+			placeName: "",
 			name: null,
 		});
-		expect(conversationPlace(undefined, DM, message(1), ME)).toEqual({
+		expect(conversationPlace(undefined, DM, message(1), ME)).toEqual({ link, place: "dm", placeName: "", name: null });
+		// A group with no name: the notice keeps "" and says its word as it draws; the system's notification, shown once,
+		// says it now.
+		expect(conversationPlace({ ...group, name: null }, DM, message(1), ME)).toEqual({
 			link,
-			where: "in a direct message",
-			name: null,
+			place: "named",
+			placeName: "",
+			name: "Group",
 		});
+	});
+
+	test("is one sentence with its author, drawn by MentionNotices: the author whole, where after", () => {
+		const head = (place: ReturnType<typeof conversationPlace>) =>
+			richParts("chat_mention_notice_head", { author: "Ana", place: place.place, name: place.placeName });
+		expect(head(roomPlace(spaces, ROOM, message(1))!)).toEqual([
+			{ tag: "who", text: "Ana" },
+			" ",
+			{ tag: "where", text: "in #general · Alpha" },
+		]);
+		expect(head(conversationPlace(undefined, DM, message(1), ME))).toEqual([
+			{ tag: "who", text: "Ana" },
+			" ",
+			{ tag: "where", text: "in a direct message" },
+		]);
 	});
 });
 
@@ -79,11 +106,18 @@ describe("a mention's notice", () => {
 			link: place.link,
 			authorName: "Ana",
 			authorAvatar: null,
-			where: "in #general · Alpha",
+			place: "named",
+			placeName: "#general · Alpha",
 			text: `Hey <@${ME}>, **look**`,
 			mentionMap: { [ME]: "Myself" },
 			customEmojiMap: {},
 		});
+	});
+
+	test('keeps an author the app doesn\'t know as "", for MentionNotices to say in the language of the moment', () => {
+		const place = roomPlace(spaces, ROOM, message(1))!;
+		const unknown = { id: message(1), author_name: "", author_avatar_url: null, content: "Hi" };
+		expect(mentionNoticeOf(unknown, place, [], {}).authorName).toBe("");
 	});
 
 	test("takes a components message's text displays, and has none for a message without text", () => {
@@ -114,7 +148,8 @@ describe("the notices showing", () => {
 		link: { spaceId: SPACE, roomId: ROOM, messageId: message(n) },
 		authorName: "Ana",
 		authorAvatar: null,
-		where: "in #general · Alpha",
+		place: "named",
+		placeName: "#general · Alpha",
 		text: "hi",
 		mentionMap: {},
 		customEmojiMap: {},

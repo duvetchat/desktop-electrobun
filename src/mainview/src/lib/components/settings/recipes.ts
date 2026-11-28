@@ -2,6 +2,8 @@
 // Space's settings and a room's share. The primitives' own are in components/ui/recipes.ts.
 import type { Component } from "svelte";
 import { fieldClass, iconTileClass } from "$lib/components/ui/recipes";
+import { t } from "$lib/i18n";
+import { formatNumber } from "$lib/i18n/format";
 
 /** A section of a settings screen, as its side panel lists it. */
 export interface SettingsNavItem<Section extends string = string> {
@@ -95,11 +97,12 @@ export const ROW_TILE = iconTileClass("lg");
 /** A group's title, over its card. */
 export const GROUP_TITLE = "text-duvet-ink2 px-2 text-[12px] font-semibold tracking-[0.06em] uppercase";
 /** A note under a card, or a section's opening line. */
-export const NOTE = "text-duvet-ink2 px-2 text-[13px] leading-[1.5]";
+export const NOTE = "text-duvet-ink2 px-2 text-[13px] leading-[1.5] hyphens-auto";
 /** A field's label in a form. */
 export const LABEL = "text-duvet-ink2 mb-2 block text-[14px] font-medium";
-/** A tag on a row: ACTIVE, Admin, hoisted. */
-export const TAG = "rounded-md px-2 py-1 text-[11px] leading-none font-semibold";
+/** A tag on a row: ACTIVE, Admin, hoisted. On one line and whole beside a name that's cut: a language may write it in
+ *  two words (Finnish's Ei käytössä) (#562). */
+export const TAG = "shrink-0 rounded-md px-2 py-1 text-[11px] leading-none font-semibold whitespace-nowrap";
 /** A loading row's placeholder. */
 export const SKELETON = "bg-duvet-secondary-fill animate-pulse rounded-row";
 /** A checkbox, as the browser draws it in the accent. */
@@ -136,11 +139,14 @@ export function usageTone(percent: number): string {
 				: "bg-duvet-azure";
 }
 
-/** A file's size as the settings' lists write it: B, KB or MB, to a decimal. */
+const oneDecimal: Intl.NumberFormatOptions = { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false };
+
+/** A file's size as the settings' lists write it: B, KB or MB, to a decimal, in the app's language's digits and units
+ * (lib/i18n/format.ts's, whose megabytes have two decimals). */
 export function listFileSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes < 1024) return t("format_size_bytes", { size: formatNumber(bytes, { useGrouping: false }) });
+	if (bytes < 1024 * 1024) return t("format_size_kb", { size: formatNumber(bytes / 1024, oneDecimal) });
+	return t("format_size_mb", { size: formatNumber(bytes / (1024 * 1024), oneDecimal) });
 }
 
 /** A role colour as a hex string, from the number the API keeps; the accent's violet for none. */

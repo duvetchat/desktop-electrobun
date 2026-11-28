@@ -53,13 +53,15 @@
 				{title}
 			</AlertDialog.Title>
 			{#if children}
-				<AlertDialog.Description class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4]">
+				<AlertDialog.Description class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4] hyphens-auto">
 					{@render children()}
 				</AlertDialog.Description>
 			{/if}
 			{@render body?.()}
 			{#if actions}
-				<div class="mt-2 flex items-center justify-end gap-2">
+				<!-- A button a longer language leaves no room for beside the others goes to a line of its own, at the right
+				     (#562). -->
+				<div class="mt-2 flex flex-wrap items-center justify-end gap-2">
 					{@render actions()}
 				</div>
 			{/if}

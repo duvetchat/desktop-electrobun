@@ -99,7 +99,10 @@ describe("the security number's dialog", () => {
 		expect(popover).toMatch(
 			/const canVerifyThem = \$derived\(\s*encryption\.state\.name === "ready" &&\s*!!\$currentUser &&\s*canVerify\(/,
 		);
-		expect(popover).toContain("safetyNumberRequest.set({ id: member.id, name: member.username });");
+		// Read before the card closes, which lets go of the member (MemberProfilePopover.test.ts, #586).
+		expect(popover).toMatch(
+			/const \{ id, username \} = member;\s*onOpenChange\(false\);\s*safetyNumberRequest\.set\(\{ id, name: username \}\);/,
+		);
 		expect(popover).toMatch(/\{#if encryption\.contacts\.verified\[member\.id\]\}\s*<VerifiedMark\b/);
 		// What the profile shows of them is the core's as they're seen now: looked at as it opens.
 		expect(popover).toMatch(/\$effect\(\(\) => \{\s*if \(shown && canVerifyThem\) void contactOf\(member\.id\)/);

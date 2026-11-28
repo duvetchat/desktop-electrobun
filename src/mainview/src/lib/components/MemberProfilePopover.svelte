@@ -135,15 +135,17 @@
 		return `background: linear-gradient(90deg, ${from}${via}, ${to})`;
 	}
 
+	// The owner holds Administrator, as a role giving it would: the list names it as permissions.ts does. The names sort as
+	// words, not code units, so a translated name that starts with an accented capital (French "Épingler…") sits with its
+	// letter rather than after Z.
 	function getMemberPermissions(m: MemberOnSidebar): string[] {
 		const set = new Set<string>();
-		if (m.is_owner) set.add("Administrator");
-		let combined = 0;
+		let combined: number = m.is_owner ? Permission.Administrator : 0;
 		for (const role of m.roles) combined |= role.permissions;
 		for (const { flag, name } of ALL_PERMISSIONS) {
 			if ((combined & flag) === flag) set.add(name);
 		}
-		return Array.from(set).sort();
+		return Array.from(set).sort((a, b) => a.localeCompare(b));
 	}
 
 	// As the API checks it: the owner and Administrators pass, ManageRoles or not. Each role then takes being below the
@@ -168,6 +170,7 @@
 	}
 
 	async function handleSendFriendRequest(userId: string) {
+		if (member.is_bot) return;
 		friendRequestState[userId] = "loading";
 		try {
 			await sendFriendRequest(userId);
@@ -246,7 +249,7 @@
 						sideOffset={10}
 						collisionPadding={10}
 						role="dialog"
-						aria-label="{member.username}'s profile"
+						aria-label={t("people_profile_label", { name: member.username })}
 						class="{GLASS} animate-float-in rounded-card text-duvet-ink z-[1001] w-80 origin-(--bits-floating-transform-origin) outline-none"
 					>
 						{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
@@ -277,12 +280,12 @@
 							</div>
 
 							<div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">
-								{#if $currentUser && member.id !== $currentUser.id}
+								{#if $currentUser && member.id !== $currentUser.id && !member.is_bot}
 									{@const reqState = friendRequestState[member.id] ?? "idle"}
 									{#if isFriend(member.id)}
 										<button
 											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
-											title="Friends"
+											title={t("people_profile_friends")}
 											disabled
 										>
 											<UserCheck class="size-4" />
@@ -290,7 +293,7 @@
 									{:else if hasPendingRequest(member.id)}
 										<button
 											class="{buttonClass('secondary', 'sm')} w-8 px-0!"
-											title="Accept request"
+											title={t("people_profile_accept")}
 											onclick={() => handleAcceptFriendRequest(member.id)}
 											disabled={reqState === "loading" || reqState === "sent"}
 										>
@@ -299,7 +302,7 @@
 									{:else if reqState === "sent"}
 										<button
 											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
-											title="Request sent"
+											title={t("people_profile_request_sent")}
 											disabled
 										>
 											<UserCheck class="size-4" />
@@ -307,7 +310,7 @@
 									{:else}
 										<button
 											class="{buttonClass('secondary', 'sm')} w-8 px-0!"
-											title={reqState === "error" ? "Retry" : "Add friend"}
+											title={reqState === "error" ? t("people_profile_retry") : t("people_profile_add_friend")}
 											onclick={() => handleSendFriendRequest(member.id)}
 											disabled={reqState === "loading"}
 										>
@@ -328,8 +331,10 @@
 										title={t("e2e_verify_number")}
 										aria-label={t("e2e_verify_number")}
 										onclick={() => {
+											// Whose it is, read before the card closes and lets go of them, as Send direct message does.
+											const { id, username } = member;
 											onOpenChange(false);
-											safetyNumberRequest.set({ id: member.id, name: member.username });
+											safetyNumberRequest.set({ id, name: username });
 										}}
 									>
 										<ShieldCheck class="size-4" />
@@ -338,7 +343,7 @@
 								<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
 								{#if spaceId}
 									<button class={buttonClass("secondary", "sm")} onclick={() => (showPermissions = !showPermissions)}>
-										{showPermissions ? "Hide" : "View"} permissions
+										{showPermissions ? t("people_profile_hide_permissions") : t("people_profile_view_permissions")}
 									</button>
 								{/if}
 							</div>
@@ -371,7 +376,9 @@
 
 								{#if member.bio}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="{OVERLINE} mb-1.5 text-left">About</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">
+										{t("people_profile_about")}
+									</h3>
 									<ProfileBio bio={member.bio} />
 								{/if}
 
@@ -379,7 +386,9 @@
 
 								{#if visibleRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="{OVERLINE} mb-1.5 text-left">Roles</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">
+										{t("people_profile_roles")}
+									</h3>
 									<div class="flex flex-wrap gap-1">
 										{#each visibleRoles as role}
 											<div class="bg-duvet-secondary-fill rounded-chip flex h-[22px] w-max items-center gap-1.5 px-2">
@@ -392,7 +401,9 @@
 
 								{#if showPermissions}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="{OVERLINE} mb-1.5 text-left">Permissions</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">
+										{t("people_profile_permissions")}
+									</h3>
 									{@const memberPermissions = getMemberPermissions(member)}
 									{#if memberPermissions.length > 0}
 										<div class="flex flex-col gap-1.5">
@@ -404,13 +415,15 @@
 											{/each}
 										</div>
 									{:else}
-										<span class="text-duvet-ink2 text-xs italic">No permissions</span>
+										<span class="text-duvet-ink2 text-xs italic">{t("people_profile_no_permissions")}</span>
 									{/if}
 								{/if}
 
 								{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="{OVERLINE} mb-1.5 text-left">Assign roles</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">
+										{t("people_profile_assign_roles")}
+									</h3>
 									<div class="max-h-32 space-y-1.5 overflow-y-auto">
 										{#each assignableRoles as role}
 											{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
@@ -422,7 +435,7 @@
 													: 'bg-duvet-secondary-fill text-duvet-ink hover:bg-duvet-hover-strong'}"
 												onclick={() => toggleMemberRole(member, role.id)}
 												disabled={togglingRoles[toggleKey] || !manageable}
-												title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
+												title={manageable ? undefined : t("people_profile_role_locked")}
 											>
 												<div class="flex items-center gap-1.5">
 													<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
@@ -438,17 +451,19 @@
 							</div>
 
 							<!-- Their direct conversation, opened as their menu's Message opens it (the app's page): the one there is, or
-							     a new one. -->
+							     a new one. Whose it is, read before the card closes: what opens it for one person (a message's author, a
+							     mention, someone in a voice room) lets go of them as it closes, and member went with them. -->
 							{#if canMessage}
 								<button
 									class="{buttonClass('primary')} mt-3 w-full"
 									onclick={() => {
+										const { id } = member;
 										onOpenChange(false);
-										chatWith(member.id);
+										chatWith(id);
 									}}
 								>
 									<MessageCircle class="size-4" />
-									Send direct message
+									{t("people_profile_message")}
 								</button>
 							{/if}
 
@@ -464,7 +479,7 @@
 											}}
 										>
 											<UserMinus size={16} class="shrink-0" />
-											<span class="truncate">Kick {member.username}</span>
+											<span class="truncate">{t("people_kick_member", { name: member.username })}</span>
 										</button>
 									{/if}
 									{#if moderation.ban}
@@ -476,7 +491,7 @@
 											}}
 										>
 											<Ban size={16} class="shrink-0" />
-											<span class="truncate">Ban {member.username}</span>
+											<span class="truncate">{t("people_ban_member", { name: member.username })}</span>
 										</button>
 									{/if}
 								</div>
@@ -491,7 +506,7 @@
 											onOpenChange(false);
 										}}
 									>
-										Remove from group
+										{t("people_remove_from_group")}
 									</button>
 								</div>
 							{/if}

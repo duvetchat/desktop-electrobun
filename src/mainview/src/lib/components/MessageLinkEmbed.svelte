@@ -3,11 +3,13 @@
 	import { getMessageById } from "$lib/api/messages";
 	import { getDirectMessageById, type DirectMessage } from "$lib/api/conversations";
 	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
-	import { directMessageToMessage, gatewayMessageToMessage, messageText } from "$lib/types";
+	import { authorLabel, directMessageToMessage, gatewayMessageToMessage, messageText } from "$lib/types";
 	import { gatewaySpaces, jumpToMessageRequest, conversations, roomNames } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
+	import { t } from "$lib/i18n";
+	import { formatDate } from "$lib/i18n/format";
 	import { MESSAGE_CARD, MESSAGE_CARD_ACTION } from "$lib/message-styles";
 
 	let {
@@ -30,12 +32,10 @@
 	let loading = $state(true);
 	let error = $state(false);
 
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-
 	const space = $derived(!isConv ? ($gatewaySpaces.find((s) => s.id === spaceId) ?? null) : null);
 	const room = $derived(space?.rooms.find((r) => r.id === roomId) ?? null);
 	const conv = $derived(isConv ? ($conversations.find((c) => c.id === conversationId) ?? null) : null);
-	const convName = $derived(conv?.name ?? "Direct message");
+	const convName = $derived(conv?.name ?? t("media_link_direct_message"));
 	// Asked for as it draws, so a row its conversation's list let go is read again.
 	const message = $derived.by(() => {
 		if (!conversationMessage || !conversationId) return roomMessage;
@@ -46,10 +46,7 @@
 	});
 
 	function formatTime(dateStr: string): string {
-		return new Date(dateStr).toLocaleTimeString(locale, {
-			hour: "2-digit",
-			minute: "2-digit",
-		});
+		return formatDate(new Date(dateStr), { hour: "2-digit", minute: "2-digit" });
 	}
 
 	onMount(async () => {
@@ -90,7 +87,7 @@
 {#if loading}
 	<div class="{MESSAGE_CARD} flex w-[380px] max-w-full items-center gap-2 px-3.5 py-3">
 		<div class="border-duvet-ink2/40 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent"></div>
-		<span class="text-duvet-ink2 text-xs">Loading message…</span>
+		<span class="text-duvet-ink2 text-xs">{t("media_link_loading")}</span>
 	</div>
 {:else if !error && message}
 	<button
@@ -129,7 +126,7 @@
 					<span class="text-duvet-ink2 shrink-0 text-xs">#</span>
 					<span class="text-duvet-ink2 max-w-22.5 truncate text-xs font-medium">{room.name}</span>
 				{:else}
-					<span class="text-duvet-ink2 text-xs italic">unknown-room</span>
+					<span class="text-duvet-ink2 text-xs italic">{t("media_link_unknown_room")}</span>
 				{/if}
 			{/if}
 		</div>
@@ -137,11 +134,11 @@
 		<!-- Message preview -->
 		<div class="flex items-start gap-2.5 px-3.5 py-2.5">
 			<div class="mt-0.5 shrink-0">
-				<UserAvatar src={message.author_avatar_url} name={message.author_name} size={28} />
+				<UserAvatar src={message.author_avatar_url} name={authorLabel(message)} size={28} />
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col">
 				<div class="mb-0.5 flex items-baseline gap-1.5">
-					<span class="text-duvet-ink truncate text-sm font-semibold">{message.author_name}</span>
+					<span class="text-duvet-ink truncate text-sm font-semibold">{authorLabel(message)}</span>
 					<span class="text-xxs text-duvet-ink2 shrink-0">{formatTime(message.created_at)}</span>
 				</div>
 				<p class="font-content text-duvet-ink line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap">

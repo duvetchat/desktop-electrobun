@@ -133,12 +133,12 @@ describe("a pinned chat", () => {
 
 	test("is pinned and unpinned from its row's menu, above its notifications", () => {
 		expect(source("DMSidebar.svelte")).toMatch(
-			/<MenuItem icon=\{pinned \? PinOffIcon : PinIcon\} onSelect=\{\(\) => togglePinnedChat\(conv\.id\)\}\s*>\{pinned \? "Unpin" : "Pin to top"\}<\/MenuItem\s*>\s*<NotificationSubmenu/,
+			/<MenuItem icon=\{pinned \? PinOffIcon : PinIcon\} onSelect=\{\(\) => togglePinnedChat\(conv\.id\)\}\s*>\{pinned \? t\("shell_unpin"\) : t\("shell_pin_to_top"\)\}<\/MenuItem\s*>\s*<NotificationSubmenu/,
 		);
 	});
 
 	test("a room has no pin", () => {
-		expect(source("ChannelsSidebar.svelte")).not.toMatch(/Pin to top|togglePinned/);
+		expect(source("ChannelsSidebar.svelte")).not.toMatch(/shell_pin_to_top|togglePinned/);
 	});
 });
 
@@ -167,7 +167,7 @@ describe("who's typing, outside the open chat", () => {
 	// list of rooms with news a Space that wasn't selected had: the mark shows on the room's own row there.
 	test("a Space's rooms in the sidebar, and the open chats in the column, show it too", () => {
 		const nav = source("SpaceNav.svelte");
-		expect(nav).toMatch(/\{#if open\}\s*<ChannelsSidebar/);
+		expect(nav).toMatch(/\{#snippet children\(\)\}\s*<ChannelsSidebar/);
 		expect(nav).toMatch(/typingSentence\(\$typingNow\[tab\.channelId\]\) \?\?\s*\(isConversationTab\(tab\)/);
 	});
 });

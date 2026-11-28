@@ -51,7 +51,8 @@ let
       runHook preBuild
       export HOME=$TMPDIR
       export SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt
-      # Root: only electrobun is needed to build; the lint/format tooling is dev-only.
+      # Root: electrobun, and i18next, i18next-icu and intl-messageformat for the Bun bundle
+      # (src/bun/i18n.ts); the lint/format tooling is dev-only.
       bun install --frozen-lockfile --production --ignore-scripts --no-progress
       (cd src/mainview && bun install --frozen-lockfile --ignore-scripts --no-progress)
       runHook postBuild
@@ -154,13 +155,15 @@ stdenv.mkDerivation {
     [Desktop Entry]
     Type=Application
     Name=Duvet
-    Comment=Duvet desktop client
     Exec=duvet-desktop
     Icon=duvet-desktop
     Terminal=false
     StartupWMClass=desktop
     Categories=Network;Chat;InstantMessaging;
     EOF
+    # The Comment in English and in each language the app ships, as the build's postBuild hook wrote them into the
+    # bundle's own entry (scripts/localize-bundle.ts, from electrobun.config.ts's app.description).
+    grep '^Comment' build/dev-linux-x64/Duvet-dev/Duvet.desktop >> $out/share/applications/duvet-desktop.desktop
     runHook postInstall
   '';
 

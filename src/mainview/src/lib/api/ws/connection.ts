@@ -119,15 +119,15 @@ import {
 	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
-	VOICE_ROOM_LOST,
 	voiceEndedNotice,
+	voiceRoomLostNotice,
 	withCallVoiceState,
 	type PlacedCall,
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { dropReplyTo, takeBack } from "$lib/drafts";
-import { SENT_BEFORE_CANCEL } from "$lib/uploads";
+import { sentBeforeCancel } from "$lib/uploads";
 import { forgetLists, knowMessage, newestKnownIn } from "$lib/jumps";
 import { markStartup } from "$lib/startup-timing";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
@@ -556,7 +556,7 @@ const spaceOfRoom = (roomId: string) => get(gatewaySpaces).find((s) => s.rooms.s
  * gateway sends after says nothing more, and the user is told as that event tells lost access, unless they left that space
  * themselves, from here. */
 function voiceRoomTaken(leftHere: boolean) {
-	if (!leftHere) toast(VOICE_ROOM_LOST, "error");
+	if (!leftHere) toast(voiceRoomLostNotice(), "error");
 	activeVoiceRoomId.set(null);
 }
 
@@ -1176,7 +1176,7 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			});
 			// A message this window cancelled, which the API posted all the same: what the Cancel put back in the room's
 			// draft leaves it, and a notice says so.
-			if (raw.nonce && raw.author_id === get(currentUser)?.id && takeBack(roomId, raw.nonce)) toast(SENT_BEFORE_CANCEL);
+			if (raw.nonce && raw.author_id === get(currentUser)?.id && takeBack(roomId, raw.nonce)) toast(sentBeforeCancel());
 			noteArrival(arrivedRoomMessages, message);
 			notifyMessage({ roomId, message }, raw.author_id, message.id, false);
 			break;
@@ -1899,7 +1899,7 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 			});
 			// As a room's (MESSAGE_CREATE): a message this window cancelled, which the API posted all the same.
 			if (msg.nonce && msg.author_id === get(currentUser)?.id && takeBack(conversationId, msg.nonce)) {
-				toast(SENT_BEFORE_CANCEL);
+				toast(sentBeforeCancel());
 			}
 			// Move conversation to top
 			conversations.update((list) =>

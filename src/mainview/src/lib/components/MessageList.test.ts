@@ -194,7 +194,7 @@ describe("a group's call notices", () => {
 	// notices as the list does.
 	test("a thread reads them as the list does", () => {
 		for (const file of ["MessageList.svelte", "MessagePreview.svelte"]) {
-			const calls = source(file).match(/callNoticeLine\([^)]*\)/g) ?? [];
+			const calls = source(file).match(/callNotice\([^)]*\)/g) ?? [];
 			expect(calls.length).toBeGreaterThan(0);
 			for (const call of calls) expect(call).toEndWith(", joined)");
 		}
@@ -351,11 +351,11 @@ describe("a shared history's notice", () => {
 		const menu = list.slice(start, list.indexOf("{/snippet}", start));
 		const [forNotice, forOthers] = menu.split("{:else}");
 		expect(forNotice).toContain("{#if isNotice(message)}");
-		expect(forNotice).toContain("Delete message");
-		expect(forNotice).not.toContain("Edit message");
-		expect(forNotice).not.toContain("Pin message");
-		expect(forOthers).toContain("Edit message");
-		expect(forOthers).toContain("Pin message");
+		expect(forNotice).toContain('t("chat_delete_message")');
+		expect(forNotice).not.toContain('t("chat_edit_message")');
+		expect(forNotice).not.toContain('t("chat_pin")');
+		expect(forOthers).toContain('t("chat_edit_message")');
+		expect(forOthers).toContain('t("chat_pin")');
 		expect(list).toContain('mine &&\n\t\t\t(message.content ?? "").trim() !== "" &&');
 	});
 });
@@ -456,6 +456,32 @@ describe("the two layouts", () => {
 		expect(html).toContain("radial-gradient(420px_80px_at_60px_50%");
 	});
 
+	test("flat rows fuse consecutive mentions into one wash block", async () => {
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const mentions = [
+			from("05", ANA, "Ana", 5, `one <@${ME}>`),
+			from("06", "0190a3b2-0000-7000-8000-000000000003", "Bea", 6, `two <@${ME}>`),
+		];
+		const html = render(MessageList, { props: { messages: mentions, channelId: ROOM, spaceId: "space", intro } }).body;
+		// The two rows carry the same horizontal wash, and their meeting edges are square.
+		expect(count(html, "linear-gradient(90deg,var(--duvet-prism-gem)")).toBe(2);
+		expect(html).not.toContain("radial-gradient(420px_80px_at_60px_50%");
+		expect(html).toContain("rounded-t-xl");
+		expect(html).toContain("rounded-b-xl");
+		// The DOM runs newest first, so the newest message's bottom edge comes before the oldest message's top one.
+		expect(html.indexOf("rounded-b-xl")).toBeLessThan(html.indexOf("rounded-t-xl"));
+	});
+
+	test("a day's label sits between two hairlines in flat rows, and alone in bubbles", async () => {
+		// The talk is all one day: one label, over its oldest message.
+		expect(count(list({}), "data-day-separator")).toBe(1);
+		expect(list({})).not.toContain("data-day-rule");
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const html = list({});
+		expect(count(html, "data-day-separator")).toBe(1);
+		expect(count(html, "data-day-rule")).toBe(2);
+	});
+
 	test("the list reads the saved layout and the groups from their modules", () => {
 		const component = source("MessageList.svelte");
 		expect(component).toContain('const flat = $derived(messageLayout.value === "flat");');
@@ -491,28 +517,50 @@ describe("editing a message", () => {
 		expect(list).toContain("<InlineMessageEditor");
 		expect(list).toContain("onSave={(text) => onSaveEdit?.(message.id, text)}");
 		expect(list).toContain("onCancel={() => (editingMessageId = null)}");
-		expect(list).toMatch(/editable\(message, mine\)[\s\S]*?<IconButton label="Edit message"/);
+		expect(list).toMatch(/editable\(message, mine\)[\s\S]*?<IconButton\s+label=\{t\("chat_edit_message"\)\}/);
 	});
 
 	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
-		expect(editor).toContain("<textarea");
-		expect(editor).toContain("Save");
-		expect(editor).toContain("Discard edit");
+		expect(editor).toContain('contenteditable={box.saving ? "false" : "true"}');
+		expect(editor).toContain('{t("chat_edit_save")}');
+		expect(editor).toContain('label={t("chat_edit_cancel")}');
 		expect(editor).toContain('event.key === "Escape"');
 		expect(editor).toContain("event.metaKey || event.ctrlKey");
 	});
 
 	// #578: while a save waits for the engine's word, the box takes nothing more (lib/edit-box.test.ts holds the rule).
 	test("while its save waits, the box's text, Save, Discard and keys go through its EditBox, and are held", () => {
-		expect(editor).toContain("bind:value={() => box.text, (text) => box.type(text)}");
-		expect(editor).toContain("readonly={box.saving}");
+		expect(editor).toContain("const box = untrack(() => editBoxOf(chat, message, content));");
+		expect(editor).toContain("if (editor) box.type(rawOf(editor));");
+		expect(editor).toContain('contenteditable={box.saving ? "false" : "true"}');
 		expect(editor).toMatch(
-			/<IconButton\s+label="Discard edit"[^>]*disabled=\{box\.saving\}\s+onclick=\{\(\) => box\.discard\(onCancel\)\}/,
+			/<IconButton\s+label=\{t\("chat_edit_cancel"\)\}[^>]*disabled=\{box\.saving\}\s+onclick=\{\(\) => box\.discard\(onCancel\)\}/,
 		);
 		expect(editor).toMatch(/<Button size="sm" disabled=\{box\.saving\} onclick=\{\(\) => void save\(\)\}>/);
 		expect(editor).toMatch(/event\.key === "Escape"[^]*?box\.discard\(onCancel\);[^]*?void save\(\);/);
-		expect(editor).toMatch(/async function save\(\) \{\s*await box\.save\(onSave\);/);
+		expect(editor).toMatch(
+			/async function save\(\) \{\s*read\(\);\s*closeSuggestions\(\);\s*await box\.save\(onSave\);/,
+		);
 		expect(editor).not.toMatch(/onclick=\{onCancel\}|onCancel\(\);/);
+	});
+
+	test("it draws the message's mentions, rooms and emoji, and saves the raw text they stand for", () => {
+		expect(editor).toContain("richTextHtml(");
+		expect(editor).toContain("rawOf(editor)");
+		expect(editor).toContain("mentionMap[id]");
+		expect(editor).toContain("$roomNames[id]");
+		expect(editor).toContain("customEmojiMap[id]");
+		expect(list).toMatch(/<InlineMessageEditor[\s\S]*?\{mentionMap\}[\s\S]*?\{customEmojiMap\}/);
+	});
+
+	test("it suggests the people, rooms and emoji the composer suggests", () => {
+		expect(editor).toContain("emojiSuggestions");
+		expect(editor).toContain('t("chat_mention_suggestions")');
+		expect(editor).toContain('t("chat_room_suggestions")');
+		expect(editor).toContain('t("chat_emoji_suggestions")');
+		expect(editor).toContain('event.key === "ArrowDown"');
+		expect(editor).toContain("applySuggestion");
+		expect(list).toContain("mentionableRooms(space)");
 	});
 
 	test("the chat saves it there, not in the message box", () => {
@@ -525,8 +573,8 @@ describe("editing a message", () => {
 
 test("a message's More menu copies its text above its link", () => {
 	const list = source("MessageList.svelte");
-	const text = list.indexOf(">Copy text<");
-	const link = list.indexOf(">Copy message link<");
+	const text = list.indexOf('>{t("chat_copy_text")}<');
+	const link = list.indexOf('>{t("chat_copy_link")}<');
 	expect(text).toBeGreaterThan(-1);
 	expect(text).toBeLessThan(link);
 	expect(list).toMatch(
