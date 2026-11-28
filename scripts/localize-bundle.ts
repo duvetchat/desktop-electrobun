@@ -5,7 +5,8 @@
 // macOS: the first time the app uses the microphone or the camera, macOS asks, with the app's
 // NSMicrophoneUsageDescription or NSCameraUsageDescription under its question, in the system's language: from the
 // bundle's Contents/Resources/<language>.lproj/InfoPlist.strings when it has the language (CFBundleLocalizations lists
-// them), else the Info.plist's own, English (electrobun.config.ts: build.mac.entitlements). This writes them.
+// them), else the Info.plist's own, English. This writes them all: Electrobun writes its own words there, as the
+// config's entitlements are true (electrobun.config.ts: build.mac.entitlements).
 // Electrobun 1.15.1 (node_modules/electrobun/src/cli/index.ts) writes the app's Info.plist (line 2092), copies the app's
 // files in, runs postBuild (2901), then signs the bundle (3164), which seals what it holds. A canary or stable build then
 // tars it, makes the self-extracting bundle the app is opened from, with the same Info.plist (3475), runs postWrap (3496)
@@ -15,9 +16,11 @@
 // <name>.desktop with English's (config.app.description, line 1996) before either hook; this adds each other language's
 // Comment[<lang>] to it, and nix/package.nix's entry takes them from there.
 //
+// macOS, postBuild alone: the app's bundled Bun is signed ad hoc (signBunAdHoc, #618).
+//
 // Electrobun runs this with its own Bun, from the project root, for every target; it does nothing on Windows.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tIn, type BunMessageKey } from "../src/bun/i18n";
 import { SHIPPED, type Locale } from "../src/mainview/src/lib/i18n/locale";
@@ -46,12 +49,24 @@ export function stringsFile(texts: Record<string, string>): string {
 		.join("");
 }
 
-/** The Info.plist, with the bundle's languages (CFBundleLocalizations) and English, the language it's written in, as
- * its development region: the one macOS falls back to. Either key already there is replaced. */
-export function withLocalizations(plist: string, locales: readonly Locale[]): string {
-	const without = plist
+/** A plist <string>'s text, its XML escaped. */
+const xmlText = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** The Info.plist, with the bundle's languages (CFBundleLocalizations), English, the language it's written in, as its
+ * development region, the one macOS falls back to, and English's usage descriptions as its own, in place of the words
+ * Electrobun makes of each entitlement (electrobun.config.ts: build.mac.entitlements). Each key already there is
+ * replaced. */
+export function withLocalizations(
+	plist: string,
+	locales: readonly Locale[],
+	texts: Record<string, string> = usageTexts("en"),
+): string {
+	let without = plist
 		.replace(/\s*<key>CFBundleLocalizations<\/key>\s*<array>[\s\S]*?<\/array>/g, "")
 		.replace(/\s*<key>CFBundleDevelopmentRegion<\/key>\s*<string>[^<]*<\/string>/g, "");
+	for (const key of Object.keys(texts)) {
+		without = without.replace(new RegExp(`\\s*<key>${key}</key>\\s*<string>[^<]*</string>`, "g"), "");
+	}
 	const end = without.lastIndexOf("</dict>");
 	if (end === -1) throw new Error("the Info.plist has no dict");
 	const keys = [
@@ -61,6 +76,10 @@ export function withLocalizations(plist: string, locales: readonly Locale[]): st
 		"    <array>",
 		...locales.map((locale) => `        <string>${locale}</string>`),
 		"    </array>",
+		...Object.entries(texts).flatMap(([key, text]) => [
+			`    <key>${key}</key>`,
+			`    <string>${xmlText(text)}</string>`,
+		]),
 	];
 	return `${without.slice(0, end).trimEnd()}\n${keys.join("\n")}\n${without.slice(end)}`;
 }
@@ -74,6 +93,19 @@ export function localizeBundle(app: string, locales: readonly Locale[]): void {
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "InfoPlist.strings"), stringsFile(usageTexts(locale)));
 	}
+}
+
+/** The bundled Bun, Contents/MacOS/bun, signed ad hoc; null for a bundle without one (#618). Bun ships it signed with
+ * Bun's own Developer ID, and the Keychain trusts the app that made an item by its signature, so in a build Electrobun
+ * signs nothing of (a dev build, the test channel's canary) any official Bun would read the keys the app keeps there,
+ * asked nothing. Ad hoc, the signature names this Bun's own bytes alone. A build Electrobun signs gets Duvet's Developer
+ * ID in its place, after this hook (electrobun.config.ts). */
+export function signBunAdHoc(app: string): string | null {
+	const bun = join(app, "Contents", "MacOS", "bun");
+	if (!existsSync(bun)) return null;
+	const signed = spawnSync("codesign", ["--force", "--sign", "-", bun], { stdio: "inherit" });
+	if (signed.status !== 0) throw new Error(`codesign couldn't sign ${bun} ad hoc`);
+	return bun;
 }
 
 /** The desktop entry's comment, which Linux launchers show beside the app's name. */
@@ -134,6 +166,9 @@ if (import.meta.main) {
 			if (lint.status !== 0) process.exit(lint.status ?? 1);
 		}
 		console.log(`[languages] ${app}: ${SHIPPED.join(", ")}`);
+		// The self-extracting bundle of postWrap runs no Bun.
+		const bun = process.platform === "darwin" && !process.env.ELECTROBUN_WRAPPER_BUNDLE_PATH && signBunAdHoc(app);
+		if (bun) console.log(`[signature] ${bun}: ad hoc`);
 	} else if (os === "linux") {
 		const entry = localizeDesktopEntry(bundleOf(process.env), SHIPPED);
 		console.log(`[languages] ${entry}: ${SHIPPED.join(", ")}`);

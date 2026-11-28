@@ -39,8 +39,9 @@ bun scripts/local-stack.ts
 
 It starts the fake S3 and mail server, the API on `localhost:9876` and the gateway on `127.0.0.1:8765`, on that stack,
 with the harness's own environment and no `.env`. Its `E2E_MIN_CLIENTS` is the harness's
-(`desktop-windows=1.2.0,web=1.2.0,android=1.1.0`) with `desktop-linux` at this checkout's version: production names no
-Linux minimum until Linux is turned on, and without one the app's DMs say they aren't available in this app yet. It
+(`desktop-windows=1.2.0,web=1.2.0,android=1.1.0`) with `desktop-linux` and `desktop-macos` at this checkout's version:
+production names no Linux minimum until Linux is turned on, and without one the app's DMs say they aren't available in
+this app yet. It
 says where the servers' logs are, and Ctrl+C stops them.
 
 - **Starting again from nothing:** `run.ts` again. It takes the old stack down first, and the accounts lose what they

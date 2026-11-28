@@ -156,3 +156,13 @@ jobs:
             const { symbols } = dlopen(library, { duvet_e2e_version: { args: [], returns: FFIType.cstring } });
             console.log(`The build loads the core ${symbols.duvet_e2e_version()} from ${library}`);
           ' "$PWD/$app/Contents/Resources/app/native/libduvet_e2e_ffi.dylib"
+      # Whose the key that build keeps in the Keychain is (#618): written by the build's own Bun, then asked for by this
+      # job's, another official Bun, with the Keychain's prompts off, on a keychain of the test's own.
+      - name: The Keychain key of a build without a Developer ID
+        timeout-minutes: 5
+        run: |
+          codesign -dvv build/dev-macos-arm64/Duvet-dev.app/Contents/MacOS/bun 2>&1 | grep -E "^(Identifier|Signature|TeamIdentifier|Authority)=" || true
+          bun test src/bun/e2e/core.test.ts -t "without a Developer ID"
+        env:
+          DUVET_E2E_KEYCHAIN: "1"
+          DUVET_E2E_MACOS_APP: build/dev-macos-arm64/Duvet-dev.app
