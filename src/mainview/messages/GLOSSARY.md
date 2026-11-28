@@ -20,7 +20,7 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 
 | Language | You | Notes |
 |---|---|---|
-| es | tú | Neutral Latin American: no *vosotros*, no Spain-only words (*ordenador* → *computadora*, or *equipo*). A storage bucket is *bucket*, as in es-ES. Quotes “…”. |
+| es | tú | Neutral Latin American: no *vosotros*, no Spain-only words (*ordenador* → *computadora*, or *equipo*). A storage bucket is *bucket*, as in es-ES. Unmute and undeafen are *Parar de silenciar*, *Parar de ensordecer* (es-ES too). Quotes “…”. |
 | fr | tu | Narrow no-break space (U+202F) before `? ! : ;` and inside « … ». |
 | de | du | Lower-case *du* in UI text. Quotes „…“. |
 | pt-BR | você | Brazilian spelling and words (*arquivo*, *tela*, *celular*). Quotes “…”. |
@@ -32,8 +32,8 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 | uk | ви | Lower-case *ви*. Quotes «…». Ukrainian words, never Russian ones; ’ (U+2019) for the apostrophe in words (*об’єкт*). |
 | zh-CN | 你 | Simplified characters, mainland words (*文件*, *设置*, *视频*). Full-width punctuation (，。？：（）), quotes “…”, no space between Chinese and Latin letters or numbers. |
 | zh-TW | 你 | Traditional characters, Taiwan's words (*檔案*, *設定*, *影片*, *訊息*), not Simplified turned Traditional. Full-width punctuation, quotes 「…」. A space between Chinese and Latin letters, numbers or a placeholder (*前往 Duvet*, *踢出 {name}*), none beside full-width punctuation. Kick is *踢出*, ban *停權*: *對 {name} 停權*. |
-| ja | — | です/ます; leave out *あなた*, as Japanese does. Buttons and menu items as nouns or plain verbs (*保存*, *キャンセル*). Full-width punctuation (、。？), quotes 「…」. |
-| ko | — | 해요체; leave out *당신*. Buttons and menu items as nouns (*저장*, *취소*). After a placeholder, both particles: *을(를)*, *이(가)*. Quotes “…”. |
+| ja | — | です/ます; leave out *あなた*, as Japanese does. Buttons and menu items as nouns or plain verbs (*保存*, *キャンセル*). Full-width punctuation (、。？), quotes 「…」. Kick is *キック*; ban is *BAN* in Latin letters inside Japanese (*BANしたユーザー*, *BANを解除*). |
+| ko | — | 해요체; leave out *당신*. Buttons and menu items as nouns (*저장*, *취소*). After a placeholder, both particles: *을(를)*, *이(가)*. A person's name takes *님* only in what's done to them as an admin (*{name}님 추방하기*, *{name}님 차단하기*, roles, removing from a group), nowhere else. Kick is *추방*, ban *차단*. Quotes “…”. |
 | th | คุณ | Polite and neutral, without ครับ/ค่ะ. No full stop at a sentence's end: a space between sentences. Quotes “…”. |
 | vi | bạn | Quotes “…”. |
 
