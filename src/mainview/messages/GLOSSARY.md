@@ -20,7 +20,7 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 
 | Language | You | Notes |
 |---|---|---|
-| es | tú | Neutral Latin American: no *vosotros*, no Spain-only words (*ordenador* → *computadora*, or *equipo*). Quotes “…”. |
+| es | tú | Neutral Latin American: no *vosotros*, no Spain-only words (*ordenador* → *computadora*, or *equipo*). A storage bucket is *bucket*, as in es-ES. Quotes “…”. |
 | fr | tu | Narrow no-break space (U+202F) before `? ! : ;` and inside « … ». |
 | de | du | Lower-case *du* in UI text. Quotes „…“. |
 | pt-BR | você | Brazilian spelling and words (*arquivo*, *tela*, *celular*). Quotes “…”. |
