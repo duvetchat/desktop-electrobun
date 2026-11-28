@@ -1,4 +1,5 @@
-# Lint (oxlint), formatting (Prettier) and type checks (tsc, svelte-check) on every pull request.
+# Lint (oxlint), formatting (Prettier) and type checks (tsc, svelte-check) on every pull request, and the desktop's tests
+# and build on macOS.
 name: CI
 
 # Only on pull requests into dev, and into e2e, where the end-to-end encryption work waits for its day. The
@@ -109,3 +110,49 @@ jobs:
           CHROME: ${{ steps.chrome.outputs.path }}
           # Ubuntu's restriction of user namespaces leaves a Chrome outside its .deb's AppArmor profile no sandbox.
           CHROME_NO_SANDBOX: "1"
+
+  # The desktop on macOS arm64 (PLAN-E2E-PLATAFORMAS.md, Task 8): the tests with the core's library its build carries,
+  # Electrobun's dev build, and the core loaded from inside it. Lint, formatting and type checks are the check job's.
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      # svelte-kit starts with node (its shebang), which src/mainview's install runs (svelte-kit sync).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      # The app's own libraries, compiled with Xcode, and the core's copy beside them, as every macOS build's preBuild hook
+      # leaves them (scripts/build-native.ts): the Bun process's tests that load them run below.
+      - run: bun scripts/build-native.ts
+      # DUVET_E2E_KEYCHAIN lets src/bun/e2e/core.test.ts keep a key in the runner's login keychain, which it never does on
+      # a person's Mac. A Keychain prompt nobody can answer would hold the step until its time ends.
+      - run: bun test src/bun
+        timeout-minutes: 10
+        env:
+          DUVET_E2E_KEYCHAIN: "1"
+      - run: bun test --isolate
+        working-directory: src/mainview
+      # The core inside the packaged macOS build (src/bun/e2e/library.ts): Electrobun's dev build, which needs no page and
+      # signs nothing, then the library its copy rule put in Contents/Resources/app/native/, held to the SHA-256
+      # native/core/SOURCE.json pins and loaded by the build's own Bun.
+      - name: The core in the macOS build
+        run: |
+          bun run electrobun build --env=dev
+          app=build/dev-macos-arm64/Duvet-dev.app
+          "$app/Contents/MacOS/bun" -e '
+            const { dlopen, FFIType } = await import("bun:ffi");
+            const library = process.argv.at(-1);
+            const source = await Bun.file("native/core/SOURCE.json").json();
+            const pinned = source.files["native/core/macos-arm64/libduvet_e2e_ffi.dylib"];
+            const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(library).bytes()).digest("hex");
+            if (hash !== pinned) throw new Error(`The build carries ${hash}, where SOURCE.json pins ${pinned}`);
+            const { symbols } = dlopen(library, { duvet_e2e_version: { args: [], returns: FFIType.cstring } });
+            console.log(`The build loads the core ${symbols.duvet_e2e_version()} from ${library}`);
+          ' "$PWD/$app/Contents/Resources/app/native/libduvet_e2e_ffi.dylib"
