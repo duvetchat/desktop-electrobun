@@ -104,6 +104,7 @@
 		myBuckets,
 		voiceFaces,
 		shareSpotify,
+		shareGameActivity,
 		noiseSuppression,
 		selectedMicId,
 		selectedCameraId,
@@ -2017,6 +2018,13 @@
 					label={t("settings_activity_spotify")}
 					checked={$shareSpotify}
 					onCheckedChange={(on) => shareSpotify.set(on)}
+				/>
+			</SettingsRow>
+			<SettingsRow label={t("settings_activity_games")} line={t("settings_activity_games_line")}>
+				<Toggle
+					label={t("settings_activity_games")}
+					checked={$shareGameActivity}
+					onCheckedChange={(on) => shareGameActivity.set(on)}
 				/>
 			</SettingsRow>
 		</SettingsGroup>
