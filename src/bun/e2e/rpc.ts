@@ -319,7 +319,12 @@ export function e2eBoundary({ start, confirm, show, known, reply }: BoundaryDeps
 		} catch (error) {
 			console.error("[e2e] the accounts opened here couldn't be read:", error);
 		}
-		if (openedHere.has(userId) || kept?.includes(userId)) return;
+		if (openedHere.has(userId) || kept?.includes(userId)) {
+			// Opened in this run before its database was deleted, as a start over does: it gets its place back (#620's
+			// review, I1), unless the list couldn't be read.
+			if (kept !== undefined && !kept?.includes(userId)) known.write([...(kept ?? []), userId]);
+			return;
+		}
 		if (kept !== null || openedHere.size > 0) {
 			if (worker) unwrap(await core("close"));
 			opened = null;
@@ -337,9 +342,12 @@ export function e2eBoundary({ start, confirm, show, known, reply }: BoundaryDeps
 		if (kept !== undefined) known.write([...(kept ?? []), userId]);
 	}
 
-	/** An account whose database was deleted is none opened here: opening it again asks (#611). */
+	/**
+	 * An account whose database was deleted leaves the list, so the next start asks for it (#611). The run keeps it: the
+	 * engine's start over deletes the database, then opens the same account in the same page (#620's review, I1), and a
+	 * run that opened an account is never an installation's start, even on a list Bun can't keep (M1).
+	 */
 	function forget(userId: string) {
-		openedHere.delete(userId);
 		try {
 			const kept = known.read();
 			if (kept?.includes(userId)) known.write(kept.filter((id) => id !== userId));
@@ -495,7 +503,9 @@ export function e2eBoundary({ start, confirm, show, known, reply }: BoundaryDeps
 				return {};
 			case "destroy": {
 				const userId = uuid(p.userId, "userId");
-				// The account the page opened: a script in its page can't delete another's (#558).
+				// The account open here: a script in another account's page reaches it only by opening it first, which asks
+				// for an account this installation hasn't opened (#558, #611). One it has opens asked nothing, and its database
+				// can then be deleted as its core's other commands can be run (decision 60's accepted limit).
 				if (userId !== current) throw refused("refused", "only the database of the account opened here is deleted");
 				underWay = null;
 				user = null;

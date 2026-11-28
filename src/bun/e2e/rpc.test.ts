@@ -1294,9 +1294,48 @@ describe("whose database Bun opens", () => {
 		expect((await page.ask("destroy", { userId: ANA })).error).toMatchObject({ code: "refused" });
 		expect((await page.ask("destroy", { userId: BO })).ok).toEqual({});
 		expect(core.calls.filter(({ op }) => op === "destroy")).toEqual([{ op: "destroy", params: { userId: BO } }]);
-		// Its database deleted, Bo's isn't an account opened here any more: opening it again asks.
+		// Its database deleted, Bo's is still the run's: the engine's start over opens it again in the same page, asked
+		// nothing (#620's review, I1).
+		expect((await page.ask("open", { userId: BO })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(2);
+	});
+
+	// #620's review, I1: a start over (Set up again, Delete device, another identity that went up first) destroys the
+	// database, then opens the same account in the same page. The database it opens is the person's own, and new.
+	test("a start over asks nothing, and keeps the account for the next start; a database deleted and not opened again asks at the next start", async () => {
+		const folder = mkdtempSync(join(tmpdir(), "duvet-boundary-"));
+		folders.push(folder);
+		const known = () => fileAccounts(join(folder, "e2e", "known-users"), join(folder, "e2e", "last-user"));
+		const { asked, confirm } = person(true);
+		const run = pageOf({ start: ready().start, confirm, known: known() });
+		expect((await run.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect((await run.ask("destroy", { userId: ANA })).ok).toEqual({});
+		expect((await run.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toEqual([]);
+		expect(known().read()).toEqual([ANA]);
+
+		const next = pageOf({ start: ready().start, confirm, known: known() });
+		expect((await next.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toEqual([]);
+		// Remove this device and delete its data, then a new start: the account's data went, and so did its place.
+		expect((await next.ask("destroy", { userId: ANA })).ok).toEqual({});
+		expect(known().read()).toEqual([]);
+		const after = pageOf({ start: ready().start, confirm, known: known() });
+		expect((await after.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.message).toContain(ANA);
+	});
+
+	// #620's review, M1: a list that reads as none and can't be written (a full disk) must not make a destroy the
+	// installation's start, where the next account would open with no box.
+	test("after a destroy, a list Bun can't keep still asks for another account", async () => {
+		const { asked, confirm } = person(false);
+		const page = pageOf({ start: ready().start, confirm, known: { read: () => null, write: () => {} } });
+		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready" });
+		expect((await page.ask("destroy", { userId: ANA })).ok).toEqual({});
 		expect((await page.ask("open", { userId: BO })).error).toMatchObject({ code: "refused" });
-		expect(asked).toHaveLength(3);
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.message).toContain(BO);
 	});
 
 	// #611: a switch between saved accounts is a new page as the other one, whose engine opens that account's database.
