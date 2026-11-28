@@ -97,6 +97,11 @@ interface Forgotten {
 	expected: LegacyRecord;
 }
 
+/** A record the core keeps of a group it let go, by its conversation (forgotten, #594). */
+interface KeptForgotten extends Forgotten {
+	conversation_id: string;
+}
+
 /** The group as the core holds it (its `group`). */
 interface Held extends HeldMembers {
 	blocked: boolean;
@@ -430,6 +435,18 @@ export class Conversations {
 	}
 
 	/**
+	 * At a start, before anything can bring a group back (#594): each record the core keeps of a group it let go
+	 * (forgotten), as a close between the core's forget and the app's own write leaves it, is taken back by the forget's
+	 * path (keepForgotten), whose rules place it among the records the engine keeps. Over an older forget's the engine
+	 * kept too: the core's is always the newest, as a forget needs the group held and holding it again lets the core's
+	 * go (#594's review, M1).
+	 */
+	async takeBack(): Promise<void> {
+		const { records } = await this.#parts.host.handle<{ records: KeptForgotten[] }>({ cmd: "forgotten" });
+		for (const { conversation_id, expected } of records) keepForgotten(this.#parts.store, conversation_id, expected);
+	}
+
+	/**
 	 * At the start and at each READY: the API's conversations, each one's record made the first time it's seen, the queue
 	 * of each with a group, those without one as #groupless says, and the commits whose requests had no answer sent again.
 	 */
@@ -515,6 +532,15 @@ export class Conversations {
 		const conv = await this.#fresh(conversationId);
 		if (!conv) return this.#drop(conversationId);
 		keepChosen(this.#parts.store, conversationId, people);
+		// The core's record of the group let go goes too, before the comeback held to the yes (#594): a start before that
+		// comeback takes back nothing from before the yes. Only here: the API's word never lets it go, as a server that
+		// hid the conversation would strip the one copy a lost write of the app's leaves (#594's review, I1). One that
+		// fails is logged: the yes stands over it (keepForgotten), and it goes once the group is held.
+		await this.#parts.host
+			.handle({ cmd: "drop_forgotten", conversation_id: conversationId })
+			.catch((error: unknown) => {
+				console.error("[e2e] A forgotten group's record waits to go:", error);
+			});
 		this.#unrefuse(conversationId);
 		this.#accepted.set(conversationId, { generation, people });
 		this.#set(conversationId, null);
@@ -1514,7 +1540,10 @@ export class Conversations {
 		return true;
 	}
 
-	/** A conversation this device is no longer in: nothing waits for it, its retries and its commits' with it. */
+	/**
+	 * A conversation this device is no longer in: nothing waits for it, its retries and its commits' with it. Its records
+	 * stay, this device's and the core's of a forgotten group: the API's word lets neither go (#594's review, I1).
+	 */
 	#drop(id: string) {
 		this.#retries.get(id)?.cancel();
 		this.#inFlight.get(id)?.cancel?.();

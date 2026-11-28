@@ -5,9 +5,9 @@
 // conversation. For one the person made here, this user and those they picked, of the kind they asked for, as it's
 // made: it goes once this device holds its group, which changes only by its own rules from then on. For a group this
 // device let go, as the API holds none or another one (#553), the core's record of it (forget_group's, `exact`): kept as
-// the core gave it, in the place of what was kept, which is back once the device holds the group again. The session
-// holds what it made or let go, so a store that can't keep it (its storage full or refused) still holds the
-// conversation to it until the app closes.
+// the core gave it, in the place of what was kept, which is back once the device holds the group again; the core keeps
+// it too, and a start takes back each one the core gives, the newest (#594). The session holds what it made or let go,
+// so a store that can't keep it (its storage full or refused) still holds the conversation to it until the app closes.
 import type { Conversation } from "$lib/api/conversations";
 import { sameUsers } from "./members";
 import type { EngineStore } from "./store";

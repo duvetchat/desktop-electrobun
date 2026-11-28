@@ -2335,4 +2335,277 @@ describe.skipIf(!coreLibrary)("a group the API doesn't hold is let go for the AP
 		},
 		SLOW,
 	);
+
+	// #594: the core keeps the record of each group it let go (its forgotten), until the device holds the conversation's
+	// group again or its client lets the record go (drop_forgotten).
+
+	/** The records the device's core keeps of the groups it let go. */
+	const keptBy = async (device: TestDevice) =>
+		(
+			await device.host.handle<{
+				records: { conversation_id: string; expected: { owner?: string; members: string[]; exact?: true } }[];
+			}>({ cmd: "forgotten" })
+		).records;
+
+	/**
+	 * A group of Ana (its owner), Bo and Cy, a device each in it. Bo's next session is told there's no group, and his
+	 * device lets it go, its record Ana, Bo and Cy, owner Ana: on a store that keeps no records when `lost`, as a close
+	 * between the core's forget and the app's own write leaves it; when `hidden`, one listing of his (a READY's) then
+	 * leaves the conversation out, as a server may. His engine stops; Ana restarts the group by hand, without Cy, as its
+	 * owner may, a key package of Bo's device in it, her engine stopped too; and the API lists the group to Bo again.
+	 * `record` is Bo's store as it was left.
+	 */
+	async function forgottenThenWithoutCy(lost: boolean, hidden = false) {
+		const fake = new FakeApi();
+		const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
+		useFake(fake);
+		const conversation = fake.addConversation({ type: "group", members: [ana, bo, cy], owner: ana });
+		const a = await firstDevice(fake, ana);
+		let b = await firstDevice(fake, bo);
+		const c = await firstDevice(fake, cy);
+		await madeHere(a, conversation);
+		await a.engine.openConversation(conversation);
+		await sameGroup([a, b, c], conversation);
+		let lying = true;
+		let hiding = false;
+		fake.conversationsAs = (view, viewer) => {
+			if (viewer !== bo || view.id !== conversation) return view;
+			if (hiding) return null;
+			return lying ? { ...view, mls: null } : view;
+		};
+		const record = b.store;
+		b = await restarted(fake, b, lost ? { store: refusingStore(record, LEGACY_RECORDS) } : {});
+		expect(await groupOf(b, conversation)).toBeNull();
+		if (hidden) {
+			hiding = true;
+			b.connect(b.registered.at(-1) ?? null);
+			await turnEnded(b);
+			hiding = false;
+		}
+		await b.engine.stop();
+		await a.engine.stop();
+		await a.host.open(ana);
+		const key_packages: Record<string, string[]> = {};
+		for (const user of [ana, bo]) {
+			key_packages[user] = (await a.api.claimKeyPackages(user)).key_packages.map((kp) => kp.data);
+		}
+		const made = await a.host.handle<{
+			generation: number;
+			commit: string;
+			group_info: string;
+			initial_group_info: string;
+			welcome: string;
+		}>({ cmd: "reset_group", conversation_id: conversation, owner: ana, members: [ana, bo], key_packages });
+		const { generation, commit, group_info, initial_group_info, welcome } = made;
+		const taken = await a.api.commit(conversation, {
+			...{ generation, epoch: 0, commit, group_info, initial_group_info, welcome },
+		});
+		await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: taken.seq });
+		lying = false;
+		return { fake, ana, bo, cy, a, b, record, conversation };
+	}
+
+	// A close between the core's forget and the app's own write of the record left the core's copy alone: the next start
+	// takes it back before anything brings the group back, and what does is held to it, here the restart without Cy.
+	test(
+		"a record the core kept and the app lost holds what brings the group back after the next start",
+		async () => {
+			const { fake, ana, bo, cy, b: closed, record, conversation } = await forgottenThenWithoutCy(true);
+			expect(record.read(LEGACY_RECORDS)).toBeNull();
+			await closed.host.open(bo);
+			const kept = await keptBy(closed);
+			expect(kept.map(({ conversation_id }) => conversation_id)).toEqual([conversation]);
+			expect(kept[0]?.expected).toMatchObject({ owner: ana, exact: true });
+			expect(kept[0]?.expected.members.toSorted()).toEqual([ana, bo, cy].toSorted());
+			// Bo's app again, its record as the close left it.
+			const b = await restarted(fake, closed, { store: record });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(record.read<Record<string, unknown>>(LEGACY_RECORDS)?.[conversation]).toEqual(kept[0]?.expected);
+		},
+		SLOW,
+	);
+
+	// The core's record is always the newest (a forget needs the group held, and holding it again lets the core's go):
+	// one it gives back takes the place of an older forget's the app kept, as a second forget whose own write was lost
+	// leaves them (#594's review, M1), and what brings the group back is held to the newer one.
+	test(
+		"a record the core gives back takes the place of an older forget's the app kept",
+		async () => {
+			const { fake, ana, bo, cy, b: closed, record, conversation } = await forgottenThenWithoutCy(false);
+			await closed.host.open(bo);
+			const kept = await keptBy(closed);
+			expect(kept[0]?.expected.members.toSorted()).toEqual([ana, bo, cy].toSorted());
+			// The app's record is an earlier forget's, from before Cy was in the group: the restart without Cy has its people.
+			record.write(LEGACY_RECORDS, { [conversation]: { owner: ana, members: [ana, bo], exact: true } });
+			// Bo's app again, with no session copy of the record (a store object of its own over the same record).
+			const store: EngineStore = { read: (key) => record.read(key), write: (key, value) => record.write(key, value) };
+			const b = await restarted(fake, closed, { store });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(record.read<Record<string, unknown>>(LEGACY_RECORDS)?.[conversation]).toEqual(kept[0]?.expected);
+		},
+		SLOW,
+	);
+
+	// A take-back that fails (a host that refuses forgotten, as a cut call does) fails the start (#594's review, M3): the
+	// device isn't ready, so nothing brings a group back without the record it would have taken back; the start goes
+	// again, and then the record holds.
+	test(
+		"a start whose take-back fails is never ready, and brings no group back until it goes again",
+		async () => {
+			const { fake, b: closed, record, conversation } = await forgottenThenWithoutCy(true);
+			const log: string[] = [];
+			let refusing = true;
+			const host = watchedHost(closed.host, log, (cmd) =>
+				refusing && cmd === "forgotten" ? new Error("the core didn't answer") : null,
+			);
+			const b = await restarted(fake, closed, { store: record, host });
+			await turnEnded(b);
+			expect(log).toContain("forgotten");
+			expect(b.engine.state.name).toBe("starting");
+			expect(b.states.map((state) => state.name)).not.toContain("ready");
+			expect(log.filter((cmd) => ["apply", "create_group", "join_external"].includes(cmd))).toEqual([]);
+			expect(await groupOf(b, conversation)).toBeNull();
+			// The start goes again at the next READY: the record is taken back, and the restart without Cy refused.
+			refusing = false;
+			b.connect(b.registered.at(-1) ?? null);
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
+	// While a start whose take-back failed waits to go again, the inbox doesn't make the device ready: a rotation's transfer
+	// another device of the user sends is taken, and the state waits for the start that goes again, after its take-back
+	// (#594's review fixes, concern 4 of their report).
+	test(
+		"a rotation's transfer doesn't make ready a start whose take-back failed",
+		async () => {
+			const fake = new FakeApi();
+			const bo = fake.addUser();
+			useFake(fake);
+			const first = await firstDevice(fake, bo);
+			const second = await approvedDevice(fake, first);
+			const log: string[] = [];
+			let refusing = true;
+			const host = watchedHost(first.host, log, (cmd) =>
+				refusing && cmd === "forgotten" ? new Error("the core didn't answer") : null,
+			);
+			const b = await restarted(fake, first, { host });
+			await turnEnded(b);
+			expect(b.engine.state.name).toBe("starting");
+			// The second device's change of keys: its transfer goes to the first device's inbox once the new key is saved.
+			await second.engine.changeKeys();
+			await second.engine.keySaved();
+			await until(() => log.includes("receive_direct"), { what: "Bo's first device taking the rotation's transfer" });
+			await turnEnded(b);
+			expect(b.states.map((state) => state.name)).not.toContain("ready");
+			// The start goes again at the next READY, takes the records back, and only then is the device ready.
+			refusing = false;
+			b.connect(b.registered.at(-1) ?? null);
+			await until(() => b.engine.state.name === "ready", { what: "Bo's first device ready after its start" });
+		},
+		SLOW,
+	);
+
+	// A server that leaves the conversation out of one listing doesn't have the core let its record go (#594's review,
+	// I1): a record whose own write never landed is the core's alone, the next start takes it back, and the group the
+	// server makes meanwhile is refused.
+	test(
+		"a record kept in the core alone outlives a listing that leaves its conversation out",
+		async () => {
+			const { fake, bo, b: closed, record, conversation } = await forgottenThenWithoutCy(true, true);
+			expect(record.read(LEGACY_RECORDS)).toBeNull();
+			await closed.host.open(bo);
+			expect((await keptBy(closed)).map(({ conversation_id }) => conversation_id)).toEqual([conversation]);
+			const b = await restarted(fake, closed, { store: record });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			expect(await groupOf(b, conversation)).toBeNull();
+		},
+		SLOW,
+	);
+
+	// The person's yes («Open with these members») lets the core's record go too, before the comeback it says yes to:
+	// a start before that comeback takes back nothing from before the yes, and asks nothing again.
+	test(
+		"the person's yes lets the core's record go, and a start before its comeback asks nothing again",
+		async () => {
+			const { fake, bo, a: stopped, b: away, conversation } = await forgottenThenWithoutCy(false);
+			// Bo's next session refuses the group without Cy, its record's, and asks; the app closes as his yes's comeback
+			// is made.
+			const host = answeringHost(away.host, (command) =>
+				command.cmd === "join_external" ? Promise.reject(new Error("the app closed")) : undefined,
+			);
+			const b = await restarted(fake, away, { host });
+			await until(() => b.engine.conversationState(conversation)?.name === "members_changed", {
+				what: "Bo's device refusing the group without Cy",
+			});
+			await rejection(sayYes(b, conversation));
+			expect(await groupOf(b, conversation)).toBeNull();
+			expect(await keptBy(b)).toEqual([]);
+			// The next start: the comeback goes, and nothing is asked again.
+			await b.engine.stop();
+			const asked: string[] = [];
+			const back = testDevice(fake, bo, { host: away.host, store: b.store, token: b.token });
+			back.engine.onConversation((id, state) => {
+				if (id === conversation && state) asked.push(state.name);
+			});
+			await back.engine.start();
+			const a = await restarted(fake, stopped);
+			await sameGroup([a, back], conversation);
+			expect(asked).not.toContain("members_changed");
+		},
+		SLOW,
+	);
+
+	// When the API no longer lists the conversation for the user (it left, was taken out, or the API deleted it), the
+	// core keeps the record of its forgotten group, as the engine keeps its own (#594's review, I1): the API's word lets
+	// neither go, not as the engine lets the conversation go, nor at a listing that leaves it out.
+	test(
+		"a forgotten group's record stays in the core once the API no longer lists its conversation",
+		async () => {
+			const fake = new FakeApi();
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			useFake(fake);
+			const left = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const deleted = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const a = await firstDevice(fake, ana);
+			let b = await firstDevice(fake, bo);
+			for (const conversation of [left, deleted]) {
+				await madeHere(a, conversation);
+				await a.engine.openConversation(conversation);
+				await sameGroup([a, b], conversation);
+			}
+			// Bo's next session is told neither has a group: his device lets both go. Its READY's listing ends first, so
+			// what the step below holds is the engine's hearing of the removal.
+			fake.conversationsAs = (view, viewer) => (viewer === bo ? { ...view, mls: null } : view);
+			b = await restarted(fake, b);
+			await turnEnded(b);
+			const kept = async () => (await keptBy(b)).map(({ conversation_id }) => conversation_id).toSorted();
+			expect(await kept()).toEqual([left, deleted].toSorted());
+			// He's taken out of one, which his engine lets go as it hears of it.
+			expect(b.engine.conversationState(left)).toEqual({ name: "wait_owner", owner: ana });
+			fake.dropMembers(left, [bo]);
+			fake.tell(bo, { type: "CONVERSATION_UPDATE", data: { id: left, name: null, owner_id: ana } });
+			await turnEnded(b);
+			expect(b.engine.conversationState(left)).toBeNull();
+			expect(await kept()).toEqual([left, deleted].toSorted());
+			// The other is deleted while his app is closed: the next start's listing leaves it out.
+			await b.engine.stop();
+			fake.deleteConversation(deleted);
+			b = await restarted(fake, b);
+			await turnEnded(b);
+			expect(await kept()).toEqual([left, deleted].toSorted());
+		},
+		SLOW,
+	);
 });
