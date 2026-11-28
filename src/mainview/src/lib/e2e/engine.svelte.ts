@@ -6,6 +6,7 @@
 // conversation says of its group, and conversation-content.svelte.ts what the device holds of their messages. The hosts
 // load with the engine's start, never with a page.
 import { get } from "svelte/store";
+import { forgetAccount } from "$lib/accounts";
 import { withSentMessage } from "$lib/arrivals";
 import type { UploadOptions } from "$lib/api/api";
 import { logout, onSignOut, signOutLimits } from "$lib/api/auth";
@@ -780,9 +781,15 @@ export const finishKeysWithout = () => onDevices("finishKeysWithout", undefined,
  */
 export const alsoRemoved = () => onDevices("alsoRemoved", undefined, (made) => made.alsoRemoved());
 
-/** Remove this device and delete its data (decision 13): its data goes, then the person is signed out. */
+/**
+ * Remove this device and delete its data (decision 13): its data goes, then the person is signed out, their account
+ * leaving the saved ones first, as Settings' Sign out has it leave (#615): switching to it would land on signing in.
+ */
 export async function removeThisDevice(): Promise<void> {
 	await onDevices("removeThisDevice", undefined, (made) => made.removeThisDevice());
-	if (pageUser) forgetDevice(pageUser);
+	if (pageUser) {
+		forgetDevice(pageUser);
+		forgetAccount(pageUser);
+	}
 	await logout();
 }
