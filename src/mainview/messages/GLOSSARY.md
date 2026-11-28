@@ -31,7 +31,7 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 | ru | вы | Lower-case *вы*, as Russian apps write it. Quotes «…». Write *ё* where it belongs. Kick is *выгнать*, ban *забанить* (*бан*, *разбанить*); *заблокировать* is only for blocking a person. |
 | uk | ви | Lower-case *ви*. Quotes «…». Ukrainian words, never Russian ones; ’ (U+2019) for the apostrophe in words (*об’єкт*). |
 | zh-CN | 你 | Simplified characters, mainland words (*文件*, *设置*, *视频*). Full-width punctuation (，。？：（）), quotes “…”, no space between Chinese and Latin letters or numbers. |
-| zh-TW | 你 | Traditional characters, Taiwan's words (*檔案*, *設定*, *影片*, *訊息*), not Simplified turned Traditional. Full-width punctuation, quotes 「…」. |
+| zh-TW | 你 | Traditional characters, Taiwan's words (*檔案*, *設定*, *影片*, *訊息*), not Simplified turned Traditional. Full-width punctuation, quotes 「…」. A space between Chinese and Latin letters, numbers or a placeholder (*前往 Duvet*, *踢出 {name}*), none beside full-width punctuation. Kick is *踢出*, ban *停權*: *對 {name} 停權*. |
 | ja | — | です/ます; leave out *あなた*, as Japanese does. Buttons and menu items as nouns or plain verbs (*保存*, *キャンセル*). Full-width punctuation (、。？), quotes 「…」. |
 | ko | — | 해요체; leave out *당신*. Buttons and menu items as nouns (*저장*, *취소*). After a placeholder, both particles: *을(를)*, *이(가)*. Quotes “…”. |
 | th | คุณ | Polite and neutral, without ครับ/ค่ะ. No full stop at a sentence's end: a space between sentences. Quotes “…”. |
