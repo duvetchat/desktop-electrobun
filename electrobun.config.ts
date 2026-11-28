@@ -81,6 +81,9 @@ export default {
 			"src/mainview/build/sounds": "views/mainview/sounds",
 			"src/mainview/build/badges": "views/mainview/badges",
 			"src/mainview/build/rnnoise-worklet-processor.js": "views/mainview/rnnoise-worklet-processor.js",
+			// The Licenses page's notices, which the page's build writes from what it ships (#628,
+			// src/mainview/third-party-notices.ts), and the page fetches beside the pages.
+			"src/mainview/build/licenses.json": "views/mainview/licenses.json",
 
 			"src/mainview/build/app.html": "views/mainview/app.html",
 			"src/mainview/build/index.html": "views/mainview/index.html",
@@ -92,6 +95,7 @@ export default {
 			"src/mainview/build/reset-password.html": "views/mainview/reset-password.html",
 			"src/mainview/build/change-email.html": "views/mainview/change-email.html",
 			"src/mainview/build/invite.html": "views/mainview/invite.html",
+			"src/mainview/build/licenses.html": "views/mainview/licenses.html",
 
 			// The pages of the app's other windows (the media controls' pop-out, Settings): one rule each, from their one
 			// list (src/mainview/src/lib/app-windows.ts). Without its rule a page loads in the dev build and answers 404 in

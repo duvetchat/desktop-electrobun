@@ -1,6 +1,7 @@
 # The core's artifacts (scripts/core-artifacts.ts), byte for byte as their release has them: native/core/SOURCE.json
 # holds each one's SHA-256, so no checkout converts their line endings, and a diff of them would say nothing.
 native/core/*/* binary
+native/core/THIRD-PARTY-NOTICES.txt binary
 src/mainview/src/lib/e2e/wasm/* binary
 # Beside them, the glue's types, written by hand: a text file like any other.
 src/mainview/src/lib/e2e/wasm/*.d.ts text diff merge

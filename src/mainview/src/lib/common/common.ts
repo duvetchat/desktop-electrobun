@@ -9,6 +9,7 @@ const routes: Record<string, string> = {
 	"/sign-up.html": "/sign-up",
 	"/forgot-password.html": "/forgot-password",
 	"/invite.html": "/invite",
+	"/licenses.html": "/licenses",
 	"/verify.html": "/verify",
 	"/reset-password.html": "/reset-password",
 	"/change-email.html": "/change-email",

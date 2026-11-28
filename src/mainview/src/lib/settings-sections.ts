@@ -13,6 +13,8 @@ export const SETTINGS_SECTIONS = [
 	"buckets",
 	"developer",
 	"devices",
+	// The notices of what the app ships (#628, components/Licenses.svelte).
+	"licenses",
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
