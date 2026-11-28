@@ -5,6 +5,7 @@
 	import { ERROR_NOTE, spinnerClass } from "$lib/overlay-forms";
 	import { getInvite, joinInvite } from "$lib/api/invites";
 	import type { InviteInfo } from "$lib/api/invites";
+	import { t } from "$lib/i18n";
 
 	let {
 		open = $bindable(false),
@@ -44,7 +45,7 @@
 		try {
 			invite = await getInvite(c);
 		} catch (err) {
-			loadError = getApiError(err, "Invite not found or has expired.");
+			loadError = getApiError(err, t("people_invite_not_found"));
 		} finally {
 			loading = false;
 		}
@@ -58,17 +59,17 @@
 			await joinInvite(code);
 			open = false;
 		} catch (err) {
-			joinError = getApiError(err, "Couldn't join the Space.");
+			joinError = getApiError(err, t("people_join_failed"));
 		} finally {
 			joining = false;
 		}
 	}
 </script>
 
-<Sheet bind:open title="Join a Space" class="max-w-[420px]">
+<Sheet bind:open title={t("people_join_title")} class="max-w-[420px]">
 	{#if loading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-8">
-			<div class={spinnerClass("lg")} role="status" aria-label="Loading the invite"></div>
+			<div class={spinnerClass("lg")} role="status" aria-label={t("people_invite_loading")}></div>
 		</div>
 	{:else if loadError}
 		<p class="text-duvet-danger py-6 text-center text-[13px]">
@@ -93,10 +94,7 @@
 				{/if}
 				<div class="mt-1 flex items-center gap-1.5">
 					<span class="bg-duvet-alive inline-block size-2 rounded-full"></span>
-					<span class="text-duvet-ink2 text-xs"
-						>{invite.member_count}
-						{invite.member_count === 1 ? "member" : "members"}</span
-					>
+					<span class="text-duvet-ink2 text-xs">{t("people_join_member_count", { count: invite.member_count })}</span>
 				</div>
 			</div>
 		</div>
@@ -106,9 +104,9 @@
 		{/if}
 
 		<div class="mt-1 flex items-center justify-end gap-2">
-			<Button variant="quiet" onclick={() => (open = false)}>Cancel</Button>
+			<Button variant="quiet" onclick={() => (open = false)}>{t("dialog_cancel")}</Button>
 			<Button onclick={handleJoin} disabled={joining}>
-				{joining ? "Joining…" : "Accept invite"}
+				{joining ? t("people_join_joining") : t("people_join_accept")}
 			</Button>
 		</div>
 	{/if}

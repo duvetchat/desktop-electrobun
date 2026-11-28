@@ -7,6 +7,8 @@ import { ActivityImages, fetchImageBytes, IpcActivities, PAGE_WAIT_MS, within } 
 import { COPY_FETCH_MS, MAX_COPIED_BYTES, pictureToCopy } from "./copy-image";
 import { copySecret, macPasteboard, windowsClipboard } from "./secret-clipboard";
 import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
+import { keptLanguage, language, setLanguage, startingLanguage } from "./i18n";
+import { systemLanguages } from "./system-languages";
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
 import { openUrl, parseOpenUrl, type NotificationLink } from "./notification-links";
@@ -114,6 +116,9 @@ type AppRPCSchema = {
 			pendingUpdate: { params: void; response: UpdateOffer | null };
 			// Where the YouTube relay listens (player-relay.ts), or null when it didn't start.
 			playerRelay: { params: void; response: string | null };
+			// The system's preferred languages, most preferred first, for the page's "Match system" (system-languages.ts,
+			// #464): its web view tells it less. Every window's page asks.
+			systemLanguages: { params: void; response: string[] };
 		};
 		messages: {
 			closeWindow: void;
@@ -147,6 +152,9 @@ type AppRPCSchema = {
 			// A request of the main window's page for the end-to-end encryption core (e2e/rpc.ts), answered with
 			// e2eReply. A message: Electrobun's requests share one time limit, and a command can take long.
 			e2e: E2eMessage;
+			// The language the main window's page is in, at its start and on each change (#464): the menu bar and the
+			// windows' titles take it (i18n.ts).
+			appLanguage: { locale: string };
 		};
 	};
 	webview: {
@@ -309,6 +317,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			copySecret: ({ text }) => copySecretHere(String(text)),
 			pendingUpdate: () => updates.offer,
 			playerRelay: () => playerRelay?.origin ?? null,
+			systemLanguages: () => systemLanguages(),
 		},
 		messages: {
 			closeWindow: () => {
@@ -348,6 +357,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			applyUpdate: () => void updates.apply(),
 			// The main window's alone: the pop-out's RPC (media-window-open.ts) and the Settings windows' have no e2e.
 			e2e: (message) => e2e(message),
+			appLanguage: ({ locale }) => speak(locale),
 			windowTheme: ({ theme }) => {
 				if (!glass || (theme !== "light" && theme !== "dark")) return;
 				if (!setGlassAppearance(win.ptr, theme))
@@ -381,11 +391,31 @@ const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 // bundled, or it didn't load) the window is opaque and the sidebar the solid tint, as before.
 const glass = currentOS === "darwin" && glassAvailable();
 
-// On macOS the editing keys (⌘C, ⌘V, ⌘Z…), ⌘Q, ⌘H and ⌘M are the menu bar's (app-menu.ts). Set right before the
-// window: Electrobun 1.15.1 reads the menu later, on the main thread, from memory nothing keeps (2.0 copies it first),
-// and making the window waits on that thread behind the read, so a GC has next to no time to free that memory first.
-if (currentOS === "darwin") {
+// The language Bun speaks (#464, i18n.ts) until the main window's page says which it's in (appLanguage): the one it
+// said last, kept in the app's data, else the system's. Before the menu bar, which is in it; the system's are read on
+// macOS only, which has one.
+const languageFile = join(Utils.paths.userData, "language.json");
+setLanguage(startingLanguage(readText(languageFile), currentOS === "darwin" ? await systemLanguages(currentOS) : []));
+
+function readText(path: string): string | null {
+	try {
+		return readFileSync(path, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+// The menu bar, in the language Bun speaks. Electrobun 1.15.1 reads it later, on the main thread, from memory nothing
+// keeps (2.0 copies it first): whatever sets it then waits on that thread, behind the read, so a GC has next to no time
+// to free that memory first.
+function setAppMenu() {
 	ApplicationMenu.setApplicationMenu(appMenu("Duvet"));
+}
+
+// On macOS the editing keys (⌘C, ⌘V, ⌘Z…), ⌘Q, ⌘H and ⌘M are the menu bar's (app-menu.ts). Set right before the
+// window, whose making waits on the main thread behind the menu's read.
+if (currentOS === "darwin") {
+	setAppMenu();
 	Electrobun.events.on("application-menu-clicked", (event: unknown) =>
 		runMenuAction(event, {
 			settings: openSettingsFromMenu,
@@ -642,6 +672,26 @@ const settingsWindows = new SettingsWindows({
 // A notice's window, off Windows (e2e/notice-window.ts), made only once the main window is: the menu bar goes first.
 function makeNoticeWindow(options: NoticeWindowOptions): NoticeWindow {
 	return new BrowserWindow({ ...options, renderer: rendererType });
+}
+
+// The main window's page says which language it's in, as it starts and as it changes (#464): the menu bar is made again
+// in it, the windows Bun titles take it, and it's kept for the next start, whose menu is set before any page can say.
+function speak(locale: unknown) {
+	if (!setLanguage(locale)) return;
+	try {
+		mkdirSync(dirname(languageFile), { recursive: true });
+		writeFileSync(languageFile, keptLanguage(language()));
+	} catch (err) {
+		console.error("[language] couldn't keep the app's language:", err);
+	}
+	if (currentOS === "darwin") {
+		setAppMenu();
+		// A question the main thread answers in turn, behind the menu's read (setAppMenu): this thread, and its GC, wait
+		// there until the menu has been read.
+		win.isMinimized();
+	}
+	settingsWindows.retitle();
+	mediaWindows.retitle();
 }
 
 // The app's other windows show what the main window's page shares, and go with it.

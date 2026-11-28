@@ -73,6 +73,15 @@ describe.skipIf(!onMac)("the Objective-C bridge", () => {
 		);
 	});
 
+	// #464: the whole list, where WKWebView's navigator.languages has only the first (system-languages.ts).
+	test("reads the system's preferred languages, each as many as NSLocale has", async () => {
+		const { cls, msg, preferredLanguages } = await load();
+		const languages = preferredLanguages();
+		expect(languages.length).toBe(Number(msg(msg(cls("NSLocale"), "preferredLanguages"), "count")));
+		expect(languages.length).toBeGreaterThan(0);
+		for (const tag of languages) expect(Intl.getCanonicalLocales(tag)).toHaveLength(1);
+	});
+
 	// What the app is handed may not be what this expects (another renderer's view, a later Electrobun): nothing is
 	// sent to an object that wouldn't take it.
 	test("leaves alone a window or a view that isn't one", async () => {

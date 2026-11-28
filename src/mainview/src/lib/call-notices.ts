@@ -1,4 +1,5 @@
-import { MessageType, type CallNotice, type GatewayReadyActiveCall, type Message } from "$lib/types";
+import { richParts, t, type MessageKey, type RichPart } from "$lib/i18n";
+import { authorLabel, MessageType, type CallNotice, type GatewayReadyActiveCall, type Message } from "$lib/types";
 
 /**
  * Which of its sentences a call notice says to whoever reads it (decision 172):
@@ -43,26 +44,42 @@ export function callNoticeCase(
 
 /**
  * How long a call lasted, from when it started ringing to its end: "a few seconds" under a minute, then in whole
- * minutes ("1 minute", "N minutes"), and from an hour in hours and minutes ("1 hour", "N hours M minutes").
+ * minutes ("1 minute", "N minutes"), and from an hour in hours and minutes ("1 hour", "N hours M minutes"), in the
+ * app's language.
  */
 export function callDuration(call: Pick<CallNotice, "started_at" | "ended_at">): string {
 	const ms = Date.parse(call.ended_at) - Date.parse(call.started_at);
 	const minutes = Number.isFinite(ms) ? Math.floor(ms / 60_000) : 0;
-	if (minutes < 1) return "a few seconds";
-	const count = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
-	if (minutes < 60) return count(minutes, "minute");
-	const hours = count(Math.floor(minutes / 60), "hour");
-	return minutes % 60 === 0 ? hours : `${hours} ${count(minutes % 60, "minute")}`;
+	if (minutes < 1) return t("chat_call_duration_seconds");
+	if (minutes < 60) return t("chat_call_duration_minutes", { minutes });
+	const hours = Math.floor(minutes / 60);
+	return minutes % 60 === 0
+		? t("chat_call_duration_hours", { hours })
+		: t("chat_call_duration_hours_minutes", { hours, minutes: minutes % 60 });
 }
 
-/** A call notice's sentence for its reader: before, then the caller's name, which stands out as the pin notice's
- * names do (empty when the sentence says "You" for them), then after. */
-export interface CallNoticeLine {
+/** The sentences a call notice says, one for each case (callNoticeCase) and whether it says "You" for the caller. */
+export type CallNoticeKey = Extract<
+	MessageKey,
+	| "chat_call_notice_started"
+	| "chat_call_notice_you_started"
+	| "chat_call_notice_missed"
+	| "chat_call_notice_you_unanswered"
+	| "chat_call_notice_missed_unanswered"
+	| "chat_call_notice_unanswered"
+>;
+
+/**
+ * A call notice's sentence for its reader, whole: its message, whose <b> tag is the caller's name, which stands out as
+ * the pin notice's names do (no tag when the sentence says "You" for them), and the values it's filled with. The list
+ * draws it with Rich; callNoticeSentence gives its words (the previews, the quotes and the call history).
+ */
+export interface CallNoticeWords {
 	/** The reader missed the call: its phone is red. */
 	missed: boolean;
-	before: string;
-	name: string;
-	after: string;
+	key: CallNoticeKey;
+	/** The caller's name, and how long the call lasted (callDuration). */
+	values: { name: string; duration: string };
 }
 
 /**
@@ -72,34 +89,35 @@ export interface CallNoticeLine {
  * they joined, as the API's list of their calls counts it. Without it (a membership this client doesn't know), the
  * notice reads as one from after.
  */
-export function callNoticeLine(
+export function callNotice(
 	message: Pick<Message, "id" | "type" | "author_id" | "author_name" | "call">,
 	me: string | undefined,
 	joined?: string,
-): CallNoticeLine | null {
+): CallNoticeWords | null {
 	const call = message.type === MessageType.Call ? message.call : undefined;
 	if (!call) return null;
-	const name = message.author_name;
+	const values = { name: authorLabel(message), duration: callDuration(call) };
+	const says = (key: CallNoticeKey, missed = false): CallNoticeWords => ({ missed, key, values });
 	switch (callNoticeCase(call, message.author_id, me, joined !== undefined && message.id < joined)) {
 		case "in":
 		case "before-joining":
-			return message.author_id === me
-				? { missed: false, before: `You started a call that lasted ${callDuration(call)}.`, name: "", after: "" }
-				: { missed: false, before: "", name, after: ` started a call that lasted ${callDuration(call)}.` };
+			return says(message.author_id === me ? "chat_call_notice_you_started" : "chat_call_notice_started");
 		case "missed":
-			return { missed: true, before: "You missed a call from ", name, after: ` that lasted ${callDuration(call)}.` };
+			return says("chat_call_notice_missed", true);
 		case "unanswered":
-			return { missed: false, before: "You started a call. No one answered.", name: "", after: "" };
+			return says("chat_call_notice_you_unanswered");
 		case "missed-unanswered":
-			return { missed: true, before: "You missed a call from ", name, after: "." };
+			return says("chat_call_notice_missed_unanswered", true);
 		case "before-joining-unanswered":
-			return { missed: false, before: "", name, after: " started a call. No one answered." };
+			return says("chat_call_notice_unanswered");
 	}
 }
 
-/** A call notice's whole sentence. */
-export function callNoticeText(line: CallNoticeLine): string {
-	return line.before + line.name + line.after;
+const wordsOf = (part: RichPart) => (typeof part === "string" ? part : part.text);
+
+/** A call notice's whole sentence, as words: the caller's name as the rest. */
+export function callNoticeSentence(notice: CallNoticeWords): string {
+	return richParts(notice.key, notice.values).map(wordsOf).join("");
 }
 
 /**

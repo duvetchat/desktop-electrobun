@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { setLanguage } from "./i18n";
 import {
 	DEFAULT_SIZE,
 	isAppPage,
 	KEEP_AFTER_MS,
+	mediaWindowTitle,
 	MediaWindows,
 	MIN_SIZE,
 	parsePrefs,
@@ -120,7 +122,15 @@ function fakeWindow(id: number, frame: Rect, pinned: boolean) {
 	const handlers = new Map<string, () => void>();
 	const got: WindowStateMessage[] = [];
 	const asked: string[] = [];
-	const state = { frame, pinned, closed: false, readsAfterClose: 0, frameThrows: false, pinThrows: false };
+	const state = {
+		frame,
+		pinned,
+		closed: false,
+		readsAfterClose: 0,
+		frameThrows: false,
+		pinThrows: false,
+		titleThrows: false,
+	};
 	const handle: MediaWindowHandle = {
 		id,
 		focus: () => void asked.push("focus"),
@@ -143,6 +153,10 @@ function fakeWindow(id: number, frame: Rect, pinned: boolean) {
 			if (state.pinThrows) throw new Error("No level");
 			state.pinned = on;
 			asked.push(`onTop ${on}`);
+		},
+		setTitle: (title) => {
+			if (state.titleThrows) throw new Error("No window");
+			asked.push(`title ${title}`);
 		},
 		send: (message) => void got.push(message),
 		on: (event, handler) => void handlers.set(event, handler),
@@ -608,5 +622,31 @@ describe("the main window going", () => {
 		media.mainClosed();
 		media.mainNavigated("views://mainview/sign-in.html");
 		expect(windows).toHaveLength(0);
+	});
+});
+
+// #464: its title is Bun's words, in the app's language, which the main window's page says.
+describe("its title", () => {
+	test("is Voice controls, and takes the language the app changes to", () => {
+		const { media, windows, wish } = fixture();
+		expect(mediaWindowTitle()).toBe("Voice controls");
+		wish(true);
+		try {
+			setLanguage("en-XA");
+			media.retitle();
+			expect(windows[0].asked).toEqual([`title ${mediaWindowTitle()}`]);
+			expect(mediaWindowTitle()).toStartWith("⟦");
+		} finally {
+			setLanguage("en");
+		}
+	});
+
+	test("with no window, or one that is going, nothing breaks", () => {
+		const { media, windows, wish, log } = fixture();
+		expect(() => media.retitle()).not.toThrow();
+		wish(true);
+		windows[0].state.titleThrows = true;
+		expect(() => media.retitle()).not.toThrow();
+		expect(log).toContain("the title wasn't taken: No window");
 	});
 });

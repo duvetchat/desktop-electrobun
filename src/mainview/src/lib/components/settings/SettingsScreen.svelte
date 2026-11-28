@@ -25,6 +25,7 @@
 		Globe as GlobeIcon,
 		Lock as LockIcon,
 		Palette as PaletteIcon,
+		Languages as LanguageIcon,
 		Activity as ActivityIcon,
 		ArrowRightLeft as MoveIcon,
 		Mail as MailIcon,
@@ -63,9 +64,16 @@
 		BIO_MAX_LENGTH,
 	} from "$lib/api/user";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
+	import {
+		accountForUser,
+		activateAccount,
+		forgetAccount as forgetSavedAccount,
+		rememberAccount,
+		type StoredAccount,
+	} from "$lib/accounts";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail } from "$lib/api/auth";
+	import { logInForAccount, sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail } from "$lib/api/auth";
 	import { audioStore, type SoundEvent } from "$lib/stores/audio.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { loadCustomTheme, resetTheme, getThemeUrl, renderMarkdown } from "$lib/markdown";
@@ -105,6 +113,7 @@
 	import { listCameras } from "$lib/camera-devices";
 	import type { CameraChoice, MicChoice } from "$lib/media-state";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import type { OpenChatsMode, SpacesColumnMode } from "$lib/layout-prefs";
 	import { setThemePref, theme } from "$lib/theme.svelte";
 	import { parseThemePref, type ThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
@@ -120,7 +129,6 @@
 	import { storageTransfers, bucketFilesCount } from "$lib/stores/storage-transfers.svelte";
 	import {
 		bucketChoice,
-		countFiles,
 		defaultStorageChoice,
 		DEFAULT_STORAGE,
 		MAX_PICKED_FILES,
@@ -139,9 +147,11 @@
 	import { e2eApi, type Device } from "$lib/api/e2e";
 	import { hasDeviceData } from "$lib/e2e/engine/devices";
 	import ChoiceCards from "./ChoiceCards.svelte";
+	import LanguageSelect from "./LanguageSelect.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
+	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
@@ -171,9 +181,11 @@
 		type SettingsNavGroup,
 	} from "./recipes";
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
-	import { OFFERED, localePref, setLocalePref, systemLanguageName, t } from "$lib/i18n";
+	import { OFFERED, localePref, setLocalePref, systemLanguageName, t, type MessageKey } from "$lib/i18n";
 	import { encryptedFileNames } from "$lib/e2e/decrypted-files.svelte";
-	import { LOCALE_NAMES, parseLocalePref } from "$lib/i18n/locale";
+	import { formatDate, formatNumber } from "$lib/i18n/format";
+	import Rich from "$lib/components/Rich.svelte";
+	import { parseLocalePref } from "$lib/i18n/locale";
 	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
 	import { isImageAttachment, isTextAttachment } from "$lib/attachment-preview";
@@ -233,39 +245,125 @@
 	// behind the account, and the tools for builders.
 	const sectionGroups = $derived<SettingsNavGroup<Section>[]>([
 		{
-			title: "Account",
+			title: t("settings_group_account"),
 			items: [
-				{ id: "account", label: "My account", icon: UserIcon, tile: "#5e6380" },
-				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
+				{ id: "account", label: t("settings_section_account"), icon: UserIcon, tile: "#5e6380" },
+				{ id: "security", label: t("settings_section_security"), icon: ShieldIcon, tile: "#2f9e62" },
 				// Only the app's own page has the encryption engine, which it hands in: a sheet, never a window of its own.
 				...(e2e ? [{ id: "devices" as const, label: t("e2e_devices"), icon: DevicesIcon, tile: "#7a5af8" }] : []),
 				...(desktopApp
-					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
+					? [
+							{
+								id: "activity" as const,
+								label: t("settings_section_activity"),
+								icon: ActivityIcon,
+								tile: "#e44fcb",
+							},
+						]
 					: []),
 			],
 		},
 		{
-			title: "App and media",
+			title: t("settings_group_app_media"),
 			items: [
-				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
-				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
-				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
+				{ id: "appearance", label: t("settings_section_appearance"), icon: PaletteIcon, tile: "#2f4cff" },
+				{ id: "language", label: t("settings_language_title"), icon: LanguageIcon, tile: "#0e8fd6" },
+				{ id: "audio", label: t("settings_section_audio"), icon: VolumeIcon, tile: "#f97316" },
+				{ id: "voice-video", label: t("settings_section_voice_video"), icon: MicIcon, tile: "#e01890" },
 			],
 		},
 		{
-			title: "Files",
+			title: t("settings_group_files"),
 			items: [
-				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
-				{ id: "buckets", label: "S3 buckets", icon: DatabaseIcon, tile: "#0e8fd6" },
+				{ id: "attachments", label: t("settings_section_attachments"), icon: PaperclipIcon, tile: "#0b6fe8" },
+				{ id: "buckets", label: t("settings_section_buckets"), icon: DatabaseIcon, tile: "#0e8fd6" },
 			],
 		},
 		{
-			title: "Developer",
+			title: t("settings_group_developer"),
 			items: [
-				{ id: "developer", label: "Applications", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
+				{
+					id: "developer",
+					label: t("settings_section_developer"),
+					icon: CodeIcon,
+					tile: "#5f45b5",
+					count: $pendingTeamInvites.length,
+				},
 			],
 		},
 	]);
+
+	// ── The accounts signed in on this device ──────────────────────────────────
+	let accounts = $state<StoredAccount[]>([]);
+	let showAddAccount = $state(false);
+	let addAccountEmail = $state("");
+	let addAccountPassword = $state("");
+	let addAccountError = $state("");
+	let addingAccount = $state(false);
+
+	function rememberCurrentAccount() {
+		const user = $currentUser;
+		if (!user) return;
+		const account = accountForUser(user);
+		if (account) accounts = rememberAccount(account);
+	}
+
+	$effect(() => {
+		const user = $currentUser;
+		if (!user) return;
+		const account = accountForUser(user);
+		if (account) accounts = rememberAccount(account);
+	});
+
+	function switchToAccount(account: StoredAccount) {
+		if (account.id === $currentUser?.id) return;
+		// The account in use may have renewed its tokens since the list was read: keep what's current before leaving it.
+		rememberCurrentAccount();
+		activateAccount(account);
+		void host.switchAccount();
+	}
+
+	async function removeSavedAccount(account: StoredAccount) {
+		await confirmAction(
+			t("settings_accounts_remove_confirm", { name: account.name }),
+			t("settings_accounts_remove"),
+			async () => {
+				accounts = forgetSavedAccount(account.id);
+			},
+		);
+	}
+
+	async function addAccount() {
+		if (addingAccount || !addAccountEmail.trim() || !addAccountPassword) return;
+		addingAccount = true;
+		addAccountError = "";
+		try {
+			const result = await logInForAccount({ email: addAccountEmail.trim(), password: addAccountPassword });
+			const user = result.user;
+			accounts = rememberAccount({
+				id: user.id,
+				name: user.alias ?? user.username,
+				username: user.username,
+				avatar: user.avatar,
+				accessToken: result.token,
+				refreshToken: result.sessionToken,
+			});
+			addAccountEmail = "";
+			addAccountPassword = "";
+			showAddAccount = false;
+			toast(t("settings_accounts_added"), "success");
+		} catch (err) {
+			addAccountError = err instanceof Error ? err.message : String(err);
+		} finally {
+			addingAccount = false;
+		}
+	}
+
+	function signOut() {
+		const id = $currentUser?.id;
+		if (id) accounts = forgetSavedAccount(id);
+		void host.logout();
+	}
 
 	// Attachments state
 	const attachmentHost = getHostURL();
@@ -339,7 +437,7 @@
 				}
 			}
 		} catch (err) {
-			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, "Couldn't load");
+			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, t("settings_load_failed"));
 		} finally {
 			if (loadId === attachmentsLoadId) attachmentsLoading = false;
 		}
@@ -362,22 +460,34 @@
 
 	async function handleDeleteAttachment(id: string) {
 		const att = attachments.find((a) => a.id === id);
-		const name = att?.filename ?? "this file";
-		await confirmAction(`Delete "${name}"?`, "Delete", async () => {
-			await deleteMyAttachment(id);
-			attachments = attachments.filter((a) => a.id !== id);
-			selectedForDelete.delete(id);
-			await refreshStorageStatus();
-		});
+		const question = att
+			? t("settings_attachment_delete_confirm", { name: att.filename })
+			: t("settings_attachment_delete_confirm_unnamed");
+		await confirmAction(
+			question,
+			t("settings_delete"),
+			async () => {
+				await deleteMyAttachment(id);
+				attachments = attachments.filter((a) => a.id !== id);
+				selectedForDelete.delete(id);
+				await refreshStorageStatus();
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleDeleteAll() {
-		await confirmAction("Delete all your attachments? This cannot be undone.", "Delete", async () => {
-			await deleteAllMyAttachments();
-			attachments = [];
-			selectedForDelete.clear();
-			await refreshStorageStatus();
-		});
+		await confirmAction(
+			t("settings_attachments_delete_all_confirm"),
+			t("settings_delete"),
+			async () => {
+				await deleteAllMyAttachments();
+				attachments = [];
+				selectedForDelete.clear();
+				await refreshStorageStatus();
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	function toggleDeleteSelection(id: string) {
@@ -390,8 +500,8 @@
 		if (ids.length === 0) return;
 		const count = ids.length;
 		await confirmAction(
-			`Delete ${count} selected attachment${count === 1 ? "" : "s"}? This cannot be undone.`,
-			"Delete",
+			t("settings_attachments_delete_selected_confirm", { count }),
+			t("settings_delete"),
 			async () => {
 				const results = await Promise.allSettled(ids.map((id) => deleteMyAttachment(id)));
 				const deleted = new Set(ids.filter((_, i) => results[i]?.status === "fulfilled"));
@@ -401,6 +511,7 @@
 				const failure = results.find((result) => result.status === "rejected");
 				if (failure) throw failure.reason;
 			},
+			t("settings_delete_busy"),
 		);
 	}
 
@@ -429,7 +540,7 @@
 			buckets = await getMyBuckets();
 			myBuckets.set(buckets);
 		} catch (e) {
-			bucketsError = getApiError(e, "Couldn't load");
+			bucketsError = getApiError(e, t("settings_load_failed"));
 		} finally {
 			bucketsLoading = false;
 		}
@@ -491,7 +602,7 @@
 				resetBucketForm();
 				await loadBuckets();
 			} catch (e) {
-				bucketsError = getApiError(e, "Couldn't save");
+				bucketsError = getApiError(e, t("settings_save_failed"));
 			} finally {
 				bucketSaving = false;
 			}
@@ -501,9 +612,10 @@
 			await doSave();
 		} else {
 			await confirmAction(
-				"You are about to connect external storage credentials. Make sure you own and trust these credentials. The bucket owner can read, modify, or delete your files and revoke access at any time.",
-				"Yes, add bucket",
+				t("settings_bucket_add_confirm"),
+				t("settings_bucket_add_confirm_button"),
 				doSave,
+				t("settings_bucket_add_busy"),
 			);
 		}
 	}
@@ -512,18 +624,23 @@
 		const b = buckets.find((x) => x.id === id);
 		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
 		if (!b) return;
-		await confirmAction(`Delete bucket "${b.name}"?`, "Delete", async () => {
-			try {
-				await deleteMyBucket(id);
-			} catch (err) {
-				// Deleting it would break its files: offer to move them or delete them with it.
-				const files = bucketFilesCount(err);
-				if (files === null || !b) throw err;
-				bucketFilesRequest = { bucket: b, files };
-				return;
-			}
-			await afterBucketDeleted(id);
-		});
+		await confirmAction(
+			t("settings_bucket_delete_confirm", { name: b.name }),
+			t("settings_delete"),
+			async () => {
+				try {
+					await deleteMyBucket(id);
+				} catch (err) {
+					// Deleting it would break its files: offer to move them or delete them with it.
+					const files = bucketFilesCount(err);
+					if (files === null || !b) throw err;
+					bucketFilesRequest = { bucket: b, files };
+					return;
+				}
+				await afterBucketDeleted(id);
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function deleteBucketWithFiles(bucket: StorageBucket) {
@@ -548,7 +665,7 @@
 			}
 			await loadBuckets();
 		} catch (e) {
-			toast(getApiError(e, "Couldn't toggle bucket"), "error");
+			toast(getApiError(e, t("settings_bucket_toggle_failed")), "error");
 		} finally {
 			togglingBucketId = null;
 		}
@@ -569,9 +686,11 @@
 	let movingBucketId = $state<string | null>(null);
 	let bucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
 
-	function storageLabel(bucketId: string | null): string {
-		if (bucketId === null) return "Default storage";
-		return buckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId) ?? "another bucket";
+	/** A bucket's name for a transfer's card; null for one whose name isn't known, and for the default storage (null),
+	 * which the card's sentences say in words of their own. */
+	function storageLabel(bucketId: string | null): string | null {
+		if (bucketId === null) return null;
+		return buckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId);
 	}
 
 	function openMovePicked() {
@@ -598,7 +717,7 @@
 			myBuckets.set(bucketList);
 			storageTransfers.nameBuckets(bucketList);
 			if (files.length === 0) {
-				toast(`"${bucket.name}" has no files.`, "info");
+				toast(t("settings_bucket_no_files", { name: bucket.name }), "info");
 				return;
 			}
 			moveSourceId = bucket.id;
@@ -606,7 +725,7 @@
 			moveFilter = {};
 			moveOpen = true;
 		} catch (err) {
-			toast(getApiError(err, "Couldn't load the bucket's files"), "error");
+			toast(getApiError(err, t("settings_bucket_files_load_failed")), "error");
 		} finally {
 			movingBucketId = null;
 		}
@@ -639,9 +758,9 @@
 		sendingVerification = true;
 		try {
 			await sendVerificationEmail();
-			toast("Verification email sent! Check your inbox.", "success");
+			toast(t("settings_email_verification_sent"), "success");
 		} catch (err) {
-			toast(getApiError(err, "Couldn't send verification email"), "error");
+			toast(getApiError(err, t("settings_email_verification_failed")), "error");
 		} finally {
 			sendingVerification = false;
 		}
@@ -654,9 +773,9 @@
 		sendingReset = true;
 		try {
 			await sendResetPasswordEmail();
-			toast("Reset password email sent! Check your inbox.", "success");
+			toast(t("settings_password_reset_sent"), "success");
 		} catch (err) {
-			toast(getApiError(err, "Couldn't send reset password email"), "error");
+			toast(getApiError(err, t("settings_password_reset_failed")), "error");
 		} finally {
 			sendingReset = false;
 		}
@@ -716,15 +835,15 @@
 		try {
 			if (!url) {
 				await resetTheme();
-				toast("Theme reset to default", "success");
+				toast(t("settings_code_theme_reset"), "success");
 			} else {
 				await loadCustomTheme(url);
-				toast("Code theme applied", "success");
+				toast(t("settings_code_theme_applied"), "success");
 			}
 			themeVersion++;
 			host.codeThemeChanged(url);
 		} catch (e) {
-			toast(getApiError(e, "Couldn't load theme"), "error");
+			toast(getApiError(e, t("settings_code_theme_failed")), "error");
 		} finally {
 			savingTheme = false;
 		}
@@ -739,10 +858,10 @@
 		sendingEmailChange = true;
 		try {
 			await sendChangeEmail(newEmail.trim());
-			toast("Verification email sent to your new address. Check your inbox.", "success");
+			toast(t("settings_email_change_sent"), "success");
 			newEmail = "";
 		} catch (err) {
-			toast(getApiError(err, "Couldn't send email change request"), "error");
+			toast(getApiError(err, t("settings_email_change_failed")), "error");
 		} finally {
 			sendingEmailChange = false;
 		}
@@ -832,7 +951,10 @@
 	// How far a new avatar or banner has gone up while the profile saves, in percent, which Save says: null until its
 	// first progress, and while nothing new goes up.
 	let profileUploadPercent = $state<number | null>(null);
-	let saveError = $state<string | null>(null);
+	// A save that failed, kept as it failed: the save bar, which shows in every section, Appearance among them, says it in
+	// the language of the moment.
+	let saveFailure = $state<{ err: unknown } | null>(null);
+	const saveError = $derived(saveFailure ? getApiError(saveFailure.err, t("settings_profile_save_failed")) : null);
 	let saveSuccess = $state(false);
 	// Characters as the API counts them (code points), not the UTF-16 units maxlength would: an emoji is one.
 	const bioLength = $derived([...bio.trim()].length);
@@ -844,7 +966,7 @@
 			username = $currentUser.username ?? "";
 			alias = $currentUser.alias ?? "";
 			bio = $currentUser.custom ?? "";
-			saveError = null;
+			saveFailure = null;
 			saveSuccess = false;
 		}
 	});
@@ -883,7 +1005,7 @@
 	// Signing out keeps this device and its data (decision 13); deleting them is the dialog's other way out, which asks
 	// first with what it loses, by the devices it reads as it opens.
 	function askToSignOut() {
-		if (!e2e) return void host.logout();
+		if (!e2e) return signOut();
 		signOutOpen = true;
 		void loadDevices();
 	}
@@ -1027,14 +1149,14 @@
 			clearBotBanner();
 			pendingBotAvatar = null;
 			pendingBotBanner = null;
-			toast("Bot profile updated", "success");
+			toast(t("settings_bot_profile_saved"), "success");
 			// Refresh bot user data
 			if (app.bot_user_id) {
 				const fresh = await getBotUser(app.bot_user_id).catch(() => null);
 				if (fresh) botUsers = { ...botUsers, [app.bot_user_id]: fresh };
 			}
 		} catch (e) {
-			toast(getApiError(e, "Couldn't update bot"), "error");
+			toast(getApiError(e, t("settings_bot_profile_save_failed")), "error");
 		} finally {
 			savingBotProfile = false;
 			botUploadPercent = null;
@@ -1046,7 +1168,7 @@
 		try {
 			devTeams = await listTeams();
 		} catch (e) {
-			toast(getApiError(e, "Couldn't load teams"), "error");
+			toast(getApiError(e, t("settings_teams_load_failed")), "error");
 		} finally {
 			devLoading = false;
 		}
@@ -1068,7 +1190,7 @@
 			});
 			botUsers = map;
 		} catch (e) {
-			toast(getApiError(e, "Couldn't load team details"), "error");
+			toast(getApiError(e, t("settings_team_load_failed")), "error");
 		} finally {
 			devAppsLoading = false;
 		}
@@ -1083,22 +1205,27 @@
 			devNewTeamName = "";
 			await selectTeam(team);
 		} catch (e) {
-			toast(getApiError(e, "Couldn't create team"), "error");
+			toast(getApiError(e, t("settings_team_create_failed")), "error");
 		} finally {
 			devCreatingTeam = false;
 		}
 	}
 
 	async function handleDeleteTeam(team: Team) {
-		await confirmAction(`Delete team "${team.name}"? All applications will be deleted.`, "Delete", async () => {
-			await deleteTeam(team.id);
-			devTeams = devTeams.filter((kept) => kept.id !== team.id);
-			if (devSelectedTeam?.id === team.id) {
-				devSelectedTeam = null;
-				devApps = [];
-				devMembers = [];
-			}
-		});
+		await confirmAction(
+			t("settings_team_delete_confirm", { name: team.name }),
+			t("settings_delete"),
+			async () => {
+				await deleteTeam(team.id);
+				devTeams = devTeams.filter((kept) => kept.id !== team.id);
+				if (devSelectedTeam?.id === team.id) {
+					devSelectedTeam = null;
+					devApps = [];
+					devMembers = [];
+				}
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleSaveTeamEdit() {
@@ -1109,7 +1236,7 @@
 			if (devSelectedTeam?.id === updated.id) devSelectedTeam = updated;
 			devEditingTeam = null;
 		} catch (e) {
-			toast(getApiError(e, "Couldn't update team"), "error");
+			toast(getApiError(e, t("settings_team_save_failed")), "error");
 		}
 	}
 
@@ -1118,10 +1245,10 @@
 		devInviting = true;
 		try {
 			await inviteToTeam(devSelectedTeam.id, devInviteEmail.trim());
-			toast("Invite sent", "success");
+			toast(t("settings_team_invite_sent"), "success");
 			devInviteEmail = "";
 		} catch (e) {
-			toast(getApiError(e, "Couldn't invite"), "error");
+			toast(getApiError(e, t("settings_team_invite_failed")), "error");
 		} finally {
 			devInviting = false;
 		}
@@ -1130,10 +1257,15 @@
 	async function handleRemoveMember(userId: string, memberName: string) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(`Remove "${memberName}" from team?`, "Remove", async () => {
-			await removeTeamMember(teamId, userId);
-			devMembers = devMembers.filter((m) => m.user_id !== userId);
-		});
+		await confirmAction(
+			t("settings_team_member_remove_confirm", { name: memberName }),
+			t("settings_team_member_remove"),
+			async () => {
+				await removeTeamMember(teamId, userId);
+				devMembers = devMembers.filter((m) => m.user_id !== userId);
+			},
+			t("settings_team_member_remove_busy"),
+		);
 	}
 
 	async function handleCreateApp() {
@@ -1145,7 +1277,7 @@
 			devNewAppName = "";
 			devNewAppDesc = "";
 		} catch (e) {
-			toast(getApiError(e, "Couldn't create application"), "error");
+			toast(getApiError(e, t("settings_app_create_failed")), "error");
 		} finally {
 			devCreatingApp = false;
 		}
@@ -1161,7 +1293,7 @@
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 			devEditingApp = null;
 		} catch (e) {
-			toast(getApiError(e, "Couldn't update application"), "error");
+			toast(getApiError(e, t("settings_app_save_failed")), "error");
 		}
 	}
 
@@ -1171,57 +1303,86 @@
 			const updated = await updateApplication(devSelectedTeam.id, app.id, { public: !app.public });
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 		} catch (e) {
-			toast(getApiError(e, "Couldn't update visibility"), "error");
+			toast(getApiError(e, t("settings_app_visibility_failed")), "error");
 		}
 	}
 
 	async function handleDeleteApp(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(`Delete application "${app.name}"?`, "Delete", async () => {
-			await deleteApplication(teamId, app.id);
-			devApps = devApps.filter((a) => a.id !== app.id);
-		});
+		await confirmAction(
+			t("settings_app_delete_confirm", { name: app.name }),
+			t("settings_delete"),
+			async () => {
+				await deleteApplication(teamId, app.id);
+				devApps = devApps.filter((a) => a.id !== app.id);
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleCreateBot(app: Application) {
 		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
 		try {
-			const res = await createBot(devSelectedTeam.id, app.id);
+			const res = await createBot(teamId, app.id);
 			devBotToken = res.token;
 			devShowToken = true;
-			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: "created" } : a));
-			toast("Bot created! Copy the token — it won't be shown again.", "success");
+			toast(t("settings_bot_created"), "success");
 		} catch (e) {
-			toast(getApiError(e, "Couldn't create bot"), "error");
+			toast(getApiError(e, t("settings_bot_create_failed")), "error");
+			return;
 		}
+		await loadNewBot(teamId, app.id);
+	}
+
+	/** The API answers a new bot with its token alone: its ID comes with the team's apps, read again, then the bot. An
+	 * app whose read fails shows its bot once the team is opened again. */
+	async function loadNewBot(teamId: string, appId: string) {
+		const fresh = (await listApplications(teamId).catch(() => null))?.find((a) => a.id === appId);
+		if (!fresh || devSelectedTeam?.id !== teamId) return;
+		devApps = devApps.map((a) => (a.id === appId ? fresh : a));
+		const botId = fresh.bot_user_id;
+		if (!botId) return;
+		const bot = await getBotUser(botId).catch(() => null);
+		if (bot && devSelectedTeam?.id === teamId) botUsers = { ...botUsers, [botId]: bot };
 	}
 
 	async function handleResetBotToken(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction("Reset bot token? The old token will stop working immediately.", "Reset", async () => {
-			const res = await resetBotToken(teamId, app.id);
-			devBotToken = res.token;
-			devShowToken = true;
-			toast("Token reset! Copy the new token — it won't be shown again.", "success");
-		});
+		await confirmAction(
+			t("settings_bot_token_reset_confirm"),
+			t("settings_bot_token_reset_button"),
+			async () => {
+				const res = await resetBotToken(teamId, app.id);
+				devBotToken = res.token;
+				devShowToken = true;
+				toast(t("settings_bot_token_reset_done"), "success");
+			},
+			t("settings_bot_token_reset_busy"),
+		);
 	}
 
 	async function handleDeleteBot(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction("Delete this bot? It will be removed from all Spaces.", "Delete", async () => {
-			await deleteBot(teamId, app.id);
-			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
-			devBotToken = null;
-		});
+		await confirmAction(
+			t("settings_bot_delete_confirm"),
+			t("settings_delete"),
+			async () => {
+				await deleteBot(teamId, app.id);
+				devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
+				devBotToken = null;
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	function copyToken() {
 		if (devBotToken) {
 			navigator.clipboard.writeText(devBotToken);
-			toast("Token copied to clipboard", "success");
+			toast(t("settings_bot_token_copied"), "success");
 		}
 	}
 
@@ -1231,25 +1392,25 @@
 
 	function copyBotInviteLink(botUserId: string) {
 		navigator.clipboard.writeText(getBotInviteLink(botUserId));
-		toast("Link copied", "success");
+		toast(t("settings_bot_link_copied"), "success");
 	}
 
 	async function handleAcceptTeamInvite(inviteId: string) {
 		try {
 			await answerTeamInvite(inviteId, true);
-			toast("Invite accepted", "success");
+			toast(t("settings_team_invite_accepted"), "success");
 			void loadDevTeams();
 		} catch (e) {
-			toast(getApiError(e, "Couldn't accept invite"), "error");
+			toast(getApiError(e, t("settings_team_invite_accept_failed")), "error");
 		}
 	}
 
 	async function handleDeclineTeamInvite(inviteId: string) {
 		try {
 			await answerTeamInvite(inviteId, false);
-			toast("Invite declined", "success");
+			toast(t("settings_team_invite_declined"), "success");
 		} catch (e) {
-			toast(getApiError(e, "Couldn't decline invite"), "error");
+			toast(getApiError(e, t("settings_team_invite_decline_failed")), "error");
 		}
 	}
 
@@ -1295,13 +1456,10 @@
 	);
 
 	async function handleSave() {
-		if (!$currentUser || saving) return;
-		if (bioTooLong) {
-			saveError = `Your bio can be at most ${BIO_MAX_LENGTH} characters.`;
-			return;
-		}
+		// Save is disabled while the bio is too long, and its counter says so.
+		if (!$currentUser || saving || bioTooLong) return;
 		saving = true;
-		saveError = null;
+		saveFailure = null;
 		saveSuccess = false;
 
 		try {
@@ -1357,7 +1515,7 @@
 			saveSuccess = true;
 			setTimeout(() => (saveSuccess = false), 2000);
 		} catch (err) {
-			saveError = getApiError(err, "Couldn't save changes");
+			saveFailure = { err };
 		} finally {
 			saving = false;
 			profileUploadPercent = null;
@@ -1370,40 +1528,59 @@
 		alias = $currentUser.alias ?? "";
 		bio = $currentUser.custom ?? "";
 		resetImageStages();
-		saveError = null;
+		saveFailure = null;
 	}
 
 	// The shell's layout, saved on this device: the spaces column's mode and where the open chats are listed.
-	const themeChoices = [
-		{ value: "system", label: "System" },
-		{ value: "light", label: "Light" },
-		{ value: "dark", label: "Dark" },
-	] as const satisfies readonly { value: ThemePref; label: string }[];
+	const themeChoices = $derived<readonly { value: ThemePref; label: string }[]>([
+		{ value: "system", label: t("settings_theme_system") },
+		{ value: "light", label: t("settings_theme_light") },
+		{ value: "dark", label: t("settings_theme_dark") },
+	]);
 	const platformLayout = defaultMessageLayout();
-	const messageLayoutChoices = [
-		{ value: "bubbles", label: "Bubbles", tag: platformLayout === "bubbles" ? "Default" : undefined },
-		{ value: "flat", label: "Flat rows", tag: platformLayout === "flat" ? "Default" : undefined },
-	] as const satisfies readonly { value: MessageLayout; label: string; tag?: string }[];
-	const spacesColumnChoices = [
-		{ value: "fixed", label: "Fixed" },
-		{ value: "auto-hide", label: "Auto-hide" },
-	] as const;
-	const openChatsChoices = [
-		{ value: "tabs", label: "Tabs on top" },
-		{ value: "vertical", label: "Vertical list" },
-	] as const;
-	const keyboardChoices = [
-		{ value: "off", label: "Off" },
-		{ value: "on", label: "On" },
-	] as const;
-	const sounds: { key: SoundEvent; label: string }[] = [
-		{ key: "notification", label: "Notifications" },
-		{ key: "join_vc", label: "Join voice" },
-		{ key: "leave_vc", label: "Leave voice" },
-		{ key: "voice_calling", label: "Incoming call" },
-		{ key: "screen_sharing_on", label: "Screen share on" },
-		{ key: "screen_sharing_off", label: "Screen share off" },
+	const messageLayoutChoices = $derived<readonly { value: MessageLayout; label: string; tag?: string }[]>([
+		{
+			value: "bubbles",
+			label: t("settings_messages_bubbles"),
+			tag: platformLayout === "bubbles" ? t("settings_messages_default") : undefined,
+		},
+		{
+			value: "flat",
+			label: t("settings_messages_flat"),
+			tag: platformLayout === "flat" ? t("settings_messages_default") : undefined,
+		},
+	]);
+	const spacesColumnChoices = $derived<readonly { value: SpacesColumnMode; label: string }[]>([
+		{ value: "fixed", label: t("settings_sidebar_fixed") },
+		{ value: "auto-hide", label: t("settings_sidebar_auto_hide") },
+	]);
+	const openChatsChoices = $derived<readonly { value: OpenChatsMode; label: string }[]>([
+		{ value: "tabs", label: t("settings_open_chats_tabs") },
+		{ value: "vertical", label: t("settings_open_chats_vertical") },
+	]);
+	const keyboardChoices = $derived<readonly { value: "off" | "on"; label: string }[]>([
+		{ value: "off", label: t("settings_keyboard_off") },
+		{ value: "on", label: t("settings_keyboard_on") },
+	]);
+	// Each sound's name, drawn where it's shown.
+	const sounds: { key: SoundEvent; label: MessageKey }[] = [
+		{ key: "notification", label: "settings_sound_notification" },
+		{ key: "join_vc", label: "settings_sound_join_voice" },
+		{ key: "leave_vc", label: "settings_sound_leave_voice" },
+		{ key: "voice_calling", label: "settings_sound_incoming_call" },
+		{ key: "screen_sharing_on", label: "settings_sound_screen_share_on" },
+		{ key: "screen_sharing_off", label: "settings_sound_screen_share_off" },
 	];
+
+	// A size in megabytes, as a bucket's usage writes it: to so many decimals, without grouping (10240 MB).
+	const megabytes = (bytes: number, digits: number) =>
+		formatNumber(bytes / (1024 * 1024), {
+			minimumFractionDigits: digits,
+			maximumFractionDigits: digits,
+			useGrouping: false,
+		});
+	// A whole percent, in the locale's way: 42%, or 42 % in French.
+	const percent = (value: number) => formatNumber(value / 100, { style: "percent" });
 
 	// Bubbles or flat rows: the conversation's own preference, which the host reads and sets.
 	let messageLayout = $state<MessageLayout>(untrack(() => host.messageLayout()));
@@ -1412,6 +1589,12 @@
 		host.setMessageLayout(layout);
 	}
 </script>
+
+{#snippet strong(text: string)}<strong>{text}</strong>{/snippet}
+
+{#snippet fileCount(text: string)}<span class="text-duvet-ink font-semibold tabular-nums">{text}</span>{/snippet}
+
+{#snippet pathStyleNote(text: string)}<span class="text-duvet-ink2">{text}</span>{/snippet}
 
 {#snippet spinner()}
 	<span class="border-duvet-ink2/40 block size-4 animate-spin rounded-full border-2 border-t-transparent"></span>
@@ -1475,7 +1658,7 @@
 	{/if}
 {/snippet}
 
-<SettingsFrame {mode} {chrome} bind:open name="Duvet settings" groups={sectionGroups} bind:active={activeSection}>
+<SettingsFrame {mode} {chrome} bind:open name={t("settings_name")} groups={sectionGroups} bind:active={activeSection}>
 	{#snippet head()}
 		<button
 			type="button"
@@ -1494,7 +1677,7 @@
 				<span class="block truncate text-[14.5px] font-semibold">
 					{$currentUser?.alias ?? $currentUser?.username ?? ""}
 				</span>
-				<span class="text-duvet-ink2 block truncate text-[13.5px]">Duvet account</span>
+				<span class="text-duvet-ink2 block truncate text-[13.5px]">{t("settings_account_caption")}</span>
 			</span>
 		</button>
 	{/snippet}
@@ -1514,18 +1697,18 @@
 			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if myTransfer}
-						Wait for the transfer under way to end.
+						{t("settings_transfer_wait_notice")}
 					{:else if tooMany}
-						Pick {MAX_PICKED_FILES} files at most, or Select all.
+						{t("settings_move_too_many", { max: MAX_PICKED_FILES })}
 					{:else}
-						{countFiles(pickedCount)} selected
+						{t("settings_move_picked", { count: pickedCount })}
 					{/if}
 				</p>
 				<div class="flex shrink-0 items-center gap-2">
-					<Button variant="quiet" onclick={() => picker.picked.clear()}>Clear</Button>
+					<Button variant="quiet" onclick={() => picker.picked.clear()}>{t("settings_move_clear")}</Button>
 					<Button onclick={openMovePicked} disabled={myTransfer !== null || tooMany}>
 						<MoveIcon size={15} />
-						Move {countFiles(pickedCount)} ({formatFileSize(picker.pickedBytes)}) to…
+						{t("settings_move_files", { count: pickedCount, size: formatFileSize(picker.pickedBytes) })}
 					</Button>
 				</div>
 			</div>
@@ -1538,19 +1721,19 @@
 					{#if saveError}
 						<p class="text-duvet-danger truncate" role="alert">{saveError}</p>
 					{:else}
-						<p class="text-duvet-ink2">You have unsaved changes.</p>
+						<p class="text-duvet-ink2">{t("settings_unsaved")}</p>
 					{/if}
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
-					<Button variant="quiet" onclick={handleReset} disabled={saving}>Reset</Button>
+					<Button variant="quiet" onclick={handleReset} disabled={saving}>{t("settings_profile_reset")}</Button>
 					<Button onclick={handleSave} disabled={saving || bioTooLong} class="tabular-nums">
 						{#if saveSuccess}
 							<CheckIcon size={15} />
-							Saved
+							{t("settings_saved")}
 						{:else if saving}
-							{profileUploadPercent === null ? "Saving…" : uploadNote(profileUploadPercent)}
+							{profileUploadPercent === null ? t("settings_saving") : uploadNote(profileUploadPercent)}
 						{:else}
-							Save changes
+							{t("settings_save_changes")}
 						{/if}
 					</Button>
 				</div>
@@ -1559,6 +1742,94 @@
 	{/snippet}
 
 	{#if activeSection === "account"}
+		<SettingsGroup title={t("settings_accounts_title")} note={t("settings_accounts_note")}>
+			{#each accounts as account (account.id)}
+				{@const current = account.id === $currentUser?.id}
+				<div class="flex min-h-[60px] items-center gap-3 px-4 py-3">
+					<UserAvatar src={getAvatarURL(account.id, account.avatar)} name={account.name} size={34} />
+					<div class="min-w-0 flex-1">
+						<p class="text-duvet-ink truncate text-[14.5px] font-medium">{account.name}</p>
+						<p class="text-duvet-ink2 truncate text-[13px]">@{account.username}</p>
+					</div>
+					{#if current}
+						<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text">{t("settings_accounts_current")}</span>
+					{:else}
+						<Button variant="secondary" size="sm" onclick={() => switchToAccount(account)}>
+							{t("settings_accounts_switch")}
+						</Button>
+						<IconButton
+							label={t("settings_accounts_remove_label", { name: account.name })}
+							title={t("settings_accounts_remove")}
+							danger
+							onclick={() => removeSavedAccount(account)}
+						>
+							<TrashIcon size={16} />
+						</IconButton>
+					{/if}
+				</div>
+			{/each}
+			<div class="flex items-center justify-end px-4 py-3">
+				<Button variant="secondary" size="sm" onclick={() => (showAddAccount = !showAddAccount)}>
+					<PlusIcon size={14} />
+					{t("settings_accounts_add")}
+				</Button>
+			</div>
+		</SettingsGroup>
+
+		{#if showAddAccount}
+			<SettingsGroup title={t("settings_accounts_add_title")} note={t("settings_accounts_add_note")} plain>
+				<form
+					class="flex flex-col gap-3"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void addAccount();
+					}}
+				>
+					<div>
+						<label for="account-email" class={LABEL}>{t("auth_email_label")}</label>
+						<input
+							id="account-email"
+							type="email"
+							autocomplete="email"
+							bind:value={addAccountEmail}
+							class={FIELD}
+							placeholder={t("auth_email_placeholder")}
+							disabled={addingAccount}
+						/>
+					</div>
+					<div>
+						<label for="account-password" class={LABEL}>{t("auth_password_label")}</label>
+						<input
+							id="account-password"
+							type="password"
+							autocomplete="current-password"
+							bind:value={addAccountPassword}
+							class={FIELD}
+							placeholder={t("auth_sign_in_password_placeholder")}
+							disabled={addingAccount}
+						/>
+					</div>
+					{#if addAccountError}
+						<p class={calloutClass("danger")} role="alert">{addAccountError}</p>
+					{/if}
+					<div class="flex justify-end gap-2">
+						<Button
+							variant="quiet"
+							onclick={() => {
+								showAddAccount = false;
+								addAccountError = "";
+							}}
+						>
+							{t("settings_cancel")}
+						</Button>
+						<Button type="submit" disabled={addingAccount || !addAccountEmail.trim() || !addAccountPassword}>
+							{addingAccount ? t("auth_sign_in_busy") : t("auth_sign_in")}
+						</Button>
+					</div>
+				</form>
+			</SettingsGroup>
+		{/if}
+
 		<!-- Profile preview card -->
 		<MemberProfileCard
 			member={previewMember}
@@ -1568,9 +1839,9 @@
 			onBannerRemove={() => handleRemoveImageStage("banner")}
 		/>
 
-		<SettingsGroup title="Profile" plain class="flex flex-col gap-4">
+		<SettingsGroup title={t("settings_profile_title")} plain class="flex flex-col gap-4">
 			<div>
-				<label for="alias" class={LABEL}>Display name</label>
+				<label for="alias" class={LABEL}>{t("settings_display_name")}</label>
 				<input
 					id="alias"
 					type="text"
@@ -1579,28 +1850,37 @@
 					placeholder={$currentUser?.username ?? ""}
 					class={FIELD}
 				/>
-				<p class="text-duvet-ink2 mt-1.5 text-[13px]">This is how others see you. Leave empty to use your username.</p>
+				<p class="text-duvet-ink2 mt-1.5 text-[13px]">{t("settings_display_name_note")}</p>
 			</div>
 
 			<div>
-				<label for="bio" class={LABEL}>About me</label>
+				<label for="bio" class={LABEL}>{t("settings_bio_label")}</label>
 				<textarea
 					id="bio"
 					bind:value={bio}
 					rows="3"
-					placeholder="A few words about you"
+					placeholder={t("settings_bio_placeholder")}
 					aria-invalid={bioTooLong}
 					class="{FIELD_AREA} {bioTooLong ? FIELD_WRONG : ''}"
 				></textarea>
 				<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-[13px]">
-					<span>Shown on your profile. Leave empty for none.</span>
-					<span class="tabular-nums {bioTooLong ? 'text-duvet-danger' : ''}">{bioLength}/{BIO_MAX_LENGTH}</span>
+					<span>{t("settings_bio_note")}</span>
+					<span class="tabular-nums {bioTooLong ? 'text-duvet-danger' : ''}"
+						>{t("settings_bio_count", { count: bioLength, max: BIO_MAX_LENGTH })}</span
+					>
 				</p>
 			</div>
 
 			<div>
-				<label for="username" class={LABEL}>Username</label>
-				<input id="username" type="text" bind:value={username} maxlength={32} placeholder="username" class={FIELD} />
+				<label for="username" class={LABEL}>{t("settings_username_label")}</label>
+				<input
+					id="username"
+					type="text"
+					bind:value={username}
+					maxlength={32}
+					placeholder={t("settings_username_placeholder")}
+					class={FIELD}
+				/>
 			</div>
 		</SettingsGroup>
 	{:else if activeSection === "security"}
@@ -1609,40 +1889,40 @@
 			<div class="{calloutClass('warn')} items-center">
 				<MailIcon size={18} class="shrink-0" />
 				<div class="min-w-0 flex-1">
-					<p class="font-semibold">Email not verified</p>
-					<p class="opacity-80">Verify your email to secure your account.</p>
+					<p class="font-semibold">{t("settings_email_unverified")}</p>
+					<p class="opacity-80">{t("settings_email_unverified_note")}</p>
 				</div>
 				<Button variant="secondary" size="sm" onclick={handleSendVerification} disabled={sendingVerification}>
-					{sendingVerification ? "Sending…" : "Send verification"}
+					{sendingVerification ? t("settings_sending") : t("settings_email_send_verification")}
 				</Button>
 			</div>
 		{:else if $currentUser?.email_verified}
 			<div class="{calloutClass('good')} items-center">
 				<MailIcon size={18} class="shrink-0" />
-				<p class="font-semibold">Email verified</p>
+				<p class="font-semibold">{t("settings_email_verified")}</p>
 			</div>
 		{/if}
 
-		<SettingsGroup title="Sign-in">
-			<SettingsRow label="Password" line="Send a reset link to your email to change your password." icon={KeyIcon}>
+		<SettingsGroup title={t("settings_sign_in_title")}>
+			<SettingsRow label={t("settings_password_label")} line={t("settings_password_line")} icon={KeyIcon}>
 				<Button variant="secondary" size="sm" onclick={handleSendResetPassword} disabled={sendingReset}>
-					{sendingReset ? "Sending…" : "Reset password"}
+					{sendingReset ? t("settings_sending") : t("settings_password_reset")}
 				</Button>
 			</SettingsRow>
-			<SettingsRow label="Email" icon={MailIcon} labelFor="new-email" stacked>
+			<SettingsRow label={t("settings_email_label")} icon={MailIcon} labelFor="new-email" stacked>
 				<input
 					id="new-email"
 					type="email"
 					bind:value={newEmail}
-					placeholder="New email address"
+					placeholder={t("settings_email_new_placeholder")}
 					class="{FIELD} flex-1"
 				/>
 				<Button variant="secondary" onclick={handleSendChangeEmail} disabled={sendingEmailChange || !newEmail.trim()}>
-					{sendingEmailChange ? "Sending…" : "Send verification"}
+					{sendingEmailChange ? t("settings_sending") : t("settings_email_send_verification")}
 				</Button>
 			</SettingsRow>
 		</SettingsGroup>
-		<p class={NOTE}>A verification link will be sent to the new address.</p>
+		<p class={NOTE}>{t("settings_email_change_note")}</p>
 	{:else if activeSection === "devices" && e2e}
 		{@const engine = e2e}
 		<DevicesSettings
@@ -1669,8 +1949,8 @@
 			<SettingsRow {label}>
 				{#if key !== "master"}
 					<IconButton
-						label={previewingSound === key ? "Stop" : "Preview"}
-						title={previewingSound === key ? "Stop" : "Preview"}
+						label={previewingSound === key ? t("settings_sound_stop") : t("settings_sound_preview")}
+						title={previewingSound === key ? t("settings_sound_stop") : t("settings_sound_preview")}
 						size="sm"
 						onclick={() => togglePreview(key)}
 					>
@@ -1688,15 +1968,15 @@
 					{value}
 					oninput={(volume) => (key === "master" ? audioStore.setMaster(volume) : audioStore.set(key, volume))}
 				/>
-				<span class="text-duvet-ink2 w-10 text-right text-[13px] tabular-nums">{value}%</span>
+				<span class="text-duvet-ink2 w-10 text-right text-[13px] tabular-nums">{percent(value)}</span>
 			</SettingsRow>
 		{/snippet}
-		<SettingsGroup title="All sounds">
-			{@render soundRow("master", "Master volume")}
+		<SettingsGroup title={t("settings_sounds_all")}>
+			{@render soundRow("master", t("settings_sound_master"))}
 		</SettingsGroup>
-		<SettingsGroup title="Each sound">
+		<SettingsGroup title={t("settings_sounds_each")}>
 			{#each sounds as sound (sound.key)}
-				{@render soundRow(sound.key, sound.label)}
+				{@render soundRow(sound.key, t(sound.label))}
 			{/each}
 		</SettingsGroup>
 	{:else if activeSection === "voice-video"}
@@ -1715,31 +1995,9 @@
 			onRefreshCameras={loadCameras}
 		/>
 	{:else if activeSection === "appearance"}
-		<SettingsGroup title={t("settings_language_title")}>
-			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
-				<select
-					id="app-language"
-					class={SELECT}
-					value={localePref()}
-					onchange={(event) => void setLocalePref(parseLocalePref(event.currentTarget.value, OFFERED))}
-				>
-					<option value="system">{t("settings_language_system", { language: systemLanguageName() })}</option>
-					{#each OFFERED as locale (locale)}
-						<!-- Each language's name in itself, marked as that language for the system to read it right. -->
-						<option value={locale} lang={locale}>{LOCALE_NAMES[locale]}</option>
-					{/each}
-				</select>
-			</SettingsRow>
-		</SettingsGroup>
-
-		<SettingsGroup
-			title="Theme"
-			plain
-			class="p-0!"
-			note="System follows your computer's light or dark appearance. Saved on this device."
-		>
+		<SettingsGroup title={t("settings_theme_title")} plain class="p-0!" note={t("settings_theme_note")}>
 			<ChoiceCards
-				label="Theme"
+				label={t("settings_theme_title")}
 				options={themeChoices}
 				value={theme.pref}
 				onValueChange={(pref) => setThemePref(parseThemePref(pref))}
@@ -1747,14 +2005,9 @@
 			/>
 		</SettingsGroup>
 
-		<SettingsGroup
-			title="Messages"
-			plain
-			class="p-0!"
-			note="Flat rows fit more on screen; bubbles are easier to follow."
-		>
+		<SettingsGroup title={t("settings_messages_title")} plain class="p-0!" note={t("settings_messages_note")}>
 			<ChoiceCards
-				label="Messages"
+				label={t("settings_messages_title")}
 				options={messageLayoutChoices}
 				value={messageLayout}
 				onValueChange={setMessageLayout}
@@ -1762,32 +2015,26 @@
 			/>
 		</SettingsGroup>
 
-		<SettingsGroup title="Layout">
-			<SettingsRow label="Sidebar" line="Auto-hide folds it to an edge that opens over the chat when you point at it.">
+		<SettingsGroup title={t("settings_layout_title")}>
+			<SettingsRow label={t("settings_sidebar_label")} line={t("settings_sidebar_line")}>
 				<Segmented
-					label="Sidebar"
+					label={t("settings_sidebar_label")}
 					options={spacesColumnChoices}
 					value={layoutPrefs.spacesColumn}
 					onValueChange={(picked) => (layoutPrefs.spacesColumn = picked)}
 				/>
 			</SettingsRow>
-			<SettingsRow
-				label="Open chats"
-				line="A vertical list puts them at the top of the sidebar instead of tabs in the title bar."
-			>
+			<SettingsRow label={t("settings_open_chats_label")} line={t("settings_open_chats_line")}>
 				<Segmented
-					label="Open chats"
+					label={t("settings_open_chats_label")}
 					options={openChatsChoices}
 					value={layoutPrefs.openChats}
 					onValueChange={(picked) => (layoutPrefs.openChats = picked)}
 				/>
 			</SettingsRow>
-			<SettingsRow
-				label="Keyboard navigation"
-				line="Esc in the message box moves to the messages: j and k go through them, r replies, e edits, f shows jump marks. Press ? for all of them."
-			>
+			<SettingsRow label={t("settings_keyboard_label")} line={t("settings_keyboard_line")}>
 				<Segmented
-					label="Keyboard navigation"
+					label={t("settings_keyboard_label")}
 					options={keyboardChoices}
 					value={layoutPrefs.keyboardNavigation ? "on" : "off"}
 					onValueChange={(picked) => (layoutPrefs.keyboardNavigation = picked === "on")}
@@ -1795,14 +2042,9 @@
 			</SettingsRow>
 		</SettingsGroup>
 
-		<SettingsGroup
-			title="Code blocks"
-			plain
-			class="flex flex-col gap-3"
-			note="Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file."
-		>
+		<SettingsGroup title={t("settings_code_title")} plain class="flex flex-col gap-3" note={t("settings_code_note")}>
 			<div>
-				<label for="code-theme-url" class={LABEL}>Code theme URL</label>
+				<label for="code-theme-url" class={LABEL}>{t("settings_code_theme_label")}</label>
 				<div class="flex items-center gap-2">
 					<input
 						id="code-theme-url"
@@ -1813,7 +2055,7 @@
 						onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
 					/>
 					<Button onclick={handleSaveTheme} disabled={savingTheme}>
-						{savingTheme ? "Loading…" : "Apply"}
+						{savingTheme ? t("settings_loading") : t("settings_code_theme_apply")}
 					</Button>
 					{#if codeThemeUrl}
 						<Button
@@ -1823,14 +2065,14 @@
 								void handleSaveTheme();
 							}}
 						>
-							Reset to default
+							{t("settings_code_theme_reset_button")}
 						</Button>
 					{/if}
 				</div>
 			</div>
 			<!-- Preview -->
 			<div>
-				<p class={LABEL}>Preview</p>
+				<p class={LABEL}>{t("settings_code_preview")}</p>
 				{#key themeVersion}
 					<p class="msg-content text-duvet-ink text-[14.5px]">
 						{@html renderMarkdown(
@@ -1841,22 +2083,28 @@
 			</div>
 		</SettingsGroup>
 
-		<SettingsGroup title="Voice">
-			<SettingsRow
-				label="Faces in voice"
-				line="Voice room tiles show everyone's animated face instead of their avatar. Saved on this device."
-			>
-				<Toggle label="Faces in voice" checked={$voiceFaces} onCheckedChange={(on) => voiceFaces.set(on)} />
+		<SettingsGroup title={t("settings_voice_title")}>
+			<SettingsRow label={t("settings_voice_faces")} line={t("settings_voice_faces_line")}>
+				<Toggle label={t("settings_voice_faces")} checked={$voiceFaces} onCheckedChange={(on) => voiceFaces.set(on)} />
+			</SettingsRow>
+		</SettingsGroup>
+	{:else if activeSection === "language"}
+		<SettingsGroup>
+			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
+				<LanguageSelect
+					id="app-language"
+					value={localePref()}
+					offered={OFFERED}
+					systemLabel={t("settings_language_system", { language: systemLanguageName() })}
+					onValueChange={(value) => void setLocalePref(parseLocalePref(value, OFFERED))}
+				/>
 			</SettingsRow>
 		</SettingsGroup>
 	{:else if activeSection === "activity"}
 		<SettingsGroup>
-			<SettingsRow
-				label="Share what I listen to on Spotify"
-				line="While Spotify plays on this computer, the people in your Spaces see the song, its artist and how far along it is. Saved on this device."
-			>
+			<SettingsRow label={t("settings_activity_spotify")} line={t("settings_activity_spotify_line")}>
 				<Toggle
-					label="Share what I listen to on Spotify"
+					label={t("settings_activity_spotify")}
 					checked={$shareSpotify}
 					onCheckedChange={(on) => shareSpotify.set(on)}
 				/>
@@ -1870,17 +2118,17 @@
 			<div class="{calloutClass('good')} items-center">
 				<DatabaseIcon size={18} class="shrink-0" />
 				<div class="min-w-0 flex-1">
-					<p class="font-semibold">Using your own storage</p>
+					<p class="font-semibold">{t("settings_storage_own")}</p>
 					<p class="truncate opacity-80">{activeBucket?.name} · {activeBucket?.bucket_name}</p>
 				</div>
-				<span class="{TAG} bg-duvet-alive/20 uppercase">No quota</span>
+				<span class="{TAG} bg-duvet-alive/20 uppercase">{t("settings_storage_no_quota")}</span>
 			</div>
 		{/if}
 		<!-- Default storage quota (always shown) -->
 		{#if storageStatus}
 			<div class="{CARD} flex flex-col gap-3 p-4">
 				<div class="flex items-baseline justify-between gap-3">
-					<p class="text-duvet-ink2 text-[14px] font-medium">Default storage</p>
+					<p class="text-duvet-ink2 text-[14px] font-medium">{t("settings_storage_default")}</p>
 					<p class="text-[24px] leading-none font-semibold tabular-nums">
 						{formatFileSize(storageStatus.used_bytes)}
 						<span class="text-duvet-ink2 text-[14.5px] font-medium">/ {formatFileSize(storageStatus.max_bytes)}</span>
@@ -1888,51 +2136,53 @@
 				</div>
 				{@render usageBar(Math.min(storageStatus.percentage_used, 100))}
 				<div class="text-duvet-ink2 flex gap-4 text-[13px]">
-					<span>{storageStatus.percentage_used}% used</span>
-					<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
+					<span>{t("settings_storage_used", { percent: percent(storageStatus.percentage_used) })}</span>
+					<span>{t("settings_storage_upload_limit", { size: formatFileSize(storageStatus.upload_limit_bytes) })}</span>
 				</div>
 			</div>
 		{/if}
 
-		<!-- Summary bar -->
-		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
-			<div class="text-duvet-ink2 text-[14px]">
-				{#if listedHere}
-					<span class="text-duvet-ink font-semibold tabular-nums">{attachments.length}</span>
-					file{attachments.length !== 1 ? "s" : ""}
+		<!-- Summary bar: the count on a line of its own, then the location and the buttons at the right, the buttons
+		     together on one line, the location above them where a longer language leaves no room beside them (#562). -->
+		<div class="flex flex-col gap-2 px-2">
+			{#if listedHere}
+				<p class="text-duvet-ink2 text-[14px]">
+					<Rich key="settings_attachments_count" values={{ count: attachments.length }} tags={{ b: fileCount }} />
 					{#if attachmentsLocation !== "all"}
 						<span class="mx-1 opacity-60">·</span>
 						{formatFileSize(locationBytes)}
 					{/if}
-				{/if}
-			</div>
+				</p>
+			{/if}
 			<div class="flex flex-wrap items-center justify-end gap-2">
 				{#if buckets.length > 0 || attachmentsLocation !== "all"}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
-						Location
+					<label class="text-duvet-ink2 flex min-w-0 items-center gap-2 text-[13px]">
+						{t("settings_attachments_location")}
 						<select
 							value={attachmentsLocation}
 							onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
-							class={SELECT}
+							class="{SELECT} min-w-0"
 						>
-							<option value="all">All</option>
-							<option value={DEFAULT_STORAGE}>Default storage</option>
+							<option value="all">{t("settings_attachments_all")}</option>
+							<option value={DEFAULT_STORAGE}>{t("settings_storage_default")}</option>
 							{#each buckets as b (b.id)}
 								<option value={b.id}>{b.name}</option>
 							{/each}
 						</select>
 					</label>
 				{/if}
-				<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
-					<TrashIcon size={13} />
-					Delete selected
-				</Button>
-				{#if attachments.length > 0 && attachmentsLocation === "all"}
-					<Button variant="danger" size="sm" onclick={handleDeleteAll}>
+				<div class="flex shrink-0 items-center gap-2">
+					<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
 						<TrashIcon size={13} />
-						Delete all
+						{t("settings_attachments_delete_selected")}
 					</Button>
-				{/if}
+					{#if attachments.length > 0 && attachmentsLocation === "all"}
+						<Button variant="danger" size="sm" onclick={handleDeleteAll}>
+							<TrashIcon size={13} />
+							{t("settings_attachments_delete_all")}
+						</Button>
+					{/if}
+				</div>
 			</div>
 		</div>
 
@@ -1951,7 +2201,9 @@
 		{:else if attachments.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<PaperclipIcon class="mb-3 size-9" />
-				<p class="text-[14.5px]">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
+				<p class="text-[14.5px]">
+					{attachmentsLocation === "all" ? t("settings_attachments_none") : t("settings_attachments_none_here")}
+				</p>
 			</div>
 		{:else}
 			<div class="flex flex-col gap-2">
@@ -1973,8 +2225,8 @@
 									type="checkbox"
 									checked={selectedForDelete.has(att.id)}
 									onchange={() => toggleDeleteSelection(att.id)}
-									aria-label="Select {att.filename} for deletion"
-									title="Select for deletion"
+									aria-label={t("settings_attachment_select_delete", { name: att.filename })}
+									title={t("settings_attachment_select_delete_title")}
 									class={CHECKBOX}
 								/>
 								{#if picking}
@@ -1983,8 +2235,8 @@
 										type="checkbox"
 										checked={picker.picked.has(att.id)}
 										onchange={() => picker.toggle(att.id)}
-										aria-label="Select {att.filename} to move"
-										title="Select to move"
+										aria-label={t("settings_attachment_select", { name: att.filename })}
+										title={t("settings_attachment_select_title")}
 										class={CHECKBOX}
 									/>
 								{/if}
@@ -1993,8 +2245,8 @@
 									<button
 										type="button"
 										class="rounded-tile size-10 shrink-0 cursor-zoom-in overflow-hidden transition-[filter] hover:brightness-105 motion-reduce:transition-none {FOCUS_RING}"
-										title="Preview"
-										aria-label="Preview {att.filename}"
+										title={t("settings_attachment_preview")}
+										aria-label={t("settings_attachment_preview_named", { name: att.filename })}
 										onclick={() => openPreview(src, att.filename)}
 									>
 										<img {src} alt="" class="bg-duvet-secondary-fill size-full object-cover" />
@@ -2003,8 +2255,8 @@
 									<button
 										type="button"
 										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile hover:bg-duvet-hover-strong grid size-10 shrink-0 place-items-center transition-colors motion-reduce:transition-none {FOCUS_RING}"
-										title="Preview"
-										aria-label="Preview {att.filename}"
+										title={t("settings_attachment_preview")}
+										aria-label={t("settings_attachment_preview_named", { name: att.filename })}
 										onclick={() => openTextPreview(src, att.filename)}
 									>
 										<PaperclipIcon size={16} />
@@ -2022,7 +2274,7 @@
 									<p class="text-duvet-ink2 text-[13px]">
 										{formatFileSize(att.size_bytes)}
 										<span class="mx-1 opacity-60">·</span>
-										{new Date(att.created_at).toLocaleDateString()}
+										{formatDate(new Date(att.created_at))}
 									</p>
 								</div>
 								<div
@@ -2030,8 +2282,8 @@
 								>
 									{#if isImage || isText}
 										<IconButton
-											label="Preview {att.filename}"
-											title="Preview"
+											label={t("settings_attachment_preview_named", { name: att.filename })}
+											title={t("settings_attachment_preview")}
 											onclick={() => (isImage ? openPreview(src, att.filename) : openTextPreview(src, att.filename))}
 										>
 											<SearchIcon size={16} />
@@ -2042,15 +2294,15 @@
 											href={src}
 											download={att.filename}
 											class={iconButtonClass()}
-											title="Download"
-											aria-label="Download {att.filename}"
+											title={t("settings_attachment_download")}
+											aria-label={t("settings_attachment_download_named", { name: att.filename })}
 										>
 											<DownloadIcon size={16} />
 										</a>
 									{/if}
 									<IconButton
-										label="Delete attachment"
-										title="Delete attachment"
+										label={t("settings_attachment_delete")}
+										title={t("settings_attachment_delete")}
 										danger
 										onclick={() => handleDeleteAttachment(att.id)}
 									>
@@ -2071,29 +2323,19 @@
 	{:else if activeSection === "buckets"}
 		{@render transferCard()}
 		<p class={NOTE}>
-			Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your bucket instead
-			of the default and quota limits don't apply.
+			{t("settings_buckets_note")}
 		</p>
 
 		{#if !bucketsLoading}
 			<div class={calloutClass("warn")}>
 				<WarningIcon size={18} class="mt-0.5 shrink-0" />
 				<div class="space-y-1">
-					<p class="font-semibold">Before adding a bucket</p>
-					<p>
-						Only enter credentials that <strong>you own and control</strong>. If someone shared credentials with you, be
-						aware that:
-					</p>
+					<p class="font-semibold">{t("settings_bucket_warning_title")}</p>
+					<p><Rich key="settings_bucket_warning_lead" tags={{ b: strong }} /></p>
 					<ul class="list-disc space-y-0.5 pl-4">
-						<li>
-							The bucket owner can <strong>read, modify, or delete</strong> all your uploaded files at any time.
-						</li>
-						<li>
-							They can <strong>revoke access</strong> without warning, causing your attachments to stop loading.
-						</li>
-						<li>
-							Your files may be <strong>logged, monitored, or shared</strong> by the bucket owner.
-						</li>
+						<li><Rich key="settings_bucket_warning_owner" tags={{ b: strong }} /></li>
+						<li><Rich key="settings_bucket_warning_revoke" tags={{ b: strong }} /></li>
+						<li><Rich key="settings_bucket_warning_logged" tags={{ b: strong }} /></li>
 					</ul>
 				</div>
 			</div>
@@ -2105,19 +2347,29 @@
 
 		<!-- Create / Edit form -->
 		{#if showBucketForm}
-			<SettingsGroup title={editingBucket ? "Edit bucket" : "New bucket"} plain class="flex flex-col gap-3">
+			<SettingsGroup
+				title={editingBucket ? t("settings_bucket_edit_title") : t("settings_bucket_new_title")}
+				plain
+				class="flex flex-col gap-3"
+			>
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label for="bucket-name" class={LABEL}>Name</label>
-						<input id="bucket-name" type="text" bind:value={bName} placeholder="My R2" class={FIELD} />
+						<label for="bucket-name" class={LABEL}>{t("settings_bucket_name")}</label>
+						<input
+							id="bucket-name"
+							type="text"
+							bind:value={bName}
+							placeholder={t("settings_bucket_name_placeholder")}
+							class={FIELD}
+						/>
 					</div>
 					<div>
-						<label for="bucket-region" class={LABEL}>Region</label>
+						<label for="bucket-region" class={LABEL}>{t("settings_bucket_region")}</label>
 						<input id="bucket-region" type="text" bind:value={bRegion} placeholder="auto" class={FIELD} />
 					</div>
 				</div>
 				<div>
-					<label for="bucket-endpoint" class={LABEL}>Endpoint</label>
+					<label for="bucket-endpoint" class={LABEL}>{t("settings_bucket_endpoint")}</label>
 					<input
 						id="bucket-endpoint"
 						type="text"
@@ -2127,21 +2379,35 @@
 					/>
 				</div>
 				<div>
-					<label for="bucket-bucket-name" class={LABEL}>Bucket name</label>
-					<input id="bucket-bucket-name" type="text" bind:value={bBucketName} placeholder="my-bucket" class={FIELD} />
+					<label for="bucket-bucket-name" class={LABEL}>{t("settings_bucket_bucket_name")}</label>
+					<input
+						id="bucket-bucket-name"
+						type="text"
+						bind:value={bBucketName}
+						placeholder={t("settings_bucket_bucket_name_placeholder")}
+						class={FIELD}
+					/>
 				</div>
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label for="bucket-access-key" class={LABEL}>Access key ID</label>
-						<input id="bucket-access-key" type="text" bind:value={bAccessKey} placeholder="access key" class={FIELD} />
+						<label for="bucket-access-key" class={LABEL}>{t("settings_bucket_access_key")}</label>
+						<input
+							id="bucket-access-key"
+							type="text"
+							bind:value={bAccessKey}
+							placeholder={t("settings_bucket_access_key_placeholder")}
+							class={FIELD}
+						/>
 					</div>
 					<div>
-						<label for="bucket-secret-key" class={LABEL}>Secret access key</label>
+						<label for="bucket-secret-key" class={LABEL}>{t("settings_bucket_secret_key")}</label>
 						<input
 							id="bucket-secret-key"
 							type="password"
 							bind:value={bSecretKey}
-							placeholder={editingBucket ? "leave empty to keep current" : "secret key"}
+							placeholder={editingBucket
+								? t("settings_bucket_secret_key_keep")
+								: t("settings_bucket_secret_key_placeholder")}
 							class={FIELD}
 						/>
 					</div>
@@ -2149,42 +2415,40 @@
 				<label class="flex cursor-pointer items-center gap-2">
 					<input type="checkbox" bind:checked={bUsePathStyle} class={CHECKBOX} />
 					<span class="text-duvet-ink text-[13px]"
-						>Use path-style addressing <span class="text-duvet-ink2">(required for MinIO, RustFS, etc.)</span></span
+						><Rich key="settings_bucket_path_style" tags={{ note: pathStyleNote }} /></span
 					>
 				</label>
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label for="b-max-bytes" class={LABEL}>Total limit (MB)</label>
+						<label for="b-max-bytes" class={LABEL}>{t("settings_bucket_total_limit")}</label>
 						<input
 							id="b-max-bytes"
 							type="number"
 							min="0"
 							step="1"
 							bind:value={bMaxBytesMB}
-							placeholder="No limit"
+							placeholder={t("settings_bucket_no_limit")}
 							class={FIELD}
 						/>
 					</div>
 					<div>
-						<label for="b-upload-limit" class={LABEL}>Per-file limit (MB)</label>
+						<label for="b-upload-limit" class={LABEL}>{t("settings_bucket_file_limit_label")}</label>
 						<input
 							id="b-upload-limit"
 							type="number"
 							min="0"
 							step="1"
 							bind:value={bUploadLimitMB}
-							placeholder="No limit"
+							placeholder={t("settings_bucket_no_limit")}
 							class={FIELD}
 						/>
 					</div>
 				</div>
-				<p class="text-duvet-ink2 text-[13px]">
-					Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically when full.
-				</p>
+				<p class="text-duvet-ink2 text-[13px]">{t("settings_bucket_limits_note")}</p>
 				<div class="flex justify-end gap-2 pt-1">
-					<Button variant="quiet" onclick={resetBucketForm}>Cancel</Button>
+					<Button variant="quiet" onclick={resetBucketForm}>{t("settings_cancel")}</Button>
 					<Button disabled={bucketSaving} onclick={handleSaveBucket}>
-						{bucketSaving ? "Saving…" : editingBucket ? "Update" : "Create"}
+						{bucketSaving ? t("settings_saving") : editingBucket ? t("settings_bucket_update") : t("settings_create")}
 					</Button>
 				</div>
 			</SettingsGroup>
@@ -2197,7 +2461,8 @@
 						showBucketForm = true;
 					}}
 				>
-					<PlusIcon size={15} /> Add bucket
+					<PlusIcon size={15} />
+					{t("settings_bucket_add")}
 				</Button>
 			</div>
 		{/if}
@@ -2212,7 +2477,7 @@
 		{:else if buckets.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 				<DatabaseIcon class="mb-3 size-9" />
-				<p class="text-[14.5px]">No buckets configured</p>
+				<p class="text-[14.5px]">{t("settings_buckets_none")}</p>
 			</div>
 		{:else}
 			<div class="{CARD} divide-duvet-line divide-y">
@@ -2224,9 +2489,13 @@
 							<div class="flex items-center gap-2">
 								<span class="truncate text-[14.5px] font-medium">{bucket.name}</span>
 								{#if bucket.is_active}
-									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
+									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase"
+										>{t("settings_bucket_active")}</span
+									>
 								{:else}
-									<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
+									<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase"
+										>{t("settings_bucket_inactive")}</span
+									>
 								{/if}
 							</div>
 							<p class="text-duvet-ink2 mt-0.5 truncate text-[13px]">{bucket.bucket_name} · {bucket.endpoint}</p>
@@ -2235,20 +2504,23 @@
 								<div class="mt-1.5 space-y-1">
 									<div class="text-duvet-ink2 flex items-center justify-between text-[12px] tabular-nums">
 										<span
-											>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB</span
+											>{t("settings_bucket_usage", {
+												used: megabytes(bucket.used_bytes, 1),
+												max: megabytes(bucket.max_bytes, 0),
+											})}</span
 										>
-										<span>{pct}%</span>
+										<span>{percent(pct)}</span>
 									</div>
 									{@render usageBar(pct)}
 									{#if bucket.upload_limit_bytes}
 										<p class="text-duvet-ink2 text-[12px]">
-											Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+											{t("settings_bucket_file_limit", { size: megabytes(bucket.upload_limit_bytes, 0) })}
 										</p>
 									{/if}
 								</div>
 							{:else if bucket.upload_limit_bytes}
 								<p class="text-duvet-ink2 mt-0.5 text-[12px]">
-									Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+									{t("settings_bucket_file_limit", { size: megabytes(bucket.upload_limit_bytes, 0) })}
 								</p>
 							{/if}
 						</div>
@@ -2256,8 +2528,8 @@
 							class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 						>
 							<IconButton
-								label={bucket.is_active ? "Deactivate" : "Activate"}
-								title={bucket.is_active ? "Deactivate" : "Activate"}
+								label={bucket.is_active ? t("settings_bucket_deactivate") : t("settings_bucket_activate")}
+								title={bucket.is_active ? t("settings_bucket_deactivate") : t("settings_bucket_activate")}
 								onclick={() => handleToggleActive(bucket)}
 								disabled={togglingBucketId === bucket.id}
 							>
@@ -2270,8 +2542,8 @@
 								{/if}
 							</IconButton>
 							<IconButton
-								label="Move files…"
-								title={myTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+								label={t("settings_bucket_move_files")}
+								title={myTransfer ? t("settings_transfer_wait") : t("settings_bucket_move_files")}
 								onclick={() => openMoveBucket(bucket)}
 								disabled={movingBucketId === bucket.id || myTransfer !== null}
 							>
@@ -2281,10 +2553,15 @@
 									<MoveIcon size={16} />
 								{/if}
 							</IconButton>
-							<IconButton label="Edit" title="Edit" onclick={() => startEditBucket(bucket)}>
+							<IconButton label={t("settings_edit")} title={t("settings_edit")} onclick={() => startEditBucket(bucket)}>
 								<PencilIcon size={16} />
 							</IconButton>
-							<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteBucket(bucket.id)}>
+							<IconButton
+								label={t("settings_delete")}
+								title={t("settings_delete")}
+								danger
+								onclick={() => handleDeleteBucket(bucket.id)}
+							>
 								<TrashIcon size={16} />
 							</IconButton>
 						</div>
@@ -2294,40 +2571,48 @@
 		{/if}
 	{:else if activeSection === "developer"}
 		{#if $pendingTeamInvites.length > 0}
-			<SettingsGroup title="Pending team invites">
+			<SettingsGroup title={t("settings_team_invites_title")}>
 				{#each $pendingTeamInvites as invite (invite.id)}
-					<SettingsRow label={invite.team_name} line="Invited by {invite.invited_by_username}" icon={UserPlusIcon}>
-						<Button size="sm" onclick={() => handleAcceptTeamInvite(invite.id)}>Accept</Button>
-						<Button variant="quiet" size="sm" onclick={() => handleDeclineTeamInvite(invite.id)}>Decline</Button>
+					<SettingsRow
+						label={invite.team_name}
+						line={t("settings_team_invited_by", { name: invite.invited_by_username })}
+						icon={UserPlusIcon}
+					>
+						<Button size="sm" onclick={() => handleAcceptTeamInvite(invite.id)}
+							>{t("settings_team_invite_accept")}</Button
+						>
+						<Button variant="quiet" size="sm" onclick={() => handleDeclineTeamInvite(invite.id)}
+							>{t("settings_team_invite_decline")}</Button
+						>
 					</SettingsRow>
 				{/each}
 			</SettingsGroup>
 		{/if}
 
 		{#if !devSelectedTeam}
-			<p class={NOTE}>Create a team to manage applications and bots. Team members can collaborate on your apps.</p>
+			<p class={NOTE}>{t("settings_teams_note")}</p>
 
 			<div class="flex gap-2">
 				<input
 					type="text"
 					bind:value={devNewTeamName}
-					placeholder="Team name"
-					aria-label="Team name"
+					placeholder={t("settings_team_name")}
+					aria-label={t("settings_team_name")}
 					class="{FIELD} flex-1"
 					onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
 				/>
 				<Button onclick={handleCreateTeam} disabled={devCreatingTeam || !devNewTeamName.trim()}>
 					<PlusIcon size={15} />
-					Create
+					{t("settings_create")}
 				</Button>
 			</div>
 
 			{#if devLoading}
-				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">{t("settings_loading")}</p>
 			{:else if devTeams.length === 0}
-				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No teams yet. Create one to get started.</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">{t("settings_teams_none")}</p>
 			{:else}
-				<SettingsGroup title="Teams">
+				<SettingsGroup title={t("settings_teams_title")}>
 					{#each devTeams as team (team.id)}
 						<button
 							type="button"
@@ -2339,7 +2624,7 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate text-[14.5px] font-medium">{team.name}</span>
-								<span class="text-duvet-ink2 block truncate text-[13px]">ID: {team.id}</span>
+								<span class="text-duvet-ink2 block truncate text-[13px]">{t("settings_id", { id: team.id })}</span>
 							</span>
 							<ChevronRightIcon size={16} class="text-duvet-ink2 shrink-0" />
 						</button>
@@ -2359,7 +2644,7 @@
 					}}
 				>
 					<ChevronLeftIcon size={15} />
-					Back to teams
+					{t("settings_teams_back")}
 				</button>
 			</div>
 
@@ -2369,20 +2654,20 @@
 						<input
 							type="text"
 							bind:value={devEditTeamName}
-							aria-label="Team name"
+							aria-label={t("settings_team_name")}
 							class="{FIELD_SM} flex-1"
 							onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
 						/>
-						<Button size="sm" onclick={handleSaveTeamEdit}>Save</Button>
-						<Button variant="quiet" size="sm" onclick={() => (devEditingTeam = null)}>Cancel</Button>
+						<Button size="sm" onclick={handleSaveTeamEdit}>{t("settings_save")}</Button>
+						<Button variant="quiet" size="sm" onclick={() => (devEditingTeam = null)}>{t("settings_cancel")}</Button>
 					</div>
 				{:else}
 					<h3 class="min-w-0 flex-1 truncate text-[16px] font-semibold">{devSelectedTeam.name}</h3>
 					<div class="flex items-center gap-1">
 						{#if devSelectedTeam.owner_id === $currentUser?.id}
 							<IconButton
-								label="Edit"
-								title="Edit"
+								label={t("settings_edit")}
+								title={t("settings_edit")}
 								onclick={() => {
 									devEditingTeam = devSelectedTeam;
 									devEditTeamName = devSelectedTeam?.name ?? "";
@@ -2391,8 +2676,8 @@
 								<PencilIcon size={16} />
 							</IconButton>
 							<IconButton
-								label="Delete"
-								title="Delete"
+								label={t("settings_delete")}
+								title={t("settings_delete")}
 								danger
 								onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
 							>
@@ -2404,19 +2689,19 @@
 			</div>
 
 			<!-- Members -->
-			<SettingsGroup title="Members">
+			<SettingsGroup title={t("settings_team_members_title")}>
 				{#each devMembers as member (member.user_id)}
 					<div class="flex min-h-11 items-center justify-between gap-3 px-3.5 py-2">
 						<div class="flex min-w-0 items-center gap-2">
 							<span class="truncate text-[14.5px] font-medium">{member.username}</span>
 							{#if member.role === TeamRole.Admin}
-								<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Admin</span>
+								<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">{t("settings_team_admin")}</span>
 							{/if}
 						</div>
 						{#if devSelectedTeam.owner_id === $currentUser?.id && member.user_id !== $currentUser?.id}
 							<IconButton
-								label="Remove"
-								title="Remove"
+								label={t("settings_team_member_remove")}
+								title={t("settings_team_member_remove")}
 								size="sm"
 								danger
 								onclick={() => handleRemoveMember(member.user_id, member.username)}
@@ -2431,14 +2716,14 @@
 						<input
 							type="text"
 							bind:value={devInviteEmail}
-							placeholder="Email to invite"
-							aria-label="Email to invite"
+							placeholder={t("settings_team_invite_email")}
+							aria-label={t("settings_team_invite_email")}
 							class="{FIELD_SM} flex-1"
 							onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
 						/>
 						<Button size="sm" onclick={handleInviteMember} disabled={devInviting || !devInviteEmail.trim()}>
 							<UserPlusIcon size={14} />
-							Invite
+							{t("settings_team_invite")}
 						</Button>
 					</div>
 				{/if}
@@ -2446,27 +2731,27 @@
 
 			<!-- Applications -->
 			<section class="flex flex-col gap-2">
-				<h3 class={GROUP_TITLE}>Applications</h3>
+				<h3 class={GROUP_TITLE}>{t("settings_apps_title")}</h3>
 				{#if devAppsLoading}
-					<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
+					<p class="text-duvet-ink2 px-1.5 text-[14.5px]">{t("settings_loading")}</p>
 				{:else}
 					<div class="flex gap-2">
 						<input
 							type="text"
 							bind:value={devNewAppName}
-							placeholder="App name"
-							aria-label="App name"
+							placeholder={t("settings_app_name")}
+							aria-label={t("settings_app_name")}
 							class="{FIELD} flex-1"
 							onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
 						/>
 						<Button onclick={handleCreateApp} disabled={devCreatingApp || !devNewAppName.trim()}>
 							<PlusIcon size={15} />
-							Create
+							{t("settings_create")}
 						</Button>
 					</div>
 
 					{#if devApps.length === 0}
-						<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No applications yet.</p>
+						<p class="text-duvet-ink2 px-1.5 text-[14.5px]">{t("settings_apps_none")}</p>
 					{:else}
 						<div class="flex flex-col gap-3">
 							{#each devApps as app (app.id)}
@@ -2476,20 +2761,22 @@
 											<input
 												type="text"
 												bind:value={devEditAppName}
-												placeholder="App name"
-												aria-label="App name"
+												placeholder={t("settings_app_name")}
+												aria-label={t("settings_app_name")}
 												class={FIELD}
 											/>
 											<input
 												type="text"
 												bind:value={devEditAppDesc}
-												placeholder="Description (optional)"
-												aria-label="Description (optional)"
+												placeholder={t("settings_app_description")}
+												aria-label={t("settings_app_description")}
 												class={FIELD}
 											/>
 											<div class="flex gap-2">
-												<Button size="sm" onclick={handleSaveAppEdit}>Save</Button>
-												<Button variant="quiet" size="sm" onclick={() => (devEditingApp = null)}>Cancel</Button>
+												<Button size="sm" onclick={handleSaveAppEdit}>{t("settings_save")}</Button>
+												<Button variant="quiet" size="sm" onclick={() => (devEditingApp = null)}
+													>{t("settings_cancel")}</Button
+												>
 											</div>
 										</div>
 									{:else}
@@ -2499,16 +2786,12 @@
 												{#if app.description}
 													<p class="text-duvet-ink2 text-[13px]">{app.description}</p>
 												{/if}
-												<p class="text-duvet-ink2 mt-1 text-[12px] select-text">ID: {app.id}</p>
+												<p class="text-duvet-ink2 mt-1 text-[12px] select-text">{t("settings_id", { id: app.id })}</p>
 											</div>
 											<div class="flex shrink-0 items-center gap-1">
 												<IconButton
-													label={app.public
-														? "Public — anyone can add this bot"
-														: "Private — only team members can add"}
-													title={app.public
-														? "Public — anyone can add this bot"
-														: "Private — only team members can add"}
+													label={app.public ? t("settings_app_public") : t("settings_app_private")}
+													title={app.public ? t("settings_app_public") : t("settings_app_private")}
 													class={app.public ? "text-duvet-alive-text!" : ""}
 													onclick={() => handleTogglePublic(app)}
 												>
@@ -2519,8 +2802,8 @@
 													{/if}
 												</IconButton>
 												<IconButton
-													label="Edit"
-													title="Edit"
+													label={t("settings_edit")}
+													title={t("settings_edit")}
 													onclick={() => {
 														devEditingApp = app;
 														devEditAppName = app.name;
@@ -2529,7 +2812,12 @@
 												>
 													<PencilIcon size={16} />
 												</IconButton>
-												<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteApp(app)}>
+												<IconButton
+													label={t("settings_delete")}
+													title={t("settings_delete")}
+													danger
+													onclick={() => handleDeleteApp(app)}
+												>
 													<TrashIcon size={16} />
 												</IconButton>
 											</div>
@@ -2539,12 +2827,12 @@
 												<div class="flex items-center justify-between gap-2">
 													<div class="flex items-center gap-2">
 														<BotIcon size={16} class="text-duvet-ink2" />
-														<span class="text-[14px] font-medium">Bot active</span>
+														<span class="text-[14px] font-medium">{t("settings_bot_active")}</span>
 													</div>
 													<div class="flex items-center gap-1">
 														<Button variant="quiet" size="sm" onclick={() => handleResetBotToken(app)}>
 															<RotateIcon size={13} />
-															Reset token
+															{t("settings_bot_token_reset")}
 														</Button>
 														<Button
 															variant="quiet"
@@ -2553,7 +2841,7 @@
 															onclick={() => handleDeleteBot(app)}
 														>
 															<TrashIcon size={13} />
-															Delete bot
+															{t("settings_bot_delete")}
 														</Button>
 													</div>
 												</div>
@@ -2564,8 +2852,8 @@
 														value={botEditingAppId === app.id
 															? botEditUsername
 															: (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
-														placeholder="Username"
-														aria-label="Username"
+														placeholder={t("settings_bot_username")}
+														aria-label={t("settings_bot_username")}
 														class={FIELD_SM}
 														onfocus={() => {
 															if (botEditingAppId !== app.id) startBotEdit(app);
@@ -2580,8 +2868,8 @@
 														value={botEditingAppId === app.id
 															? botEditAlias
 															: (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
-														placeholder="Display name (optional)"
-														aria-label="Display name (optional)"
+														placeholder={t("settings_bot_display_name")}
+														aria-label={t("settings_bot_display_name")}
 														class={FIELD_SM}
 														onfocus={() => {
 															if (botEditingAppId !== app.id) startBotEdit(app);
@@ -2593,14 +2881,14 @@
 													/>
 												</div>
 												<div class="mt-2 flex items-center gap-2">
-													<span class="text-duvet-ink2 shrink-0 text-[12px]">Invite link:</span>
+													<span class="text-duvet-ink2 shrink-0 text-[12px]">{t("settings_bot_invite_link")}</span>
 													<code
 														class="bg-duvet-code-bg text-duvet-ink2 min-w-0 flex-1 truncate rounded-md px-2 py-1 font-mono text-[12px] select-text"
 														>{getBotInviteLink(app.bot_user_id ?? "")}</code
 													>
 													<IconButton
-														label="Copy"
-														title="Copy"
+														label={t("settings_copy")}
+														title={t("settings_copy")}
 														size="sm"
 														onclick={() => copyBotInviteLink(app.bot_user_id ?? "")}
 													>
@@ -2610,7 +2898,7 @@
 												{#if hasActiveBucket}
 													{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
 													<div class="border-duvet-line mt-3 border-t pt-3">
-														<p class="text-duvet-ink2 mb-2 text-[12px]">Bot appearance</p>
+														<p class="text-duvet-ink2 mb-2 text-[12px]">{t("settings_bot_appearance")}</p>
 														<div class="flex items-center gap-3">
 															<!-- Avatar -->
 															<div class="group relative">
@@ -2619,7 +2907,7 @@
 																	<button
 																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotAvatar}
-																		title="Undo"
+																		title={t("settings_bot_image_undo")}
 																	>
 																		<XIcon class="text-fixed-white size-4" />
 																	</button>
@@ -2634,7 +2922,7 @@
 																		onclick={() => {
 																			pendingBotAvatar = null;
 																		}}
-																		title="Undo"
+																		title={t("settings_bot_image_undo")}
 																	>
 																		<RotateIcon class="text-fixed-white size-4" />
 																	</button>
@@ -2653,12 +2941,12 @@
 																				botCropTargetApp = app;
 																				showBotAvatarCrop = true;
 																			}}
-																			title="Change"><PencilIcon class="size-3.5" /></button
+																			title={t("settings_bot_image_change")}><PencilIcon class="size-3.5" /></button
 																		>
 																		<button
 																			class="hover:bg-fixed-white/20 text-duvet-call-red-ink rounded p-0.5"
 																			onclick={removeBotAvatar}
-																			title="Remove"><TrashIcon class="size-3.5" /></button
+																			title={t("settings_bot_image_remove")}><TrashIcon class="size-3.5" /></button
 																		>
 																	</div>
 																{:else}
@@ -2668,7 +2956,7 @@
 																			botCropTargetApp = app;
 																			showBotAvatarCrop = true;
 																		}}
-																		title="Set avatar"
+																		title={t("settings_bot_avatar_set")}
 																	>
 																		<PlusIcon class="size-4" />
 																	</button>
@@ -2685,7 +2973,7 @@
 																	<button
 																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotBanner}
-																		title="Undo"
+																		title={t("settings_bot_image_undo")}
 																	>
 																		<XIcon class="text-fixed-white size-4" />
 																	</button>
@@ -2700,7 +2988,7 @@
 																		onclick={() => {
 																			pendingBotBanner = null;
 																		}}
-																		title="Undo"
+																		title={t("settings_bot_image_undo")}
 																	>
 																		<RotateIcon class="text-fixed-white size-4" />
 																	</button>
@@ -2719,12 +3007,12 @@
 																				botCropTargetApp = app;
 																				showBotBannerCrop = true;
 																			}}
-																			title="Change"><PencilIcon class="size-3.5" /></button
+																			title={t("settings_bot_image_change")}><PencilIcon class="size-3.5" /></button
 																		>
 																		<button
 																			class="hover:bg-fixed-white/20 text-duvet-call-red-ink rounded p-0.5"
 																			onclick={removeBotBanner}
-																			title="Remove"><TrashIcon class="size-3.5" /></button
+																			title={t("settings_bot_image_remove")}><TrashIcon class="size-3.5" /></button
 																		>
 																	</div>
 																{:else}
@@ -2734,7 +3022,7 @@
 																			botCropTargetApp = app;
 																			showBotBannerCrop = true;
 																		}}
-																		title="Set banner"
+																		title={t("settings_bot_banner_set")}
 																	>
 																		<PlusIcon class="size-4" />
 																	</button>
@@ -2750,9 +3038,9 @@
 															>
 																{savingBotProfile
 																	? botUploadPercent === null
-																		? "Saving…"
+																		? t("settings_saving")
 																		: uploadNote(botUploadPercent)
-																	: "Save changes"}
+																	: t("settings_save_changes")}
 															</Button>
 														{/if}
 													</div>
@@ -2760,7 +3048,7 @@
 											{:else}
 												<Button size="sm" onclick={() => handleCreateBot(app)}>
 													<BotIcon size={14} />
-													Create bot
+													{t("settings_bot_create")}
 												</Button>
 											{/if}
 										</div>
@@ -2772,20 +3060,20 @@
 
 					{#if devBotToken}
 						<div class="{calloutClass('warn')} flex-col gap-2!">
-							<p class="font-semibold">Bot token — copy it now, it won't be shown again!</p>
+							<p class="font-semibold">{t("settings_bot_token_warning")}</p>
 							<div class="flex items-center gap-2">
 								<code
 									class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 rounded-md px-3 py-2 font-mono text-[13px] break-all select-text"
 									>{devShowToken ? devBotToken : "•".repeat(40)}</code
 								>
 								<IconButton
-									label={devShowToken ? "Hide" : "Show"}
-									title={devShowToken ? "Hide" : "Show"}
+									label={devShowToken ? t("settings_bot_token_hide") : t("settings_bot_token_show")}
+									title={devShowToken ? t("settings_bot_token_hide") : t("settings_bot_token_show")}
 									onclick={() => (devShowToken = !devShowToken)}
 								>
 									{#if devShowToken}<EyeOffIcon size={16} />{:else}<EyeIcon size={16} />{/if}
 								</IconButton>
-								<IconButton label="Copy" title="Copy" onclick={copyToken}>
+								<IconButton label={t("settings_copy")} title={t("settings_copy")} onclick={copyToken}>
 									<CopyIcon size={16} />
 								</IconButton>
 							</div>
@@ -2802,7 +3090,7 @@
 
 <ImageCropModal
 	bind:open={showAvatarCrop}
-	title="Change avatar"
+	title={t("settings_avatar_change")}
 	aspect={1}
 	round
 	targetWidth={256}
@@ -2811,7 +3099,7 @@
 />
 <ImageCropModal
 	bind:open={showBannerCrop}
-	title="Change banner"
+	title={t("settings_banner_change")}
 	aspect={5 / 2}
 	targetWidth={600}
 	targetHeight={240}
@@ -2819,7 +3107,7 @@
 />
 <ImageCropModal
 	bind:open={showBotAvatarCrop}
-	title="Change bot avatar"
+	title={t("settings_bot_avatar_change")}
 	aspect={1}
 	round
 	targetWidth={256}
@@ -2828,7 +3116,7 @@
 />
 <ImageCropModal
 	bind:open={showBotBannerCrop}
-	title="Change bot banner"
+	title={t("settings_bot_banner_change")}
 	aspect={5 / 2}
 	targetWidth={600}
 	targetHeight={240}
@@ -2857,6 +3145,6 @@
 	{/snippet}
 	{#snippet actions()}
 		<Button variant="quiet" onclick={() => (signOutOpen = false)}>{t("settings_cancel")}</Button>
-		<Button onclick={() => host.logout()}>{t("settings_sign_out")}</Button>
+		<Button onclick={signOut}>{t("settings_sign_out")}</Button>
 	{/snippet}
 </Dialog>

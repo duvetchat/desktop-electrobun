@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from "$lib/i18n";
+
 	// The cover over a spoiler, a message component's or a file's, until a click reveals it. It covers its
 	// nearest positioned ancestor, and its click goes no further: it doesn't also open what it hid, or the
 	// message.
@@ -15,6 +17,6 @@
 >
 	<span
 		class="bg-duvet-media-scrim text-duvet-media-ink rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] backdrop-blur-md"
-		>SPOILER</span
+		>{t("media_spoiler")}</span
 	>
 </button>

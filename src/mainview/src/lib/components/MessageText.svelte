@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { get } from "svelte/store";
+	import { t } from "$lib/i18n";
 	import { renderMarkdown, type CustomEmojiMap, type LinkDrawing } from "$lib/markdown";
 	import { JUMBO_EMOJI, messageTextClass } from "$lib/message-styles";
 	import {
@@ -29,7 +30,7 @@
 		/** The name style of each member a mention can name, by user ID: their role's colour in a Space. */
 		mentionStyles?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
-		/** What "(…)" after the text says: that it was edited, and when. Nothing for a message never edited. */
+		/** What the bracketed note after the text says: that it was edited, and when. Nothing for a message never edited. */
 		edited?: string | null;
 		/** Whether the text sits in the user's own bubble, whose fills and links take the bubble's ink. */
 		own?: boolean;
@@ -69,5 +70,5 @@
 	>{@html renderMarkdown(content, large, mentionMap, customEmojiMap, $roomNames, links, mentionStyles)}</span
 >
 {#if edited}
-	<span class="ml-1 font-sans text-[11px] opacity-60">({edited})</span>
+	<span class="ml-1 font-sans text-[11px] opacity-60">{t("media_edited_marker", { edited })}</span>
 {/if}

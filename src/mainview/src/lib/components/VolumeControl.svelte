@@ -2,12 +2,17 @@
 	import { Volume1, Volume2, VolumeX } from "@lucide/svelte";
 	import { LinkPreview } from "bits-ui";
 	import { GLASS } from "$lib/components/ui/recipes";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { audioVolume } from "$lib/stores/voiceNotePlayer.svelte";
 
 	// The volume of voice messages and audio files, kept across restarts: a speaker that shows it (muted, low, high),
 	// and on hover or focus a vertical slider with its percentage. The slider floats in the page's root, so nothing
 	// around the speaker (a sidebar, a message list) clips it.
 	let { height = "h-20" }: { height?: string } = $props();
+
+	// The volume as a percentage, in the app's language's way of writing one: 50% in English, 50 % in French.
+	const percent = $derived(formatNumber($audioVolume, { style: "percent", maximumFractionDigits: 0 }));
 </script>
 
 <LinkPreview.Root openDelay={80} closeDelay={250}>
@@ -16,7 +21,7 @@
 			<button
 				{...props}
 				type="button"
-				aria-label="Volume: {Math.round($audioVolume * 100)}%"
+				aria-label={t("call_volume_label", { volume: percent })}
 				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-lg transition-colors motion-reduce:transition-none"
 			>
 				{#if $audioVolume === 0}
@@ -42,12 +47,12 @@
 				min="0"
 				max="1"
 				step="0.01"
-				aria-label="Volume"
+				aria-label={t("call_volume")}
 				bind:value={$audioVolume}
 				class="volume-slider {height} w-1.5"
 				style="writing-mode: vertical-lr; direction: rtl;"
 			/>
-			<span class="text-duvet-ink2 text-[10.5px] tabular-nums">{Math.round($audioVolume * 100)}%</span>
+			<span class="text-duvet-ink2 text-[10.5px] tabular-nums">{percent}</span>
 		</LinkPreview.Content>
 	</LinkPreview.Portal>
 </LinkPreview.Root>

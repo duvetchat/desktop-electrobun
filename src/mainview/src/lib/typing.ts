@@ -1,3 +1,5 @@
+import { t } from "$lib/i18n";
+import { formatList } from "$lib/i18n/format";
 import type { TypingUser } from "$lib/stores.svelte";
 
 /** How long a notice of someone typing or recording shows with nothing after it. */
@@ -46,16 +48,17 @@ export function typersAt(
 
 const nameOf = (u: Pick<TypingUser, "alias" | "username">) => u.alias ?? u.username;
 
+// Who a sentence names: one or two people, by name, as a list in the app's language; more are "several people".
+const named = (users: TypingUser[]) => ({ count: users.length, names: formatList(users.slice(0, 2).map(nameOf)) });
+
+/** Who's typing, as the open chat's indicator says it: "Ana is typing", "Ana and Ben are typing", or several people. */
 export function typingPhrase(users: TypingUser[]): string {
-	if (users.length === 1) return `${nameOf(users[0]!)} is typing`;
-	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are typing`;
-	return "Several people are typing";
+	return t("chat_typing", named(users));
 }
 
+/** Who's recording a voice note, as the open chat's indicator says it. */
 export function recordingPhrase(users: TypingUser[]): string {
-	if (users.length === 1) return `${nameOf(users[0]!)} is recording a voice note`;
-	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are recording voice notes`;
-	return "Several people are recording voice notes";
+	return t("chat_recording", named(users));
 }
 
 /** What a chat's row says of those typing and recording there, as the mobile app has it; null with nobody. */
@@ -63,8 +66,7 @@ export function typingSentence(users: TypingUser[] | undefined): string | null {
 	if (!users?.length) return null;
 	const typing = users.filter((u) => !u.recording);
 	const recording = users.filter((u) => u.recording);
-	return [
-		...(typing.length ? [`${typingPhrase(typing)}…`] : []),
-		...(recording.length ? [recordingPhrase(recording)] : []),
-	].join(" · ");
+	if (typing.length && recording.length)
+		return t("chat_typing_and_recording", { typing: typingPhrase(typing), recording: recordingPhrase(recording) });
+	return typing.length ? t("chat_typing_still", { typing: typingPhrase(typing) }) : recordingPhrase(recording);
 }

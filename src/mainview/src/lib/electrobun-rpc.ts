@@ -61,6 +61,9 @@ export type AppRPCSchema = {
 			pendingUpdate: { params: void; response: UpdateOffer | null };
 			// Where the YouTube relay listens (src/bun/player-relay.ts), or null.
 			playerRelay: { params: void; response: string | null };
+			// The system's preferred languages, most preferred first (src/bun/system-languages.ts, #464): the whole list,
+			// where the web view's navigator.languages may have only the first (lib/i18n/bun-link.ts). Any window's.
+			systemLanguages: { params: void; response: string[] };
 		};
 		messages: {
 			closeWindow: void;
@@ -87,6 +90,9 @@ export type AppRPCSchema = {
 			// From the main window: a request for the end-to-end encryption core, which Bun answers with e2eReply
 			// (lib/e2e/host-desktop.ts, src/bun/e2e/rpc.ts). A message, not a request: those share one time limit.
 			e2e: E2eMessage;
+			// From the main window: the language its page is in, at its start and at each change, which the menu bar and
+			// the windows' titles take (src/bun/i18n.ts, lib/i18n/bun-link.ts; #464).
+			appLanguage: { locale: string };
 		};
 	};
 	webview: {
@@ -125,6 +131,7 @@ export type AppRPCClient = {
 		windowTheme: (params: { theme: "light" | "dark" }) => void;
 		applyUpdate: () => void;
 		e2e: (message: E2eMessage) => void;
+		appLanguage: (params: { locale: string }) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
@@ -135,6 +142,7 @@ export type AppRPCClient = {
 		copySecret: (params: { text: string }) => Promise<boolean | null>;
 		pendingUpdate: () => Promise<UpdateOffer | null>;
 		playerRelay: () => Promise<string | null>;
+		systemLanguages: () => Promise<string[]>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -219,6 +227,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			copySecret: (params) => rpc.request.copySecret(params),
 			pendingUpdate: () => rpc.request.pendingUpdate(),
 			playerRelay: () => rpc.request.playerRelay(),
+			systemLanguages: () => rpc.request.systemLanguages(),
 		},
 		on: {
 			activityUpdate: (handler) => {

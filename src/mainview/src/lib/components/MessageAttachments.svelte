@@ -6,8 +6,10 @@
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
+	import { allUp, cancelUpload, chatFileSize, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
 	import {
 		MESSAGE_CARD,
 		MESSAGE_CARD_ACTION,
@@ -16,7 +18,6 @@
 		MESSAGE_MEDIA_SUNK,
 		MESSAGE_PLACEHOLDER,
 	} from "$lib/message-styles";
-	import { allUp, cancelUpload, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
 	// previews (pins, search results). Images and videos fit in maxWidth × maxHeight; a click on an image or
@@ -34,7 +35,9 @@
 		preview = false,
 	}: {
 		message: Message;
-		channelName: string;
+		/** The room's name for the players' "now playing": "" where there's none (a conversation), null for a room the
+		 * app doesn't know, which the bar names in the language of the moment. */
+		channelName: string | null;
 		onPreview: (src: string, alt?: string) => void;
 		maxWidth?: number;
 		maxHeight?: number;
@@ -45,6 +48,10 @@
 	const attachmentHost = getHostURL();
 	// The spoiler files a click revealed, by attachment ID.
 	const revealed = new SvelteSet<string>();
+	// The pictures and videos that didn't load after their tries (loadAgain), by attachment ID, and the sticker that
+	// didn't load, by its attachment ID: their places say so, in the language of the moment.
+	const failedMedia = new SvelteSet<string>();
+	let failedSticker = $state<string | null>(null);
 	// How far the message's files are while this window sends it (lib/uploads), which every list showing it reads.
 	const upload = $derived(message.nonce ? $messageUploads[message.nonce] : undefined);
 	const sizes = $derived(message.attachments?.map((a) => a.size_bytes) ?? []);
@@ -77,7 +84,7 @@
 	}
 
 	// A picture or a video that fails to load is asked for again every second, ten times, then says so.
-	function loadAgain(e: Event) {
+	function loadAgain(e: Event, id: string) {
 		const media = e.currentTarget as HTMLImageElement | HTMLVideoElement;
 		const retries = parseInt(media.dataset.retries ?? "0");
 		if (retries < 10) {
@@ -87,21 +94,12 @@
 				media.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 			}, 1000);
 		} else {
-			const parent = media.parentElement!;
-			parent.querySelector(".media-skeleton")?.remove();
-			media.remove();
-			parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-secondary-fill gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
+			failedMedia.add(id);
 		}
 	}
 
 	function loaded(e: Event) {
 		(e.currentTarget as HTMLElement).parentElement?.querySelector(".media-skeleton")?.remove();
-	}
-
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 </script>
 
@@ -116,16 +114,16 @@
 				<div class="bg-duvet-secondary-fill size-[34px] shrink-0 animate-pulse rounded-full"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
 					<div class="bg-duvet-secondary-fill h-5 animate-pulse rounded"></div>
-					<span class="text-duvet-ink2 text-[11px]">Sending…</span>
+					<span class="text-duvet-ink2 text-[11px]">{t("chat_voice_note_sending")}</span>
 				</div>
 			</div>
 		{:else if voiceAtt?.sealed}
-			<SealedFile {preview} att={voiceAtt} kind="voice" authorName={message.author_name ?? "Unknown"} {channelName} />
+			<SealedFile {preview} att={voiceAtt} kind="voice" authorName={message.author_name} {channelName} />
 		{:else if voiceAtt && !voiceAtt.deleted_at}
 			<VoiceNotePlayer
 				src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
 				attachmentId={voiceAtt.id}
-				authorName={message.author_name ?? "Unknown"}
+				authorName={message.author_name}
 				{channelName}
 			/>
 		{:else}
@@ -133,30 +131,33 @@
 				class="border-duvet-line text-duvet-ink2 flex h-12 items-center gap-2 rounded-[18px] border border-dashed px-4"
 			>
 				<TrashIcon size={16} class="shrink-0 opacity-60" />
-				<span class="text-xs italic">Voice note deleted</span>
+				<span class="text-xs italic">{t("chat_voice_note_deleted")}</span>
 			</div>
 		{/if}
 	{:else if message.sticker_attachment_id}
-		<button
-			type="button"
-			class="size-[136px] cursor-zoom-in"
-			onclick={() => onPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
-		>
-			<img
-				src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
-				alt="Sticker"
-				class="size-[136px] object-contain"
-				loading="lazy"
-				onerror={(e) => {
-					const img = e.currentTarget as HTMLImageElement;
-					const parent = img.parentElement!;
-					img.remove();
-					parent.onclick = null;
-					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-card border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
-				}}
-			/>
-		</button>
+		{@const stickerId = message.sticker_attachment_id}
+		{#if failedSticker === stickerId}
+			<div
+				class="border-duvet-line rounded-card flex size-[136px] flex-col items-center justify-center gap-1 border border-dashed"
+			>
+				<span class="text-2xl">💩</span>
+				<span class="text-duvet-ink2 text-xs">{t("chat_sticker_deleted")}</span>
+			</div>
+		{:else}
+			<button
+				type="button"
+				class="size-[136px] cursor-zoom-in"
+				onclick={() => onPreview(`${attachmentHost}/attachments/${stickerId}`)}
+			>
+				<img
+					src="{attachmentHost}/attachments/{stickerId}"
+					alt={t("chat_sticker_alt")}
+					class="size-[136px] object-contain"
+					loading="lazy"
+					onerror={() => (failedSticker = stickerId)}
+				/>
+			</button>
+		{/if}
 	{:else if message.attachments && message.attachments.length > 0}
 		<div class="flex max-w-full flex-col gap-1">
 			{#if tiled.length > 0}
@@ -196,18 +197,18 @@
 					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
 						<div class="{MESSAGE_MEDIA_PENDING} flex h-40 w-64 max-w-full items-center justify-center {pulse}">
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
 						<div class="{MESSAGE_MEDIA_PENDING} flex h-44 w-80 max-w-full items-center justify-center {pulse}">
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
 						<div class="{MESSAGE_CARD} relative inline-flex w-[300px] max-w-full items-center gap-2 px-3 py-3 {pulse}">
-							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}…</span>
-							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{formatFileSize(att.size_bytes)}</span>
+							<span class="text-duvet-ink2 min-w-0 truncate text-xs">{t("chat_upload_file", { name })}</span>
+							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{chatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
 						</div>
 					{/if}
@@ -219,7 +220,7 @@
 						style="width: {dw}px; height: {dh}px; max-width: 100%;"
 					>
 						<TrashIcon size={18} class="opacity-60" />
-						<span class="text-xs">Attachment deleted</span>
+						<span class="text-xs">{t("chat_attachment_deleted")}</span>
 					</div>
 				{:else if att.content_type.startsWith("image/")}
 					{@const box = boxOf(att)}
@@ -236,11 +237,13 @@
 							<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
 								<SealedFile {preview} {att} kind="video" {hidden} />
 							</div>
+						{:else if failedMedia.has(att.id)}
+							{@render mediaFailed()}
 						{:else}
 							<div
 								class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
 							>
-								<span class="text-duvet-ink2 text-xs">Loading video…</span>
+								<span class="text-duvet-ink2 text-xs">{t("chat_video_loading")}</span>
 							</div>
 							<!-- svelte-ignore a11y_media_has_caption -->
 							<video
@@ -249,7 +252,7 @@
 								class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
 								inert={hidden}
 								onloadeddata={loaded}
-								onerror={loadAgain}
+								onerror={(e) => loadAgain(e, att.id)}
 							></video>
 						{/if}
 						{#if hidden}
@@ -261,14 +264,14 @@
 					<div class="rounded-card relative max-w-87.5 {hidden ? 'overflow-hidden' : ''}">
 						<div class={hidden ? "blur-md" : ""} inert={hidden}>
 							{#if att.sealed}
-								<SealedFile {preview} {att} kind="audio" authorName={message.author_name ?? "Unknown"} {channelName} />
+								<SealedFile {preview} {att} kind="audio" authorName={message.author_name} {channelName} />
 							{:else}
 								<AudioFilePlayer
 									src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 									attachmentId={att.id}
 									filename={name}
 									sizeBytes={att.size_bytes}
-									authorName={message.author_name ?? "Unknown"}
+									authorName={message.author_name}
 									{channelName}
 								/>
 							{/if}
@@ -302,7 +305,9 @@
 								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
 									<span class="text-duvet-ink2 text-[11.5px] leading-tight"
-										>{formatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+										>{kind
+											? t("chat_file_size_kind", { size: chatFileSize(att.size_bytes), kind })
+											: chatFileSize(att.size_bytes)}</span
 									>
 								</span>
 								<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
@@ -323,8 +328,8 @@
 						<button
 							type="button"
 							class="text-duvet-ink pointer-events-auto cursor-pointer hover:underline"
-							aria-label="Cancel upload"
-							onclick={() => cancelUpload(message.nonce!)}>Cancel</button
+							aria-label={t("chat_upload_cancel_label")}
+							onclick={() => cancelUpload(message.nonce!)}>{t("chat_upload_cancel")}</button
 						>
 					{/if}
 				</p>
@@ -346,24 +351,36 @@
 
 <!-- A picture of a room's message, at the API's URL -->
 {#snippet network(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
-	<button
-		type="button"
-		class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
-		inert={hidden}
-		onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
-	>
-		<div class="media-skeleton bg-duvet-secondary-fill absolute inset-0 animate-pulse"></div>
-		<img
-			src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-			alt={name}
-			class="relative size-full text-transparent transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit} {hidden
-				? 'blur-xl'
-				: ''}"
-			loading="lazy"
-			onload={loaded}
-			onerror={loadAgain}
-		/>
-	</button>
+	{#if failedMedia.has(att.id)}
+		{@render mediaFailed()}
+	{:else}
+		<button
+			type="button"
+			class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
+			inert={hidden}
+			onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
+		>
+			<div class="media-skeleton bg-duvet-secondary-fill absolute inset-0 animate-pulse"></div>
+			<img
+				src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+				alt={name}
+				class="relative size-full text-transparent transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit} {hidden
+					? 'blur-xl'
+					: ''}"
+				loading="lazy"
+				onload={loaded}
+				onerror={(e) => loadAgain(e, att.id)}
+			/>
+		</button>
+	{/if}
+{/snippet}
+
+<!-- A picture or a video that didn't load after its tries, in its place -->
+{#snippet mediaFailed()}
+	<div class="bg-duvet-secondary-fill flex h-full w-full flex-col items-center justify-center gap-1">
+		<span class="text-2xl">💩</span>
+		<span class="text-duvet-ink2 text-xs">{t("chat_media_load_failed")}</span>
+	</div>
 {/snippet}
 
 {#snippet fileBar(share: number | null)}

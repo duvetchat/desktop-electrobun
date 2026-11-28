@@ -119,3 +119,7 @@ export const PRISM_RIM = [
 /** A flat row that mentions the user: the light as a wash behind the row, with no rim and nothing that moves. */
 export const PRISM_WASH =
 	"[--mention-ink:var(--duvet-mention-lit)] bg-[radial-gradient(420px_80px_at_60px_50%,var(--duvet-prism-gem),transparent),radial-gradient(260px_60px_at_220px_80%,var(--duvet-prism-cool),transparent)]";
+
+/** The wash of consecutive mentions: horizontal, so the rows it covers meet as one block without repeating the glow. */
+export const PRISM_WASH_RUN =
+	"[--mention-ink:var(--duvet-mention-lit)] bg-[linear-gradient(90deg,var(--duvet-prism-gem),transparent_62%),linear-gradient(90deg,var(--duvet-prism-cool),transparent_45%)]";

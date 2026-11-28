@@ -15,11 +15,12 @@
 		zoomSlider,
 		type Crop,
 	} from "$lib/image-crop";
+	import { t } from "$lib/i18n";
 	let GIFEncoder: any, quantize: any, applyPalette: any;
 
 	let {
 		open = $bindable(false),
-		title = "Upload image",
+		title = undefined,
 		aspect = 1,
 		round = false,
 		targetWidth = 256,
@@ -34,6 +35,9 @@
 		targetHeight?: number;
 		onConfirm: (file: File) => void;
 	} = $props();
+
+	// The sheet's title: what opened it names it, else Upload image.
+	const sheetTitle = $derived(title ?? t("media_crop_title"));
 
 	// The frame stays in the middle of the view, which shows the rest of the image dimmed around it.
 	const VIEW_WIDTH = 400;
@@ -257,18 +261,18 @@
 			imgSrc = "";
 		}
 	}}
-	{title}
+	title={sheetTitle}
 >
 	{#if !imgSrc}
 		<label
 			class="border-duvet-line hover:bg-duvet-hover-soft focus-within:bg-duvet-hover-soft flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors motion-reduce:transition-none"
 		>
-			<span class="text-duvet-ink text-[13.5px] font-medium">Click to choose an image</span>
-			<span class="text-duvet-ink2 mt-1 text-xs">PNG, JPG or GIF, 10 MB at most</span>
+			<span class="text-duvet-ink text-[13.5px] font-medium">{t("media_crop_choose")}</span>
+			<span class="text-duvet-ink2 mt-1 text-xs">{t("media_crop_formats")}</span>
 			<input type="file" accept="image/*" class="sr-only" onchange={handleFileChange} />
 		</label>
 	{:else}
-		<p class="text-duvet-ink2 -mt-1.5 text-[13px]">Drag to reposition. Scroll to zoom.</p>
+		<p class="text-duvet-ink2 -mt-1.5 text-[13px]">{t("media_crop_hint")}</p>
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
 			class="bg-duvet-sunk relative mx-auto max-w-full cursor-grab touch-none overflow-hidden rounded-2xl select-none active:cursor-grabbing"
@@ -314,7 +318,7 @@
 				value={zoomSlider(zoom, zoomLimit)}
 				oninput={handleZoomSlider}
 				disabled={zoomLimit <= 1}
-				aria-label="Zoom"
+				aria-label={t("media_crop_zoom")}
 				class="bg-duvet-toggle-off accent-duvet-accent [&::-webkit-slider-thumb]:bg-duvet-accent h-1.5 w-full cursor-pointer appearance-none rounded-full disabled:cursor-default disabled:opacity-45 [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full"
 			/>
 			<ZoomInIcon size={16} class="text-duvet-ink2 shrink-0" />
@@ -327,9 +331,11 @@
 				onclick={() => {
 					file = null;
 					imgSrc = "";
-				}}>Change image</Button
+				}}>{t("media_crop_change")}</Button
 			>
-			<Button onclick={handleConfirm} disabled={processing}>{processing ? "Processing…" : "Apply"}</Button>
+			<Button onclick={handleConfirm} disabled={processing}
+				>{processing ? t("media_crop_processing") : t("media_crop_apply")}</Button
+			>
 		{/if}
 	{/snippet}
 </Sheet>

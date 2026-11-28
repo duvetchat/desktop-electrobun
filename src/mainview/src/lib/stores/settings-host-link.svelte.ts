@@ -116,7 +116,8 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 		},
 		spaceDeleted: (args) => {
 			const spaceId = textOf(args, "spaceId");
-			if (spaceId) pageSettingsHost.spaceDeleted(spaceId, textOf(args, "name") ?? "The Space");
+			// Without its name, the toast says "The Space".
+			if (spaceId) pageSettingsHost.spaceDeleted(spaceId, textOf(args, "name") ?? "");
 			return spaceId !== null;
 		},
 		messageLayout: (args) => {
@@ -132,6 +133,10 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 		},
 		logout: () => {
 			void pageSettingsHost.logout();
+			return true;
+		},
+		switchAccount: () => {
+			void pageSettingsHost.switchAccount();
 			return true;
 		},
 		stage: (args) => {

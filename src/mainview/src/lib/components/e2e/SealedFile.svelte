@@ -34,7 +34,8 @@
 		fit?: string;
 		onPreview?: (src: string, alt?: string) => void;
 		authorName?: string;
-		channelName?: string;
+		/** The players' room name, as theirs: "" in a conversation, null for a room the app doesn't know. */
+		channelName?: string | null;
 		/** Under a spoiler's cover, still blurred. */
 		hidden?: boolean;
 		/** In a preview (a search's result, a pin, a thread's message), where a search on the device finds messages whose

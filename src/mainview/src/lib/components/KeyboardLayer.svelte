@@ -13,8 +13,10 @@
 	} from "$lib/keyboard";
 	import { keyboard, messagesIn, openNavigating, placeCursor, requestChat, shownPane } from "$lib/keyboard.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { t } from "$lib/i18n";
 	import { toast } from "$lib/stores/toast.svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 
 	// The app's keyboard (see keyboard.ts): the shortcuts with a modifier, the single keys of keyboard navigation, the
 	// shortcuts sheet and the jump marks. It listens before the chats do, so a key it takes doesn't also go to a
@@ -44,32 +46,33 @@
 	let marks = $state<Mark[] | null>(null);
 	let typed = $state("");
 
-	const mod = $derived(isMac ? "⌘" : "Ctrl");
-	const alt = $derived(isMac ? "⌥" : "Alt");
-	const shift = $derived(isMac ? "⇧" : "Shift");
+	// The modifiers' names are words (German writes Strg); macOS's symbols aren't. The single keys (j, k, G…) are keys.
+	const mod = $derived(isMac ? "⌘" : t("keys_ctrl"));
+	const alt = $derived(isMac ? "⌥" : t("keys_alt"));
+	const shift = $derived(isMac ? "⇧" : t("keys_shift"));
 	// Each action with its keys: the single keys of keyboard navigation (`nav`), and the shortcut with a modifier that
 	// works always, when there's one.
 	type Action = { what: string; nav?: string[]; always?: string[] };
 	const groups = $derived<{ title: string; actions: Action[] }[]>([
 		{
-			title: "Go to",
+			title: t("keys_go_to"),
 			actions: [
-				{ what: "Anything, by name", always: [mod, "K"] },
-				{ what: "Open chat 1 to 8, or the last", nav: ["1–9"], always: [mod, "1–9"] },
-				{ what: "Chat after or before", nav: ["J", "K"], always: [alt, "↓", "↑"] },
-				{ what: "Next unread chat", nav: ["u"], always: [alt, shift, "↓"] },
-				{ what: "A row or a message, by its mark", nav: ["f"] },
+				{ what: t("keys_anything"), always: [mod, "K"] },
+				{ what: t("keys_open_chat"), nav: ["1–9"], always: [mod, "1–9"] },
+				{ what: t("keys_chat_step"), nav: ["J", "K"], always: [alt, "↓", "↑"] },
+				{ what: t("keys_next_unread"), nav: ["u"], always: [alt, shift, "↓"] },
+				{ what: t("keys_mark"), nav: ["f"] },
 			],
 		},
 		{
-			title: "Messages",
+			title: t("keys_messages"),
 			actions: [
-				{ what: "Leave the message box", nav: ["Esc"] },
-				{ what: "Next or previous", nav: ["j", "k"] },
-				{ what: "Newest", nav: ["G"] },
-				{ what: "Reply", nav: ["r"] },
-				{ what: "Edit yours", nav: ["e"] },
-				{ what: "Back to writing", nav: ["i"] },
+				{ what: t("keys_leave_box"), nav: [t("keys_esc")] },
+				{ what: t("keys_message_step"), nav: ["j", "k"] },
+				{ what: t("keys_newest"), nav: ["G"] },
+				{ what: t("keys_reply"), nav: ["r"] },
+				{ what: t("keys_edit"), nav: ["e"] },
+				{ what: t("keys_write"), nav: ["i"] },
 			],
 		},
 	]);
@@ -152,7 +155,7 @@
 			case "unread": {
 				const id = nextUnread(unreadOrder, unread, activeId);
 				if (id) open(id, onOpenChat);
-				else toast("Nothing unread", "info", 2000);
+				else toast(t("shell_nothing_unread"), "info", 2000);
 				return;
 			}
 			case "reply":
@@ -268,41 +271,52 @@
 	     its edge. -->
 	<section
 		class="rounded-card bg-duvet-card text-duvet-ink shadow-duvet-float animate-fade-in fixed top-24 left-1/2 z-[350] w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 px-5 pt-5 pb-4 motion-reduce:animate-none"
-		aria-label="Keyboard shortcuts"
+		aria-label={t("keys_sheet_title")}
 	>
 		<MascotPeek class="pointer-events-none absolute -top-11 left-7 w-16" mood="awake" look={0.4} />
 		<div class="mb-4 flex items-start gap-3">
 			<div class="min-w-0 flex-1">
-				<h2 class="text-base font-bold">Keyboard shortcuts</h2>
+				<h2 class="text-base font-bold">{t("keys_sheet_title")}</h2>
 				<p class="text-duvet-ink2 mt-0.5 text-[13px]">
 					{#if layoutPrefs.keyboardNavigation}
-						Press Esc in the message box to move around with single keys. Any other key goes back to writing.
+						{t("keys_sheet_note_on")}
 					{:else}
-						The faded keys work once keyboard navigation is on, in Settings, Appearance.
+						{t("keys_sheet_note_off")}
 					{/if}
 				</p>
 			</div>
 			<button
 				type="button"
 				class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-ink focus-visible:outline-duvet-accent flex size-8 shrink-0 items-center justify-center rounded-lg focus-visible:outline-2"
-				aria-label="Close the shortcuts"
+				aria-label={t("keys_sheet_close")}
 				onclick={() => (help = false)}
 			>
 				<XIcon class="size-4" />
 			</button>
 		</div>
 		<div class="grid gap-3 sm:grid-cols-2">
-			{#each groups as group (group.title)}
+			<!-- By place: a translation may give two of them the same words. -->
+			{#each groups as group, g (g)}
 				<div class="bg-duvet-sunk shadow-duvet-press rounded-[14px] p-3">
 					<h3 class="text-duvet-ink2 mb-2 px-1 text-[13px] font-bold">{group.title}</h3>
 					<dl class="flex flex-col">
-						{#each group.actions as action (action.what)}
+						{#each group.actions as action, a (a)}
+							{@const nav = action.nav}
+							{@const always = action.always}
+							<!-- Both sets of keys in one sentence, the words between them its own (keys_either). -->
+							{#snippet single()}{#if nav}{@render keycaps(nav, !layoutPrefs.keyboardNavigation)}{/if}{/snippet}
+							{#snippet shortcut()}{#if always}{@render keycaps(always, false)}{/if}{/snippet}
 							<div class="flex min-h-9 items-center gap-3 px-1">
 								<dt class="text-duvet-ink min-w-0 flex-1 text-[13px]">{action.what}</dt>
-								<dd class="flex shrink-0 items-center gap-1.5">
-									{#if action.nav}{@render keycaps(action.nav, !layoutPrefs.keyboardNavigation)}{/if}
-									{#if action.nav && action.always}<span class="text-duvet-ink2 text-[11px]">or</span>{/if}
-									{#if action.always}{@render keycaps(action.always, false)}{/if}
+								<!-- The words between the keys are dd's own text, in the hint's size and ink; the key caps set their own. -->
+								<dd class="text-duvet-ink2 flex shrink-0 items-center gap-1.5 text-[11px]">
+									{#if nav && always}
+										<Rich key="keys_either" tags={{ single, shortcut }} />
+									{:else if nav}
+										{@render single()}
+									{:else if always}
+										{@render shortcut()}
+									{/if}
 								</dd>
 							</div>
 						{/each}
@@ -310,11 +324,10 @@
 				</div>
 			{/each}
 		</div>
+		{#snippet helpKey()}{@render keycaps(["?"], !layoutPrefs.keyboardNavigation)}{/snippet}
+		{#snippet helpShortcut()}{@render keycaps([mod, "/"], false)}{/snippet}
 		<p class="text-duvet-ink2 mt-3 flex items-center justify-end gap-1.5 text-xs">
-			{@render keycaps(["?"], !layoutPrefs.keyboardNavigation)}
-			<span>or</span>
-			{@render keycaps([mod, "/"], false)}
-			<span>opens this again</span>
+			<Rich key="keys_sheet_again" tags={{ single: helpKey, shortcut: helpShortcut }} />
 		</p>
 	</section>
 {/if}

@@ -27,6 +27,7 @@
 	} from "$lib/default-menu";
 	import { getElectrobunRpc, isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { openInBrowser } from "$lib/external-links";
+	import { t } from "$lib/i18n";
 	import { rawOf } from "$lib/message-box";
 	import { canQuote, quoteIn } from "$lib/quotes";
 	import { friendsReady, searchEverywhereRequest } from "$lib/stores.svelte";
@@ -176,7 +177,7 @@
 			item: (parts) => new ClipboardItem(parts),
 			write: (items) => navigator.clipboard.write(items),
 		}).then((copied) => {
-			if (!copied) toast("Couldn't copy the image", "error");
+			if (!copied) toast(t("shell_copy_image_failed"), "error");
 		});
 	}
 
@@ -230,33 +231,33 @@
 	function labelOf(item: DefaultItem): string {
 		switch (item.id) {
 			case "copy-selection":
-				return "Copy";
+				return t("shell_menu_copy");
 			case "quote":
-				return "Quote in reply";
+				return t("shell_menu_quote");
 			case "search":
 				return searchLabel(item.text);
 			case "open-link":
-				return "Open link";
+				return t("shell_menu_open_link");
 			case "copy-link":
-				return "Copy link";
+				return t("shell_menu_copy_link");
 			case "open-media":
-				return item.type === "image" ? "Open image" : "Open video";
+				return item.type === "image" ? t("shell_menu_open_image") : t("shell_menu_open_video");
 			case "copy-image":
-				return "Copy image";
+				return t("shell_menu_copy_image");
 			case "copy-media-link":
-				return item.type === "image" ? "Copy image link" : "Copy video link";
+				return item.type === "image" ? t("shell_menu_copy_image_link") : t("shell_menu_copy_video_link");
 			case "devtools":
-				return "Open DevTools";
+				return t("shell_menu_devtools");
 		}
 	}
 
 	// The menu's name for a screen reader: what it's for, by its first group.
 	const menuLabel = $derived.by(() => {
 		const first = groups[0]?.[0];
-		if (!first || first.id === "devtools") return "Developer";
-		if (first.id === "copy-selection") return "Selected text";
-		if (first.id === "open-link" || first.id === "copy-link") return "Link";
-		return "type" in first && first.type === "video" ? "Video" : "Image";
+		if (!first || first.id === "devtools") return t("shell_menu_for_developer");
+		if (first.id === "copy-selection") return t("shell_menu_for_selection");
+		if (first.id === "open-link" || first.id === "copy-link") return t("shell_menu_for_link");
+		return "type" in first && first.type === "video" ? t("shell_menu_for_video") : t("shell_menu_for_image");
 	});
 </script>
 

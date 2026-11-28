@@ -16,6 +16,8 @@
 	import { getApiError } from "$lib/api/api";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { getAvatarURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
+	import { formatDate } from "$lib/i18n/format";
 	import type { ManagedMember } from "$lib/members";
 	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import { canManageRoleAt, hasSpacePermission, Permission } from "$lib/permissions";
@@ -54,8 +56,8 @@
 		} catch (err) {
 			wanted.delete(role.id);
 			const fallback = on
-				? `Couldn't give ${member.name} ${role.name}`
-				: `Couldn't take ${role.name} from ${member.name}`;
+				? t("space_member_role_give_failed", { name: member.name, role: role.name })
+				: t("space_member_role_take_failed", { name: member.name, role: role.name });
 			toast(getApiError(err, fallback), "error");
 		} finally {
 			changing.delete(role.id);
@@ -64,9 +66,9 @@
 
 	const rolesNote = $derived(
 		!member.memberId
-			? "Their roles can be changed once the Space's members have loaded."
+			? t("space_member_roles_waiting")
 			: managesRoles && !ownsSpace && roles.some((role) => !canManageRoleAt(space, role.position))
-				? "Only roles below your highest role can be given or taken."
+				? t("space_member_roles_below")
 				: undefined,
 	);
 
@@ -76,9 +78,7 @@
 	);
 
 	const joined = $derived(
-		member.joinedAt
-			? new Date(member.joinedAt).toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" })
-			: null,
+		member.joinedAt ? formatDate(new Date(member.joinedAt), { dateStyle: "long", timeStyle: "short" }) : null,
 	);
 
 	// The keyboard goes where the details start, as they take the list's place.
@@ -95,7 +95,7 @@
 			onclick={onBack}
 		>
 			<ChevronLeftIcon size={15} />
-			Back to members
+			{t("space_member_back")}
 		</button>
 	</div>
 
@@ -107,7 +107,7 @@
 				{#if member.isBot}
 					<span
 						class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em]"
-						>BOT</span
+						>{t("space_members_bot")}</span
 					>
 				{/if}
 				{#if member.isOwner}
@@ -119,15 +119,15 @@
 	</div>
 
 	<SettingsGroup>
-		<SettingsRow label="Joined">
-			<span class="text-duvet-ink2 text-[13px]">{joined ?? "Not known yet"}</span>
+		<SettingsRow label={t("space_member_joined")}>
+			<span class="text-duvet-ink2 text-[13px]">{joined ?? t("space_member_joined_unknown")}</span>
 		</SettingsRow>
-		<SettingsRow label="User ID">
+		<SettingsRow label={t("space_member_user_id")}>
 			<span class="text-duvet-ink2 font-mono text-xs select-text">{member.id}</span>
 		</SettingsRow>
 	</SettingsGroup>
 
-	<SettingsGroup title="Roles" note={rolesNote}>
+	<SettingsGroup title={t("space_member_roles")} note={rolesNote}>
 		{#each roles as role (role.id)}
 			<div class="flex min-h-[50px] items-center gap-3 px-3.5 py-2">
 				<span class="size-2.5 shrink-0 rounded-full" style="background: {roleBackground(role)}" aria-hidden="true"
@@ -141,7 +141,7 @@
 				/>
 			</div>
 		{:else}
-			<p class="text-duvet-ink2 px-3.5 py-3 text-[13px]">This Space has no roles yet</p>
+			<p class="text-duvet-ink2 px-3.5 py-3 text-[13px]">{t("space_member_no_roles")}</p>
 		{/each}
 	</SettingsGroup>
 
@@ -155,7 +155,7 @@
 					onclick={() => void kickFromSpace(moderation.target)}
 				>
 					<UserMinusIcon size={14} />
-					Kick
+					{t("space_member_kick")}
 				</Button>
 			{/if}
 			{#if moderation.ban}
@@ -166,7 +166,7 @@
 					onclick={() => banRequest.set(moderation.target)}
 				>
 					<BanIcon size={14} />
-					Ban
+					{t("space_member_ban")}
 				</Button>
 			{/if}
 		</div>

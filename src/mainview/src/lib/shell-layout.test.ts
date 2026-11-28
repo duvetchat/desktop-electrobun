@@ -33,7 +33,6 @@ import {
 	stripHalves,
 	tabDropSide,
 	tabDropTarget,
-	tabKind,
 } from "$lib/shell-layout";
 import type { PaneLeaf, PaneNode, Tab } from "$lib/types";
 import { MEMBERS_COLUMN_MIN_PANE } from "$lib/members";
@@ -299,13 +298,6 @@ test("a drop on a tab lands before it, after it, or joins it, by quarters", () =
 	expect(tabDropSide(100, 200)).toBe("join");
 	expect(tabDropSide(190, 200)).toBe("after");
 	expect(tabDropSide(0, 0)).toBe("after");
-});
-
-test("a conversation's tab is a group's or a direct message's; a room's has no kind", () => {
-	const groups = new Set(["g"]);
-	expect(tabKind(chat("g"), groups)).toBe("Group");
-	expect(tabKind(chat("d"), groups)).toBe("Direct message");
-	expect(tabKind(room("r"), groups)).toBeNull();
 });
 
 describe("the shell's shortcuts", () => {

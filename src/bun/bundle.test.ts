@@ -18,5 +18,16 @@ test("the Bun bundle, built as Electrobun builds it, leaves three.js and Babylon
 		babylon: code.includes("node_modules/@babylonjs/core/"),
 		three: code.includes("node_modules/three/"),
 		underThreeMB: code.length < 3_000_000,
-	}).toEqual({ babylon: false, three: false, underThreeMB: true });
+		// #464: Bun's own words, picked as it's built (bun-messages.ts), and none of the page's, which it has itself.
+		bunWords: code.includes("menu_about") && code.includes("os_microphone_usage"),
+		pageWords: code.includes("settings_language_note"),
+		i18next: code.includes("node_modules/i18next/"),
+	}).toEqual({
+		babylon: false,
+		three: false,
+		underThreeMB: true,
+		bunWords: true,
+		pageWords: false,
+		i18next: true,
+	});
 }, 60_000);

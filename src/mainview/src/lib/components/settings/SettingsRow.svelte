@@ -34,13 +34,15 @@
 		{/if}
 		<div class="min-w-0 flex-1">
 			{#if labelFor}
-				<label for={labelFor} class="text-duvet-ink block text-[14.5px] leading-[1.35] font-medium">{label}</label>
+				<label for={labelFor} class="text-duvet-ink block text-[14.5px] leading-[1.35] font-medium hyphens-auto"
+					>{label}</label
+				>
 			{:else}
-				<p class="text-duvet-ink text-[14.5px] leading-[1.35] font-medium">
+				<p class="text-duvet-ink text-[14.5px] leading-[1.35] font-medium hyphens-auto">
 					{label}
 				</p>
 			{/if}
-			{#if line}<p class="text-duvet-ink2 mt-1 text-[13px] leading-[1.45]">{line}</p>{/if}
+			{#if line}<p class="text-duvet-ink2 mt-1 text-[13px] leading-[1.45] hyphens-auto">{line}</p>{/if}
 		</div>
 	</div>
 	{#if children}

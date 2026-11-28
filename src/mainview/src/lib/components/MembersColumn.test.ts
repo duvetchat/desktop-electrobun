@@ -87,7 +87,7 @@ test("on the pane, the list takes the pane's colour; in the popover, the popover
 test("it scrolls and pages as the popover does, and starts over for another Space", () => {
 	const column = source("MembersColumn.svelte");
 	expect(column).toMatch(
-		/<aside\b[^>]*aria-label="Members"[^>]*class="[^"]*\bflex-col\b[^"]*"[^>]*>\s*\{#key pagedSpaceId\}\s*<MembersPanel \{members\} spaceId=\{pagedSpaceId\} \{space\} \{channelId\} \{onRemoveMember\} \{onMention\} surface="pane" \/>\s*\{\/key\}\s*<\/aside>/,
+		/<aside\b[^>]*aria-label=\{t\("people_members_title"\)\}[^>]*class="[^"]*\bflex-col\b[^"]*"[^>]*>\s*\{#key pagedSpaceId\}\s*<MembersPanel \{members\} spaceId=\{pagedSpaceId\} \{space\} \{channelId\} \{onRemoveMember\} \{onMention\} surface="pane" \/>\s*\{\/key\}\s*<\/aside>/,
 	);
 	const panel = source("MembersPanel.svelte");
 	expect(panel).toMatch(/<div class="min-h-0 flex-1 overflow-y-auto pb-2" \{onscroll\}>/);

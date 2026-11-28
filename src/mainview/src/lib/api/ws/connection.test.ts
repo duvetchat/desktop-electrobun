@@ -9,7 +9,7 @@ import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { notificationLevels } from "$lib/notification-levels";
 import { MessageType, type GatewaySpace, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
-import { SENT_BEFORE_CANCEL } from "$lib/uploads";
+import { sentBeforeCancel } from "$lib/uploads";
 
 // A message that notifies plays its sound through an <audio>, which Bun has none of.
 Object.assign(globalThis, {
@@ -265,7 +265,7 @@ describe("the message a draft replies to is deleted", () => {
 describe("a cancelled message that the API posts all the same", () => {
 	const photo = new File(["png"], "photo.png", { type: "image/png" });
 	const sent = { text: "fix this", files: [photo], replyTo: null, replyMention: true };
-	const notices = () => toastStore.items.filter((t) => t.message === SENT_BEFORE_CANCEL).length;
+	const notices = () => toastStore.items.filter((t) => t.message === sentBeforeCancel()).length;
 	const emptied = { text: "", files: [], replyTo: null, replyMention: true };
 
 	test("in a room, leaves the draft as it was before the Cancel, says so, and shows as sent", () => {

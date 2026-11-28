@@ -2,6 +2,7 @@
 	import type { Snippet } from "svelte";
 	import CallHistory from "$lib/components/CallHistory.svelte";
 	import Popover from "$lib/components/ui/Popover.svelte";
+	import { t } from "$lib/i18n";
 	import { jumpToMessageRequest } from "$lib/stores.svelte";
 	import type { MessageLink } from "$lib/urls";
 
@@ -35,12 +36,12 @@
 	bind:open
 	{side}
 	{align}
-	label="Call history"
+	label={t("call_history_title")}
 	class="flex max-h-[min(560px,72vh)] w-[360px] flex-col rounded-[20px]"
 	{trigger}
 >
 	<div class="flex shrink-0 items-center justify-between px-4 pt-3.5 pb-2.5">
-		<h2 class="text-duvet-ink font-serif text-[19px] leading-[1.2] font-medium">Call history</h2>
+		<h2 class="text-duvet-ink font-serif text-[19px] leading-[1.2] font-medium">{t("call_history_title")}</h2>
 	</div>
 	<div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 		<CallHistory onOpen={openCall} />

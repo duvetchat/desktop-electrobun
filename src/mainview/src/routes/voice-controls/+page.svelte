@@ -7,6 +7,7 @@
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import { getElectrobunRpc, isElectrobunWindow, type AppRPCClient } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import {
 		MEDIA_CHANNEL,
 		parseMediaState,
@@ -27,7 +28,8 @@
 	// never reach lib/api/ws/connection.ts, nor renew the session (module-graph.test.ts keeps it so).
 	const shell = currentShell();
 	const isMac = shell.os === "mac";
-	const keys = voiceKeyLabels(isMac);
+	// The shortcuts' key names are words (Ctrl, Shift), so they follow the app's language.
+	const keys = $derived(voiceKeyLabels(isMac));
 
 	let media = $state<MediaState | null>(null);
 	let pinned = $state(false);
@@ -103,7 +105,7 @@
 </script>
 
 <svelte:head>
-	<title>Voice controls</title>
+	<title>{t("call_voice_controls")}</title>
 </svelte:head>
 
 <svelte:window {onkeydown} {onstorage} />
@@ -119,15 +121,15 @@
 		     inside a drag element, so a button in one would move the window as it is pressed. -->
 		<DragRegion class="absolute inset-0" />
 		<h1 class="text-duvet-ink2 pointer-events-none relative min-w-0 flex-1 truncate text-xs font-semibold">
-			Voice controls
+			{t("call_voice_controls")}
 		</h1>
 		<div class="relative flex shrink-0 items-center gap-0.5">
-			<Tooltip text={pinned ? "Stop keeping on top" : "Keep on top"}>
+			<Tooltip text={pinned ? t("call_stop_keeping_on_top") : t("call_keep_on_top")}>
 				{#snippet trigger(props)}
 					<IconButton
 						{...props}
 						size="sm"
-						label={pinned ? "Stop keeping on top" : "Keep on top"}
+						label={pinned ? t("call_stop_keeping_on_top") : t("call_keep_on_top")}
 						active={pinned}
 						onclick={togglePin}
 					>
@@ -135,11 +137,11 @@
 					</IconButton>
 				{/snippet}
 			</Tooltip>
-			<Button variant="quiet" size="sm" aria-label="Put the voice controls back in the sidebar" onclick={putBack}>
-				Put back
+			<Button variant="quiet" size="sm" aria-label={t("call_put_back_label")} onclick={putBack}>
+				{t("call_put_back")}
 			</Button>
 			{#if shell.ownWindowControls}
-				<IconButton size="sm" label="Close window" onclick={putBack}>
+				<IconButton size="sm" label={t("call_close_window")} onclick={putBack}>
 					<X size={14} />
 				</IconButton>
 			{/if}
