@@ -116,6 +116,8 @@
 				<div class="h-6"></div>
 			{/if}
 			{@render children()}
+			<!-- The notices of what the app ships (#628), for anyone before they sign in: routes/licenses. -->
+			<a href="/licenses" class="auth-link mt-10 self-center text-[12.5px]">{t("auth_licenses")}</a>
 		</div>
 	</div>
 </section>

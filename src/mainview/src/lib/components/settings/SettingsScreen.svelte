@@ -37,6 +37,7 @@
 		Users as UsersIcon,
 		ChevronRight as ChevronRightIcon,
 		MonitorSmartphone as DevicesIcon,
+		Scale as LicensesIcon,
 	} from "@lucide/svelte";
 	import { slide } from "svelte/transition";
 	import { motionMs } from "$lib/motion";
@@ -149,6 +150,7 @@
 	import { hasDeviceData } from "$lib/e2e/engine/devices";
 	import ChoiceCards from "./ChoiceCards.svelte";
 	import LanguageSelect from "./LanguageSelect.svelte";
+	import Licenses from "$lib/components/Licenses.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -271,6 +273,7 @@
 				{ id: "language", label: t("settings_language_title"), icon: LanguageIcon, tile: "#0e8fd6" },
 				{ id: "audio", label: t("settings_section_audio"), icon: VolumeIcon, tile: "#f97316" },
 				{ id: "voice-video", label: t("settings_section_voice_video"), icon: MicIcon, tile: "#e01890" },
+				{ id: "licenses", label: t("settings_section_licenses"), icon: LicensesIcon, tile: "#64748b" },
 			],
 		},
 		{
@@ -2101,6 +2104,8 @@
 				/>
 			</SettingsRow>
 		</SettingsGroup>
+	{:else if activeSection === "licenses"}
+		<Licenses />
 	{:else if activeSection === "activity"}
 		<SettingsGroup>
 			<SettingsRow label={t("settings_activity_spotify")} line={t("settings_activity_spotify_line")}>

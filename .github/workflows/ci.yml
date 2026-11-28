@@ -48,6 +48,12 @@ jobs:
       # Each test file in a global object and module registry of its own: what one leaves can't reach another (#176).
       - run: bun test --isolate
         working-directory: src/mainview
+      # The page's production build, as the web's deploy and the releases make it: its Licenses step
+      # (third-party-notices.ts, #628) refuses a package it can't ship, or one with no licence text, and writes the
+      # notices beside the pages.
+      - name: The page's build, and its licences
+        run: bun run build && test -s build/licenses.json
+        working-directory: src/mainview
       # The Bun process's own: the Spotify reader's parsing.
       - run: bun test src/bun
       # The core's key in a Secret Service, as a Linux desktop keeps it (src/bun/e2e/core.test.ts): gnome-keyring on a

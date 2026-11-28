@@ -108,6 +108,7 @@ describe("the section Settings opens on", () => {
 			"buckets",
 			"developer",
 			"devices",
+			"licenses",
 		]);
 	});
 });

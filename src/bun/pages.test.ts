@@ -32,6 +32,7 @@ describe("the pages the packaged app has", () => {
 				"forgot-password",
 				"index",
 				"invite",
+				"licenses",
 				"reset-password",
 				"sign-in",
 				"sign-up",
@@ -61,6 +62,11 @@ describe("the pages the packaged app has", () => {
 			"src/mainview/build/voice-controls.html": "views/mainview/voice-controls.html",
 			"src/mainview/build/settings.html": "views/mainview/settings.html",
 		});
+	});
+
+	// #628: the Licenses page's notices, which the page's build writes beside the pages, and the page fetches from there.
+	test("the Licenses page's notices go with the pages", () => {
+		expect(copy["src/mainview/build/licenses.json"]).toBe("views/mainview/licenses.json");
 	});
 
 	test("no rule copies a page the UI doesn't build", () => {
