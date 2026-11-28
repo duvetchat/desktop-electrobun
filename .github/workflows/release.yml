@@ -10,9 +10,9 @@ name: Release
 #   - By hand (workflow_dispatch), the test channel (PLAN-E2E-CLIENTES.md, Task 34 and Ruling 9): the canary build of
 #     the branch it's given, on the system it's given (Windows, Linux or macOS, unsigned), pointed at the API it's given
 #     (lib/common/common.ts's targets; `local` is a stack on the same computer, at localhost:9876 and localhost:8765, as
-#     docs/e2e-on-windows.md and docs/e2e-on-linux.md bring it up), whose installer goes into a prerelease of this
-#     repository with the job's own token. It signs no update and never reaches desktop-stable: a canary doesn't update
-#     itself (src/bun/updates.ts).
+#     docs/e2e-on-windows.md, docs/e2e-on-linux.md and docs/e2e-on-macos.md bring it up), whose installer goes into a
+#     prerelease of this repository with the job's own token. It signs no update and never reaches desktop-stable: a
+#     canary doesn't update itself (src/bun/updates.ts).
 # Before either builds, the core's library it ships is checked against native/core/SOURCE.json.
 on:
   push:
