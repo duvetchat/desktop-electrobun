@@ -8,6 +8,7 @@ export const SETTINGS_SECTIONS = [
 	"audio",
 	"voice-video",
 	"appearance",
+	"language",
 	"activity",
 	"buckets",
 	"developer",

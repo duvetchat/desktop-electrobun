@@ -1,16 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConversationMember } from "$lib/api/conversations";
-import {
-	busiestRooms,
-	callName,
-	capFaces,
-	fitFaces,
-	NOW_ROOMS,
-	joinableCalls,
-	liveIn,
-	friendsNow,
-	voiceRoomLabel,
-} from "$lib/now";
+import { busiestRooms, callName, capFaces, fitFaces, NOW_ROOMS, joinableCalls, liveIn, voiceRoomLabel } from "$lib/now";
 
 describe("joinableCalls", () => {
 	const calls = new Set(["a", "b", "c"]);
@@ -34,25 +24,6 @@ describe("liveIn", () => {
 	test("a room with neither shows nothing live", () => {
 		expect(liveIn([{ screen_sharing: false, camera: false }])).toBeNull();
 		expect(liveIn([])).toBeNull();
-	});
-});
-
-describe("friendsNow", () => {
-	const activities: Record<string, string> = { b: "song", c: "game", d: "song", e: "game" };
-	const activityOf = (id: string) => activities[id] ?? null;
-
-	test("the first friends doing something get rows, in order, and the others are faces", () => {
-		expect(friendsNow(["a", "b", "c", "d", "e"], activityOf, 2)).toEqual({
-			busy: [
-				{ friend: "b", activity: "song" },
-				{ friend: "c", activity: "game" },
-			],
-			rest: ["a", "d", "e"],
-		});
-	});
-
-	test("nobody doing anything leaves every friend a face", () => {
-		expect(friendsNow(["a", "f"], activityOf)).toEqual({ busy: [], rest: ["a", "f"] });
 	});
 });
 

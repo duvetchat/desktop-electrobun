@@ -388,6 +388,22 @@ describe("the two layouts", () => {
 		expect(html).toContain("radial-gradient(420px_80px_at_60px_50%");
 	});
 
+	test("flat rows fuse consecutive mentions into one wash block", async () => {
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const mentions = [
+			from("05", ANA, "Ana", 5, `one <@${ME}>`),
+			from("06", "0190a3b2-0000-7000-8000-000000000003", "Bea", 6, `two <@${ME}>`),
+		];
+		const html = render(MessageList, { props: { messages: mentions, channelId: ROOM, spaceId: "space", intro } }).body;
+		// The two rows carry the same horizontal wash, and their meeting edges are square.
+		expect(count(html, "linear-gradient(90deg,var(--duvet-prism-gem)")).toBe(2);
+		expect(html).not.toContain("radial-gradient(420px_80px_at_60px_50%");
+		expect(html).toContain("rounded-t-xl");
+		expect(html).toContain("rounded-b-xl");
+		// The DOM runs newest first, so the newest message's bottom edge comes before the oldest message's top one.
+		expect(html.indexOf("rounded-b-xl")).toBeLessThan(html.indexOf("rounded-t-xl"));
+	});
+
 	test("a day's label sits between two hairlines in flat rows, and alone in bubbles", async () => {
 		// The talk is all one day: one label, over its oldest message.
 		expect(count(list({}), "data-day-separator")).toBe(1);
@@ -437,11 +453,30 @@ describe("editing a message", () => {
 	});
 
 	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
-		expect(editor).toContain("<textarea");
+		expect(editor).toContain('contenteditable="true"');
 		expect(editor).toContain('{t("chat_edit_save")}');
 		expect(editor).toContain('label={t("chat_edit_cancel")}');
 		expect(editor).toContain('event.key === "Escape"');
 		expect(editor).toContain("event.metaKey || event.ctrlKey");
+	});
+
+	test("it draws the message's mentions, rooms and emoji, and saves the raw text they stand for", () => {
+		expect(editor).toContain("richTextHtml(");
+		expect(editor).toContain("rawOf(editor)");
+		expect(editor).toContain("mentionMap[id]");
+		expect(editor).toContain("$roomNames[id]");
+		expect(editor).toContain("customEmojiMap[id]");
+		expect(list).toMatch(/<InlineMessageEditor[\s\S]*?\{mentionMap\}[\s\S]*?\{customEmojiMap\}/);
+	});
+
+	test("it suggests the people, rooms and emoji the composer suggests", () => {
+		expect(editor).toContain("emojiSuggestions");
+		expect(editor).toContain('t("chat_mention_suggestions")');
+		expect(editor).toContain('t("chat_room_suggestions")');
+		expect(editor).toContain('t("chat_emoji_suggestions")');
+		expect(editor).toContain('event.key === "ArrowDown"');
+		expect(editor).toContain("applySuggestion");
+		expect(list).toContain("mentionableRooms(space)");
 	});
 
 	test("the chat saves it there, not in the message box", () => {
