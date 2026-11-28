@@ -35,7 +35,7 @@ Every value is an ICU MessageFormat string (the format Flutter's ARB files, Andr
 | ja | — | です/ます; leave out *あなた*, as Japanese does. Buttons and menu items as nouns or plain verbs (*保存*, *キャンセル*). Full-width punctuation (、。？), quotes 「…」. Kick is *キック*; ban is *BAN* in Latin letters inside Japanese (*BANしたユーザー*, *BANを解除*). |
 | ko | — | 해요체; leave out *당신*. Buttons and menu items as nouns (*저장*, *취소*). After a placeholder, both particles: *을(를)*, *이(가)*. A person's name takes *님* only in what's done to them as an admin (*{name}님 추방하기*, *{name}님 차단하기*, roles, removing from a group), nowhere else. Kick is *추방*, ban *차단*. Quotes “…”. |
 | th | คุณ | Polite and neutral, without ครับ/ค่ะ. No full stop at a sentence's end: a space between sentences. Quotes “…”. |
-| vi | bạn | Quotes “…”. |
+| vi | bạn | Mute is *Tắt âm* (*Bỏ tắt âm*), deafen *Tắt tiếng* (*Bỏ tắt tiếng*). Quotes “…”. |
 
 ## Terms
 
