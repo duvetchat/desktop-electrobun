@@ -59,6 +59,22 @@ describe("a switch of accounts in one page", () => {
 	});
 });
 
+describe("a sign-in in another page", () => {
+	// #623: a sign-in names no account until its READY, so a page loaded right after one agreed with none, and another
+	// page's sign-in, which names none either, changed nothing it compared.
+	test("reaches a page that agrees with no account: it loads again, once", () => {
+		forgetUser();
+		let left = 0;
+		const page = new PageAccount(() => left++);
+		expect(page.own()).toBe(true);
+		// Another tab signs in.
+		forgetUser();
+		expect(page.own()).toBe(false);
+		expect(page.own()).toBe(false);
+		expect(left).toBe(1);
+	});
+});
+
 describe("a page whose account another page switched", () => {
 	// The main window's renewal, which the desktop app's other windows take from storage (lib/session.ts), and another
 	// tab of the same account's: the session's tokens change, its account doesn't.

@@ -49,6 +49,10 @@ export function deviceName(inputs: ShellInputs = readShellInputs()): string {
 }
 
 const USER_KEY = "duvet.e2e.user";
+/** A mark each sign-in writes anew (#623): a sign-in names no account until its READY, so a page that agreed with none
+ * would see nothing else change. */
+const SIGN_IN_KEY = "duvet.e2e.signIn";
+const signInMark = () => localStorage.getItem(SIGN_IN_KEY);
 const deviceKey = (userId: string) => `duvet.e2e.${userId}.device`;
 
 /** The device this installation registered for the user, or null before it did. */
@@ -97,6 +101,11 @@ export function keepUser(userId: string): void {
  * the one before. READY tells whose it is. */
 export function forgetUser(): void {
 	localStorage.removeItem(USER_KEY);
+	try {
+		localStorage.setItem(SIGN_IN_KEY, crypto.randomUUID());
+	} catch (error) {
+		console.error("[e2e] Couldn't mark the sign-in for the app's other pages:", error);
+	}
 	page?.agree();
 }
 
@@ -109,6 +118,7 @@ export function forgetUser(): void {
  */
 export class PageAccount {
 	#agreed = lastUser();
+	#signIn = signInMark();
 	#left = false;
 
 	constructor(private readonly reload: () => void) {}
@@ -116,6 +126,7 @@ export class PageAccount {
 	/** What storage names now is this page's own word, which it wrote. */
 	agree(): void {
 		this.#agreed = lastUser();
+		this.#signIn = signInMark();
 	}
 
 	/** Loads the page again, once. */
@@ -128,7 +139,7 @@ export class PageAccount {
 	/** Whether the session storage holds is still this page's account's: once another page named another one, it isn't,
 	 * and the page loads again. */
 	own(): boolean {
-		if (lastUser() === this.#agreed) return true;
+		if (lastUser() === this.#agreed && signInMark() === this.#signIn) return true;
 		this.leave();
 		return false;
 	}
@@ -144,7 +155,7 @@ export function followAccount(onStorage: (changed: (key: string | null) => void)
 	page = followed;
 	// A null key is storage cleared whole.
 	onStorage((key) => {
-		if (key === null || key === USER_KEY) followed.own();
+		if (key === null || key === USER_KEY || key === SIGN_IN_KEY) followed.own();
 	});
 }
 
