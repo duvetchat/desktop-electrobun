@@ -7,8 +7,8 @@ import { NOTICES } from "$lib/e2e/notices";
 import { tags } from "../server-render";
 
 // What a direct message shows where this app can't open encrypted conversations (PLAN-E2E-CLIENTES.md, «El motor», its
-// states, and Task 34): macOS's and Linux's app, which carry no core (decisions 38 and 39), a browser without what the
-// core needs, and a client the API answered 426. Its messages can't load there and its box can't send, so the
+// states, and Task 34): a desktop build that carries no core (an Intel Mac's, a Linux arm64 one), a browser without what
+// the core needs, and a client the API answered 426. Its messages can't load there and its box can't send, so the
 // conversation says why in their place, as the app's bottom bar does, which the person may have closed.
 const { default: ConversationUnavailable, unavailableHere } = await import("./ConversationUnavailable.svelte");
 
@@ -19,7 +19,7 @@ const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8
 
 describe("a conversation this app can't open", () => {
 	test("a platform without the library says so in its DMs", () => {
-		// The desktop app on macOS or Linux: the host's open answers unsupported.
+		// A desktop build without the core's library: the host's open answers unsupported.
 		expect(unavailableHere({ name: "unsupported" })).toBe(true);
 		expect(drawn({ name: "unsupported" })).toContain(NOTICES.no_e2e_here);
 		// The API's 426 for such a platform names no minimum: the same words.

@@ -95,8 +95,9 @@ export default {
 			"native/macos/build/libPasteboard.dylib": "native/libPasteboard.dylib",
 
 			// The end-to-end encryption core, which the app also loads from Resources/app/native/ (src/bun/e2e/library.ts):
-			// a Windows x64 build carries its DLL, a Linux x64 one its shared object, and a macOS one none, where the core is
-			// unsupported. Electrobun builds for the system it runs on.
+			// a Windows x64 build carries its DLL, a Linux x64 one its shared object, and a macOS arm64 one its dylib, from
+			// the preBuild hook's signed copy; an Intel Mac's none, where the core is unsupported. Electrobun builds for the
+			// system it runs on.
 			...coreLibraryCopy(),
 		},
 		// Those libraries are the preBuild hook's output, not sources to rebuild on.

@@ -15,9 +15,10 @@
 	import UpdateNotice from "./UpdateNotice.svelte";
 
 	// What a direct message shows in place of its messages and its box where this app can't open it (Task 34): its
-	// messages can't load there and its box can't send. The desktop app on macOS and Linux carries no core (decisions 38
-	// and 39), a browser may lack what the core needs, and an old client gets the API's 426, which names no minimum on a
-	// platform without encryption. The app's bottom bar says the same, but the person may have closed it.
+	// messages can't load there and its box can't send. A desktop build may carry no core (an Intel Mac's, a Linux arm64
+	// one), a browser may lack what the core needs, and an old client gets the API's 426, which names no minimum on a
+	// platform without encryption yet (decisions 38 and 39). The app's bottom bar says the same, but the person may have
+	// closed it.
 	let { encryption, web }: { encryption: EngineState; web: boolean } = $props();
 </script>
 
